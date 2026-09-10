@@ -54,7 +54,12 @@ apiRouter.use((req: Request, res: Response, next: NextFunction) => {
 // ----------------------------------------------------
 
 apiRouter.get('/health', (req: Request, res: Response) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.json({
+    status: 'ok',
+    service: 'api',
+    environment: 'production',
+  });
 });
 
 // Front-end public content (supports /public-data and /content)

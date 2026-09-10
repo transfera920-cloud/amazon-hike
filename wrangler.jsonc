@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "amazon",
+  "name": "amazon-hikes",
   "main": "server/worker.ts",
   "compatibility_date": "2024-09-23",
   "compatibility_flags": ["nodejs_compat"],
@@ -8,11 +8,5 @@
     "directory": "./dist",
     "binding": "ASSETS",
     "not_found_handling": "none"
-  },
-  "kv_namespaces": [
-    {
-      "binding": "ASSOCIATION_DB",
-      "id": "placeholder_for_verification_only"
-    }
-  ]
+  }
 }

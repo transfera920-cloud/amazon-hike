@@ -1,0 +1,6 @@
+{
+  "name": "亞馬遜國家山岳協會 Amazon Alpine Association",
+  "description": "亞馬遜國家山岳協會（Amazon Alpine Association）官方入口網站與活動行事曆，提供登山活動行事曆、登山入門、登山工具、活動花絮、問卷調查、政策與條款。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

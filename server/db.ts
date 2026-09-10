@@ -169,11 +169,18 @@ function getInitialSeedData(): AssociationDatabase {
   };
 }
 
+// In-memory runtime cache ensuring persistence across queries even on read-only environments
+let inMemoryFallbackDb: AssociationDatabase | null = null;
+
 /**
- * Loads database from disk. If not found, initializes once with baseline data.
+ * Loads database from disk or memory cache. If not found, initializes once with baseline data.
  * NEVER overwrites existing data!
  */
 export function loadDatabase(): AssociationDatabase {
+  if (inMemoryFallbackDb) {
+    return inMemoryFallbackDb;
+  }
+
   if (fs.existsSync(DB_PATH)) {
     try {
       const content = fs.readFileSync(DB_PATH, 'utf-8');
@@ -202,6 +209,8 @@ export function loadDatabase(): AssociationDatabase {
         }
       }
 
+      inMemoryFallbackDb = parsed;
+
       if (needsSave) {
         saveDatabase(parsed);
       }
@@ -215,17 +224,24 @@ export function loadDatabase(): AssociationDatabase {
 
   // Only if file does NOT exist:
   const seed = getInitialSeedData();
+  inMemoryFallbackDb = seed;
   saveDatabase(seed);
   return seed;
 }
 
 /**
  * Safely saves the database to disk using atomic temp file write and rename.
+ * Also keeps in-memory state in sync so read-only container file systems don't fail.
  */
 export function saveDatabase(data: AssociationDatabase): void {
-  const tmpPath = `${DB_PATH}.${Date.now()}.tmp`;
-  fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
-  fs.renameSync(tmpPath, DB_PATH);
+  inMemoryFallbackDb = data;
+  try {
+    const tmpPath = `${DB_PATH}.${Date.now()}.tmp`;
+    fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
+    fs.renameSync(tmpPath, DB_PATH);
+  } catch (err) {
+    console.warn('Warning: Could not write to disk (read-only filesystem or permission issue), kept in memory cache:', err);
+  }
 }
 
 // Helpers for public view (filtering only enabled items, ordered by sortOrder)

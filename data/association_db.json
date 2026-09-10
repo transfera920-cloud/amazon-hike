@@ -1,48 +1,9 @@
 {
   "version": 1,
-  "surveyUrl": "https://docs.google.com/forms/d/e/1FAIpQLScX9amazonSurveyFormExample/viewform",
+  "surveyUrl": "",
   "intros": [],
-  "tools": [
-    {
-      "id": "tool_01",
-      "title": "中央氣象署高山氣象預報",
-      "description": "查詢台灣各高山、主要登山步道即時氣溫、風速、紫外線與降雨機率",
-      "url": "https://www.cwa.gov.tw/V8/C/L/Mountain/Mountain.html",
-      "enabled": true,
-      "sortOrder": 1
-    },
-    {
-      "id": "tool_02",
-      "title": "國家公園入山入園線上申辦系統",
-      "description": "玉山、雪霸、太魯閣國家公園生態保護區入園證與山屋營地抽籤查詢",
-      "url": "https://npm.cpami.gov.tw/",
-      "enabled": true,
-      "sortOrder": 2
-    },
-    {
-      "id": "tool_03",
-      "title": "林業及自然保育署山林悠遊網",
-      "description": "全台國家森林遊樂區、國家步道即時路況通阻與天災警戒資訊",
-      "url": "https://recreation.forest.gov.tw/",
-      "enabled": true,
-      "sortOrder": 3
-    },
-    {
-      "id": "tool_04",
-      "title": "Windy 專業氣象與風場模式",
-      "description": "ECMWF 與 GFS 多模式高空風向、雲層高度與積雨雲動態模擬",
-      "url": "https://www.windy.com/",
-      "enabled": true,
-      "sortOrder": 4
-    }
-  ],
+  "tools": [],
   "highlights": [
-    {
-      "id": "hl_01",
-      "youtubeUrl": "https://www.youtube.com/watch?v=wp7VRB_YSAo&t=17s",
-      "enabled": true,
-      "sortOrder": 1
-    },
     {
       "id": "hl_1789013976404",
       "youtubeUrl": "https://www.youtube.com/watch?v=lGfu_iDKSok",
@@ -86,16 +47,7 @@
       "sortOrder": 4
     }
   ],
-  "surveys": [
-    {
-      "id": "survey_01",
-      "title": "亞馬遜登山活動滿意度與建議問卷",
-      "url": "https://docs.google.com/forms/d/e/1FAIpQLScX9amazonSurveyFormExample/viewform",
-      "description": "收集會員與參加山友對於登山嚮導、行程規劃與安全管理的寶貴意見與滿意度回饋。",
-      "enabled": true,
-      "sortOrder": 1
-    }
-  ],
+  "surveys": [],
   "navButtons": [
     {
       "id": "btn_calendar",

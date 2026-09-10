@@ -77,10 +77,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
   const fetchAdminData = async (authToken: string) => {
     setLoadingData(true);
     try {
-      const res = await fetch('/api/admin/data', {
+      const res = await fetch(`/api/admin/data?_t=${Date.now()}`, {
         headers: {
           Authorization: `Bearer ${authToken}`,
         },
+        cache: 'no-store',
       });
 
       if (res.status === 401 || res.status === 403) {
@@ -414,6 +415,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
+        cache: 'no-store',
         body: JSON.stringify({ type: deleteTarget.type, id: deleteTarget.id }),
       });
 
@@ -424,12 +426,44 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
           headers: {
             Authorization: `Bearer ${token}`,
           },
+          cache: 'no-store',
         });
       }
 
-      const json = await res.json();
-      if (json.success) {
+      let json: any = null;
+      try {
+        json = await res.json();
+      } catch {
+        throw new Error(`伺服器回應錯誤 (HTTP ${res.status})`);
+      }
+
+      if (json && json.success) {
         showFeedback(`已成功自資料庫刪除「${deleteTarget.name}」`);
+
+        // Optimistically remove from local state immediately
+        const targetType = (deleteTarget.type || '').toLowerCase();
+        const targetId = String(deleteTarget.id);
+        setAdminData((prev) => {
+          if (!prev) return prev;
+          const next = { ...prev };
+          if (targetType === 'intro') {
+            next.intros = (next.intros || []).filter((i) => String(i.id) !== targetId);
+          } else if (targetType === 'tool') {
+            next.tools = (next.tools || []).filter((t) => String(t.id) !== targetId);
+          } else if (targetType === 'highlight') {
+            next.highlights = (next.highlights || []).filter((h) => String(h.id) !== targetId);
+          } else if (targetType === 'survey') {
+            next.surveys = (next.surveys || []).filter((s) => String(s.id) !== targetId);
+            const first = next.surveys.find((s) => s.enabled);
+            next.surveyUrl = first ? first.url : '';
+          } else if (targetType === 'policy') {
+            next.policies = (next.policies || []).filter((p) => String(p.id) !== targetId);
+          } else if (targetType === 'navbutton' || targetType === 'nav_button') {
+            next.navButtons = (next.navButtons || []).filter((b) => String(b.id) !== targetId);
+          }
+          return next;
+        });
+
         // Reset currently editing object if it matches the deleted id
         if (editingIntro?.id === deleteTarget.id) setEditingIntro(null);
         if (editingTool?.id === deleteTarget.id) setEditingTool(null);
@@ -442,7 +476,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
         await fetchAdminData(token);
         onDataUpdated();
       } else {
-        showFeedback(json.error || '刪除失敗', true);
+        showFeedback((json && json.error) || '刪除失敗', true);
       }
     } catch (err: any) {
       showFeedback(err.message || '連線刪除失敗', true);

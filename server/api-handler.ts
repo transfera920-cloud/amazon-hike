@@ -29,6 +29,9 @@ function jsonResponse(data: any, status = 200): Response {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+      'Pragma': 'no-cache',
+      'Expires': '0',
     },
   });
 }
@@ -382,7 +385,7 @@ export async function handleApiRequest(
           type = parts[0] || '';
           id = parts[1] || '';
         } else {
-          const body: any = await request.json();
+          const body: any = await request.json().catch(() => ({}));
           type = body?.type;
           id = body?.id;
         }

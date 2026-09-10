@@ -36,7 +36,9 @@ export default function App() {
   // Fetch public data from backend
   const fetchPublicData = useCallback(async () => {
     try {
-      const res = await fetch('/api/public-data');
+      const res = await fetch(`/api/public-data?_t=${Date.now()}`, {
+        cache: 'no-store',
+      });
       const contentType = res.headers.get('content-type') || '';
       if (!res.ok) {
         throw new Error(`HTTP error ${res.status}`);

@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "amazon",
+  "main": "server/worker.ts",
+  "compatibility_date": "2024-09-23",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "none"
+  },
+  "kv_namespaces": [
+    {
+      "binding": "ASSOCIATION_DB",
+      "id": "placeholder_for_verification_only"
+    }
+  ]
+}

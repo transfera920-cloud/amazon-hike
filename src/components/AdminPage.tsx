@@ -4,7 +4,6 @@ import {
   ArrowLeft,
   Plus,
   Edit2,
-  Trash2,
   Save,
   LogOut,
   CheckCircle2,
@@ -14,6 +13,7 @@ import {
   Video,
   FileQuestion,
   Shield,
+  Trash2,
   LayoutGrid,
   RotateCcw,
   ExternalLink,
@@ -62,7 +62,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
   const [editingPolicy, setEditingPolicy] = useState<Partial<PolicyItem> | null>(null);
   const [editingNavButton, setEditingNavButton] = useState<Partial<NavButtonItem> | null>(null);
 
-  // In-app deletion and reset modals (replaces native window.confirm which is blocked in iframes)
+  // In-app deletion modal
   const [deleteTarget, setDeleteTarget] = useState<{
     type: string;
     id: string;
@@ -429,7 +429,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
 
       const json = await res.json();
       if (json.success) {
-        showFeedback(`已成功自資料庫永久刪除「${deleteTarget.name}」`);
+        showFeedback(`已成功自資料庫刪除「${deleteTarget.name}」`);
         // Reset currently editing object if it matches the deleted id
         if (editingIntro?.id === deleteTarget.id) setEditingIntro(null);
         if (editingTool?.id === deleteTarget.id) setEditingTool(null);

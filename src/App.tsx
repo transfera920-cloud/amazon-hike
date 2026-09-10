@@ -37,7 +37,14 @@ export default function App() {
   const fetchPublicData = useCallback(async () => {
     try {
       const res = await fetch('/api/public-data');
-      if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+      const contentType = res.headers.get('content-type') || '';
+      if (!res.ok) {
+        throw new Error(`HTTP error ${res.status}`);
+      }
+      if (!contentType.includes('application/json')) {
+        const text = await res.text();
+        throw new Error(`預期收到 JSON，但收到 ${contentType} (HTTP ${res.status})：${text.slice(0, 80)}`);
+      }
       const json = await res.json();
       if (json.success && json.data) {
         setPublicData(json.data);
@@ -53,6 +60,19 @@ export default function App() {
     setActivitiesError(null);
     try {
       const res = await fetch('/api/calendar-activities');
+      const contentType = res.headers.get('content-type') || '';
+      if (!res.ok) {
+        if (!contentType.includes('application/json')) {
+          const text = await res.text();
+          throw new Error(`伺服器錯誤 (HTTP ${res.status} ${contentType})：${text.slice(0, 80)}`);
+        }
+        const errJson = await res.json();
+        throw new Error(errJson.error || `HTTP error ${res.status}`);
+      }
+      if (!contentType.includes('application/json')) {
+        const text = await res.text();
+        throw new Error(`預期收到 JSON，但收到 ${contentType} (HTTP ${res.status})：${text.slice(0, 80)}`);
+      }
       const json = await res.json();
       if (json.success && Array.isArray(json.activities)) {
         setActivities(json.activities);

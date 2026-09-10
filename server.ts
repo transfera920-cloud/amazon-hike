@@ -38,29 +38,43 @@ function requireAdmin(req: Request, res: Response, next: NextFunction) {
 }
 
 // ----------------------------------------------------
+// API Router Setup (Strictly separates /api/* from SPA fallback)
+// ----------------------------------------------------
+
+const apiRouter = express.Router();
+
+// Enforce Content-Type: application/json for all API endpoints
+apiRouter.use((req: Request, res: Response, next: NextFunction) => {
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  next();
+});
+
+// ----------------------------------------------------
 // Public APIs
 // ----------------------------------------------------
 
-app.get('/api/health', (req: Request, res: Response) => {
+apiRouter.get('/health', (req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Front-end public content
-app.get('/api/public-data', (req: Request, res: Response) => {
+// Front-end public content (supports /public-data and /content)
+const handlePublicContent = (req: Request, res: Response) => {
   try {
     const data = getPublicData();
     res.json({ success: true, data });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
-});
+};
+apiRouter.get('/public-data', handlePublicContent);
+apiRouter.get('/content', handlePublicContent);
 
-// Calendar activities proxy from official system
+// Calendar activities proxy from official system (supports /calendar-activities and /activities)
 let cachedActivities: any[] | null = null;
 let cacheTime = 0;
 const CACHE_DURATION_MS = 60 * 1000; // 1 minute cache
 
-app.get('/api/calendar-activities', async (req: Request, res: Response) => {
+const handleCalendarActivities = async (req: Request, res: Response) => {
   const now = Date.now();
   if (cachedActivities && now - cacheTime < CACHE_DURATION_MS) {
     return res.json({ success: true, source: 'cache', activities: cachedActivities });
@@ -104,13 +118,15 @@ app.get('/api/calendar-activities', async (req: Request, res: Response) => {
       activities: [],
     });
   }
-});
+};
+apiRouter.get('/calendar-activities', handleCalendarActivities);
+apiRouter.get('/activities', handleCalendarActivities);
 
 // ----------------------------------------------------
 // Admin Auth & Management APIs
 // ----------------------------------------------------
 
-app.post('/api/admin/login', (req: Request, res: Response) => {
+apiRouter.post('/admin/login', (req: Request, res: Response) => {
   const { password } = req.body;
   if (!password) {
     return res.status(400).json({ error: '請輸入管理密碼' });
@@ -123,7 +139,7 @@ app.post('/api/admin/login', (req: Request, res: Response) => {
   return res.status(401).json({ error: '管理員認證密碼不符' });
 });
 
-app.get('/api/admin/data', requireAdmin, (req: Request, res: Response) => {
+apiRouter.get('/admin/data', requireAdmin, (req: Request, res: Response) => {
   try {
     const db = loadDatabase();
     res.json({ success: true, data: db });
@@ -133,7 +149,7 @@ app.get('/api/admin/data', requireAdmin, (req: Request, res: Response) => {
 });
 
 // Save Intro Item
-app.post('/api/admin/save-intro', requireAdmin, (req: Request, res: Response) => {
+apiRouter.post('/admin/save-intro', requireAdmin, (req: Request, res: Response) => {
   try {
     const db = loadDatabase();
     const item: IntroItem = req.body;
@@ -167,7 +183,7 @@ app.post('/api/admin/save-intro', requireAdmin, (req: Request, res: Response) =>
 });
 
 // Save Tool Item
-app.post('/api/admin/save-tool', requireAdmin, (req: Request, res: Response) => {
+apiRouter.post('/admin/save-tool', requireAdmin, (req: Request, res: Response) => {
   try {
     const db = loadDatabase();
     const item: ToolItem = req.body;
@@ -200,7 +216,7 @@ app.post('/api/admin/save-tool', requireAdmin, (req: Request, res: Response) => 
 });
 
 // Save Highlight Item (YouTube URL)
-app.post('/api/admin/save-highlight', requireAdmin, (req: Request, res: Response) => {
+apiRouter.post('/admin/save-highlight', requireAdmin, (req: Request, res: Response) => {
   try {
     const db = loadDatabase();
     const item: HighlightItem = req.body;
@@ -231,7 +247,7 @@ app.post('/api/admin/save-highlight', requireAdmin, (req: Request, res: Response
 });
 
 // Save Survey URL
-app.post('/api/admin/save-survey', requireAdmin, (req: Request, res: Response) => {
+apiRouter.post('/admin/save-survey', requireAdmin, (req: Request, res: Response) => {
   try {
     const db = loadDatabase();
     const { surveyUrl } = req.body;
@@ -244,7 +260,7 @@ app.post('/api/admin/save-survey', requireAdmin, (req: Request, res: Response) =
 });
 
 // Save Individual Survey Item (Add / Edit)
-app.post('/api/admin/save-survey-item', requireAdmin, (req: Request, res: Response) => {
+apiRouter.post('/admin/save-survey-item', requireAdmin, (req: Request, res: Response) => {
   try {
     const db = loadDatabase();
     const item: SurveyItem = req.body;
@@ -290,7 +306,7 @@ app.post('/api/admin/save-survey-item', requireAdmin, (req: Request, res: Respon
 });
 
 // Save Nav Button (Add / Edit)
-app.post('/api/admin/save-nav-button', requireAdmin, (req: Request, res: Response) => {
+apiRouter.post('/admin/save-nav-button', requireAdmin, (req: Request, res: Response) => {
   try {
     const db = loadDatabase();
     const item: NavButtonItem = req.body;
@@ -330,7 +346,7 @@ app.post('/api/admin/save-nav-button', requireAdmin, (req: Request, res: Respons
 });
 
 // Reset Nav Buttons to default 8
-app.post('/api/admin/reset-nav-buttons', requireAdmin, (req: Request, res: Response) => {
+apiRouter.post('/admin/reset-nav-buttons', requireAdmin, (req: Request, res: Response) => {
   try {
     const db = loadDatabase();
     db.navButtons = getDefaultNavButtons();
@@ -342,7 +358,7 @@ app.post('/api/admin/reset-nav-buttons', requireAdmin, (req: Request, res: Respo
 });
 
 // Save Policy Item
-app.post('/api/admin/save-policy', requireAdmin, (req: Request, res: Response) => {
+apiRouter.post('/admin/save-policy', requireAdmin, (req: Request, res: Response) => {
   try {
     const db = loadDatabase();
     const item: PolicyItem = req.body;
@@ -402,7 +418,7 @@ function executeDeleteItem(type: string, id: string): { success: boolean; error?
 }
 
 // Delete Item (DELETE method)
-app.delete('/api/admin/item/:type/:id', requireAdmin, (req: Request, res: Response) => {
+apiRouter.delete('/admin/item/:type/:id', requireAdmin, (req: Request, res: Response) => {
   try {
     const { type, id } = req.params;
     const result = executeDeleteItem(type, id);
@@ -416,7 +432,7 @@ app.delete('/api/admin/item/:type/:id', requireAdmin, (req: Request, res: Respon
 });
 
 // Delete Item (POST method fallback)
-app.post('/api/admin/delete-item', requireAdmin, (req: Request, res: Response) => {
+apiRouter.post('/admin/delete-item', requireAdmin, (req: Request, res: Response) => {
   try {
     const { type, id } = req.body;
     if (!type || !id) {
@@ -430,6 +446,25 @@ app.post('/api/admin/delete-item', requireAdmin, (req: Request, res: Response) =
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// Catch-all for unknown /api/* routes: ALWAYS returns JSON 404, NEVER HTML!
+apiRouter.all('*', (req: Request, res: Response) => {
+  res.status(404).json({
+    success: false,
+    error: `API 端點未找到 (404 Not Found): ${req.method} ${req.originalUrl || req.url}`,
+  });
+});
+
+// Mount the API router
+app.use('/api', apiRouter);
+
+// Hard barrier: Ensure NO /api/* request can EVER slip through to static files or SPA fallback
+app.all(['/api', '/api/*'], (req: Request, res: Response) => {
+  res.status(404).json({
+    success: false,
+    error: `API 路由未找到 (404 Not Found): ${req.method} ${req.originalUrl || req.url}`,
+  });
 });
 
 // ----------------------------------------------------
@@ -484,6 +519,21 @@ app.get('/sitemap.xml', (req: Request, res: Response) => {
 });
 
 // ----------------------------------------------------
+// Global Error Handler for API
+// ----------------------------------------------------
+
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+  if (req.path?.startsWith('/api') || req.originalUrl?.startsWith('/api')) {
+    console.error('API Uncaught Error:', err);
+    return res.status(err.status || 500).json({
+      success: false,
+      error: err.message || '伺服器內部錯誤 (Internal Server Error)',
+    });
+  }
+  next(err);
+});
+
+// ----------------------------------------------------
 // Vite Middleware / Static Production Serving
 // ----------------------------------------------------
 
@@ -493,11 +543,29 @@ async function startServer() {
       server: { middlewareMode: true },
       appType: 'spa',
     });
+    // In dev mode, guard against Vite SPA fallback catching any /api requests
+    app.use((req: Request, res: Response, next: NextFunction) => {
+      if (req.path.startsWith('/api/') || req.path === '/api') {
+        return res.status(404).json({
+          success: false,
+          error: `API 端點未找到: ${req.method} ${req.originalUrl}`,
+        });
+      }
+      next();
+    });
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
+
+    // Production SPA fallback: ONLY serve index.html for non-API routes!
     app.get('*', (req: Request, res: Response) => {
+      if (req.path.startsWith('/api/') || req.path === '/api') {
+        return res.status(404).json({
+          success: false,
+          error: `API 端點未找到: ${req.method} ${req.originalUrl}`,
+        });
+      }
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }

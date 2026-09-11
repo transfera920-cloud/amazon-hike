@@ -166,7 +166,7 @@ async function runTests() {
     const resSitemap = await worker.fetch(new Request('http://localhost/sitemap.xml'), env, {});
     const textSitemap = await resSitemap.text();
     assert(resSitemap.status === 200, '/sitemap.xml status is 200');
-    assert(textSitemap.includes('<urlset') && textSitemap.includes('<loc>/intro</loc>'), '/sitemap.xml contains URL list');
+    assert(textSitemap.includes('<urlset') && textSitemap.includes('<loc>https://amazon-hike.com/intro</loc>'), '/sitemap.xml contains URL list');
   }
 
   // 10. Admin Auth & KV Write / Delete Cycle

@@ -8,5 +8,11 @@
     "directory": "./dist",
     "binding": "ASSETS",
     "not_found_handling": "none"
-  }
+  },
+  "kv_namespaces": [
+    {
+      "binding": "ASSOCIATION_DB",
+      "id": "YOUR_KV_NAMESPACE_ID"
+    }
+  ]
 }

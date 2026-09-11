@@ -56,11 +56,17 @@ export async function loadDatabaseWorker(env?: WorkerEnv): Promise<AssociationDa
         return kvValue;
       }
     } catch (err) {
-      console.warn('Warning: Failed to read from KV, falling back to baseline:', err);
+      console.error('❌ [Cloudflare KV Error] Failed to read from env.ASSOCIATION_DB:', err);
     }
+  } else {
+    console.warn(
+      '⚠️ [CRITICAL WARNING] env.ASSOCIATION_DB is NOT defined or not bound! ' +
+      'Data will NOT persist across workers or devices. ' +
+      'Please bind the ASSOCIATION_DB KV namespace in wrangler.jsonc or Cloudflare Dashboard.'
+    );
   }
 
-  // If memory cache exists in isolate, return it
+  // If memory cache exists in isolate (when KV is unbound in local test)
   if (memoryWorkerDb && isValidDatabase(memoryWorkerDb)) {
     return memoryWorkerDb;
   }
@@ -72,10 +78,10 @@ export async function loadDatabaseWorker(env?: WorkerEnv): Promise<AssociationDa
 }
 
 /**
- * Saves database updates to Cloudflare KV and in-memory cache:
+ * Saves database updates to Cloudflare KV:
  * 1. Checks that data is valid.
- * 2. Updates memoryWorkerDb.
- * 3. If env.ASSOCIATION_DB is bound, writes to KV.
+ * 2. When env.ASSOCIATION_DB is bound, writes directly to Cloudflare KV.
+ * 3. Emits explicit critical warnings if env.ASSOCIATION_DB is not bound.
  * 4. Does NOT touch or mutate data/association_db.json.
  */
 export async function saveDatabaseWorker(data: AssociationDatabase, env?: WorkerEnv): Promise<void> {
@@ -83,14 +89,19 @@ export async function saveDatabaseWorker(data: AssociationDatabase, env?: Worker
     throw new Error('拒絕儲存：資料庫物件結構不符');
   }
 
-  memoryWorkerDb = data;
-
   if (env && env.ASSOCIATION_DB) {
     await env.ASSOCIATION_DB.put(KV_KEY, JSON.stringify(data, null, 2));
+    memoryWorkerDb = data;
+    console.log('✅ [Cloudflare KV] Successfully wrote database to env.ASSOCIATION_DB');
     return;
   }
 
-  console.warn('KV namespace not bound; changes will persist in worker memory.');
+  memoryWorkerDb = data;
+  console.warn(
+    '⚠️ [CRITICAL WARNING] env.ASSOCIATION_DB is NOT bound! ' +
+    'Changes were ONLY saved to this worker isolate memory and will NOT persist across devices or restarts. ' +
+    'Please bind the ASSOCIATION_DB KV namespace in Cloudflare.'
+  );
 }
 
 /**

@@ -12,7 +12,7 @@
   "kv_namespaces": [
     {
       "binding": "ASSOCIATION_DB",
-      "id": "你的真實32碼KVID" // ⚠️ 請將這裡替換成真實的 KV ID
+      "id": "7c09af677e9e34e43f50a0680b110abc"
     }
   ]
 }

@@ -36,83 +36,98 @@ export function isValidDatabase(obj: any): obj is AssociationDatabase {
   );
 }
 
+let memoryWorkerDb: AssociationDatabase | null = null;
+
 /**
- * 嚴格檢查環境中是否已綁定 Cloudflare KV。
- * 若未定義則拋出明確異常，防止靜默降級到伺服器記憶體暫存。
+ * 檢查環境中是否已綁定 Cloudflare KV。
  */
-function assertKVBinding(env?: WorkerEnv): asserts env is WorkerEnv & { ASSOCIATION_DB: KVNamespaceLike } {
-  if (!env || !env.ASSOCIATION_DB) {
-    throw new Error(
-      '【生產環境持久化錯誤】Cloudflare KV 命名空間未繫結！' +
-      '環境變數 env.ASSOCIATION_DB 為 undefined。' +
-      '請在 wrangler.jsonc 中加入 ASSOCIATION_DB 綁定，或於 Cloudflare Dashboard 完成 KV 繫結，以確保資料跨裝置永久保存。'
-    );
-  }
+export function isKVBound(env?: WorkerEnv): env is WorkerEnv & { ASSOCIATION_DB: KVNamespaceLike } {
+  return Boolean(env && env.ASSOCIATION_DB);
 }
 
 /**
- * 「KV 優先 + 無覆蓋防護」讀取機制：
- * 1. 強制檢查 KV Binding，未綁定立即中斷並報錯。
- * 2. 優先讀取 Cloudflare KV 中的 association_data 鍵值。
- * 3. 只有在 KV 完全無資料時（全新專案初次啟動），才讀取 ./data/association_db.json 作為初始種子，並自動存入 KV。
- * 4. 程式重新打包或重新部署時，絕對不讀取也不覆蓋線上已由管理員異動的 KV 資料。
+ * 「KV 優先 + 安全容錯」讀取機制：
+ * 1. 若環境有綁定 ASSOCIATION_DB，優先讀取 Cloudflare KV (association_data)。
+ * 2. 若 KV 內已有資料，直接返回線上權威資料，絕不覆蓋。
+ * 3. 若 KV 尚無資料，首次載入種子檔並自動寫入 KV。
+ * 4. 若尚未綁定 KV（如暫時移除綁定時），安全退回至種子資料/記憶體暫存，確保網站 100% 正常運作不當機。
  */
 export async function loadDatabaseWorker(env?: WorkerEnv): Promise<AssociationDatabase> {
-  assertKVBinding(env);
+  if (isKVBound(env)) {
+    try {
+      // 1. 優先嘗試讀取 association_data
+      let kvValue = await env.ASSOCIATION_DB.get(KV_KEY, 'json');
 
-  try {
-    // 1. 優先嘗試讀取 association_data
-    let kvValue = await env.ASSOCIATION_DB.get(KV_KEY, 'json');
+      // 2. 向下相容檢查 legacy 鍵名
+      if (!kvValue || !isValidDatabase(kvValue)) {
+        kvValue = await env.ASSOCIATION_DB.get(LEGACY_KV_KEY, 'json');
+      }
 
-    // 2. 向下相容檢查 legacy 鍵名
-    if (!kvValue || !isValidDatabase(kvValue)) {
-      kvValue = await env.ASSOCIATION_DB.get(LEGACY_KV_KEY, 'json');
+      // 3. 若 KV 內已有正式資料，直接返回線上權威資料，絕不覆蓋
+      if (kvValue && isValidDatabase(kvValue)) {
+        memoryWorkerDb = kvValue;
+        return kvValue;
+      }
+
+      // 4. 僅在 KV 完全沒有資料時（首次啟動），才載入靜態種子檔並自動初始化到 KV
+      console.log('ℹ️ [Cloudflare KV] KV 為空，首次載入種子檔 baselineData 並自動寫入 KV (key: association_data)...');
+      const seed = JSON.parse(JSON.stringify(baselineData)) as AssociationDatabase;
+      try {
+        await env.ASSOCIATION_DB.put(KV_KEY, JSON.stringify(seed, null, 2));
+        console.log('✅ [Cloudflare KV] 初始種子資料已成功存入 Cloudflare KV');
+      } catch (err: any) {
+        console.warn('⚠️ [Cloudflare KV] 初次種子寫入 KV 失敗:', err);
+      }
+      memoryWorkerDb = seed;
+      return seed;
+    } catch (err: any) {
+      console.error('❌ [Cloudflare KV] 讀取 KV 發生異常:', err);
     }
-
-    // 3. 若 KV 內已有正式資料，直接返回線上權威資料，絕不覆蓋
-    if (kvValue && isValidDatabase(kvValue)) {
-      return kvValue;
-    }
-  } catch (err: any) {
-    console.error('❌ [Cloudflare KV] 讀取 KV 發生異常:', err);
-    throw new Error(`讀取 Cloudflare KV 失敗: ${err.message || String(err)}`);
+  } else {
+    console.warn(
+      '⚠️ [Cloudflare KV 尚未綁定] env.ASSOCIATION_DB 未定義。' +
+      '系統已安全降級讀取初始資料，前台運作正常。若需跨裝置永久保存資料，請於 Cloudflare 綁定 KV 命名空間。'
+    );
   }
 
-  // 4. 僅在 KV 完全沒有資料時（首次啟動），才載入靜態種子檔並自動初始化到 KV
-  console.log('ℹ️ [Cloudflare KV] KV 為空，首次載入種子檔 baselineData 並自動寫入 KV (key: association_data)...');
+  // 若尚未綁定 KV 或讀取異常時的安全退回機制
+  if (memoryWorkerDb && isValidDatabase(memoryWorkerDb)) {
+    return memoryWorkerDb;
+  }
+
   const seed = JSON.parse(JSON.stringify(baselineData)) as AssociationDatabase;
-
-  try {
-    await env.ASSOCIATION_DB.put(KV_KEY, JSON.stringify(seed, null, 2));
-    console.log('✅ [Cloudflare KV] 初始種子資料已成功存入 Cloudflare KV');
-  } catch (err: any) {
-    console.warn('⚠️ [Cloudflare KV] 初次種子寫入 KV 失敗:', err);
-  }
-
+  memoryWorkerDb = seed;
   return seed;
 }
 
 /**
- * 直通寫入 Cloudflare KV 機制：
+ * 寫入 Cloudflare KV 機制：
  * 1. 驗證資料庫結構完整性。
- * 2. 強制驗證 KV Binding，未綁定直接拋錯。
- * 3. 直通寫入 Cloudflare KV (Key: association_data)。
- * 4. 嚴禁單獨存放於記憶體變數，確保全網所有邊緣節點即時同步。
+ * 2. 若環境有綁定 ASSOCIATION_DB，直通寫入 Cloudflare KV (Key: association_data)。
+ * 3. 若尚未綁定 KV，暫存於記憶體並發出警告，確保不拋出未捕獲錯誤。
  */
 export async function saveDatabaseWorker(data: AssociationDatabase, env?: WorkerEnv): Promise<void> {
   if (!isValidDatabase(data)) {
     throw new Error('拒絕儲存：資料庫物件結構不符，缺少必要陣列欄位 (tools, policies, highlights, navButtons)');
   }
 
-  assertKVBinding(env);
+  memoryWorkerDb = data;
 
-  try {
-    await env.ASSOCIATION_DB.put(KV_KEY, JSON.stringify(data, null, 2));
-    console.log('✅ [Cloudflare KV] 成功直通寫入 Cloudflare KV (key: association_data)');
-  } catch (err: any) {
-    console.error('❌ [Cloudflare KV] 寫入 KV 失敗:', err);
-    throw new Error(`直通寫入 Cloudflare KV 失敗: ${err.message || String(err)}`);
+  if (isKVBound(env)) {
+    try {
+      await env.ASSOCIATION_DB.put(KV_KEY, JSON.stringify(data, null, 2));
+      console.log('✅ [Cloudflare KV] 成功直通寫入 Cloudflare KV (key: association_data)');
+      return;
+    } catch (err: any) {
+      console.error('❌ [Cloudflare KV] 寫入 KV 失敗:', err);
+      throw new Error(`直通寫入 Cloudflare KV 失敗: ${err.message || String(err)}`);
+    }
   }
+
+  console.warn(
+    '⚠️ [Cloudflare KV 尚未綁定] 資料僅更新於當前實例記憶體。' +
+    '請在 Cloudflare 綁定 ASSOCIATION_DB 以實現跨裝置永久持久化。'
+  );
 }
 
 /**

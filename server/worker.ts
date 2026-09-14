@@ -1,6 +1,114 @@
 import { handleApiRequest } from './api-handler.js';
 import type { WorkerEnv } from './db-kv.js';
 
+declare const HTMLRewriter: any;
+
+interface RouteMetadata {
+  title: string;
+  description: string;
+}
+
+/**
+ * 前端 SPA 獨立路由 SEO Meta 對照表
+ * 伺服器端回傳 index.html 時，動態替換標題、說明與 canonical 網址，避免搜尋引擎判定為重複內容。
+ */
+const ROUTE_META_MAP: Record<string, RouteMetadata> = {
+  '/intro': {
+    title: '登山入門指南 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+    description: '專為登山新手與山友整理的登山入門指南，涵蓋高山裝備清單、行前體能鍛鍊、山林安全自保守則與無痕山林（LNT）準則，助您安全開啟山岳旅程。',
+  },
+  '/tools': {
+    title: '登山工具與氣象服務 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+    description: '登山實用數位工具與氣象服務專區，即時整合高山氣象預報、國家公園入山入園線上申辦、步道路況通報及離線地圖軌跡等數位資源。',
+  },
+  '/highlights': {
+    title: '活動花絮影音專區 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+    description: '亞馬遜國家山岳協會歷年登山行程精選花絮與影音專區，收錄百岳縱走記錄、山友精彩回顧、自然風光縮時與活動實況影片分享。',
+  },
+  '/policies': {
+    title: '政策與章程條款 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+    description: '亞馬遜國家山岳協會章程、活動報名規範、費用與退費標準、山域活動安全責任守則及個人資料保護聲明，維護全體山友權益。',
+  },
+  '/surveys': {
+    title: '問卷調查專區 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+    description: '亞馬遜國家山岳協會意見回饋與問卷調查專區，歡迎山友填寫活動滿意度調查及山岳發展建議，共同打造優質山岳社群。',
+  },
+};
+
+/**
+ * 使用 Cloudflare Workers 的 HTMLRewriter 將 index.html 替換成對應頁面的 SEO Meta
+ */
+async function applyRouteMeta(
+  response: Response,
+  meta: RouteMetadata,
+  canonicalUrl: string
+): Promise<Response> {
+  if (typeof HTMLRewriter !== 'undefined') {
+    return new HTMLRewriter()
+      .on('title', {
+        element(e: any) {
+          e.setInnerContent(meta.title);
+        },
+      })
+      .on('meta[name="description"]', {
+        element(e: any) {
+          e.setAttribute('content', meta.description);
+        },
+      })
+      .on('meta[property="og:title"]', {
+        element(e: any) {
+          e.setAttribute('content', meta.title);
+        },
+      })
+      .on('meta[property="og:description"]', {
+        element(e: any) {
+          e.setAttribute('content', meta.description);
+        },
+      })
+      .on('meta[property="og:url"]', {
+        element(e: any) {
+          e.setAttribute('content', canonicalUrl);
+        },
+      })
+      .on('link[rel="canonical"]', {
+        element(e: any) {
+          e.setAttribute('href', canonicalUrl);
+        },
+      })
+      .transform(response);
+  }
+
+  // 測試環境（如 Node.js test-worker.ts）未定義 HTMLRewriter 時的安全退回處理
+  let html = await response.text();
+  html = html.replace(/<title>.*?<\/title>/i, `<title>${meta.title}</title>`);
+  html = html.replace(
+    /(<meta\s+name=["']description["']\s+content=["']).*?(["']\s*\/?>)/i,
+    `$1${meta.description}$2`
+  );
+  html = html.replace(
+    /(<meta\s+property=["']og:title["']\s+content=["']).*?(["']\s*\/?>)/i,
+    `$1${meta.title}$2`
+  );
+  html = html.replace(
+    /(<meta\s+property=["']og:description["']\s+content=["']).*?(["']\s*\/?>)/i,
+    `$1${meta.description}$2`
+  );
+  html = html.replace(
+    /(<meta\s+property=["']og:url["']\s+content=["']).*?(["']\s*\/?>)/i,
+    `$1${canonicalUrl}$2`
+  );
+  html = html.replace(
+    /(<link\s+rel=["']canonical["']\s+href=["']).*?(["']\s*\/?>)/i,
+    `$1${canonicalUrl}$2`
+  );
+
+  return new Response(html, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+}
+
 export default {
   async fetch(request: Request, env: WorkerEnv, ctx: any): Promise<Response> {
     const url = new URL(request.url);
@@ -63,6 +171,12 @@ Sitemap: /sitemap.xml
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
+  <url>
+    <loc>https://amazon-hike.com/surveys</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
 </urlset>`,
         {
           headers: {
@@ -82,7 +196,18 @@ Sitemap: /sitemap.xml
       }
       // SPA Fallback for client routes (/intro, /tools, /policies, etc.)
       const spaRequest = new Request(new URL('/index.html', request.url), request);
-      return env.ASSETS.fetch(spaRequest);
+      const indexResponse = await env.ASSETS.fetch(spaRequest);
+
+      // Check if pathname matches custom SEO route metadata
+      const normalizedPath = pathname.replace(/\/+$/, '') || '/';
+      const routeMeta = ROUTE_META_MAP[normalizedPath];
+
+      if (routeMeta && indexResponse.ok) {
+        const canonicalUrl = `https://amazon-hike.com${normalizedPath}`;
+        return applyRouteMeta(indexResponse, routeMeta, canonicalUrl);
+      }
+
+      return indexResponse;
     }
 
     // Fallback if accessed in testing harness without ASSETS binding

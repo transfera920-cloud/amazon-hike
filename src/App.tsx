@@ -111,30 +111,62 @@ export default function App() {
     }
   };
 
-  // SEO: Update page title dynamically
+  // SEO: Update page title, meta description, canonical and og:url dynamically
   useEffect(() => {
-    const baseTitle = '亞馬遜國家山岳協會 | Amazon Alpine Association';
-    switch (currentPath) {
-      case '/intro':
-        document.title = `登山入門指南 | ${baseTitle}`;
-        break;
-      case '/tools':
-        document.title = `登山工具與氣象服務 | ${baseTitle}`;
-        break;
-      case '/highlights':
-        document.title = `活動花絮影音專區 | ${baseTitle}`;
-        break;
-      case '/policies':
-        document.title = `政策與章程條款 | ${baseTitle}`;
-        break;
-      case '/admin':
-        document.title = `後台管理系統 | ${baseTitle}`;
-        break;
-      case '/':
-      default:
-        document.title = baseTitle;
-        break;
-    }
+    const seoMap: Record<string, { title: string; description: string }> = {
+      '/': {
+        title: '亞馬遜國家山岳協會 | Amazon Alpine Association',
+        description: '亞馬遜國家山岳協會（Amazon Alpine Association）官方入口網站與活動行事曆，提倡全民運動、鍛鍊強健體魄、培養互助團隊精神，以及接觸大自然與山林相關知識及技能。',
+      },
+      '/intro': {
+        title: '登山入門指南 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+        description: '專為登山新手與山友整理的登山入門指南，涵蓋高山裝備清單、行前體能鍛鍊、山林安全自保守則與無痕山林（LNT）準則，助您安全開啟山岳旅程。',
+      },
+      '/tools': {
+        title: '登山工具與氣象服務 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+        description: '登山實用數位工具與氣象服務專區，即時整合高山氣象預報、國家公園入山入園線上申辦、步道路況通報及離線地圖軌跡等數位資源。',
+      },
+      '/highlights': {
+        title: '活動花絮影音專區 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+        description: '亞馬遜國家山岳協會歷年登山行程精選花絮與影音專區，收錄百岳縱走記錄、山友精彩回顧、自然風光縮時與活動實況影片分享。',
+      },
+      '/policies': {
+        title: '政策與章程條款 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+        description: '亞馬遜國家山岳協會章程、活動報名規範、費用與退費標準、山域活動安全責任守則及個人資料保護聲明，維護全體山友權益。',
+      },
+      '/surveys': {
+        title: '問卷調查專區 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+        description: '亞馬遜國家山岳協會意見回饋與問卷調查專區，歡迎山友填寫活動滿意度調查及山岳發展建議，共同打造優質山岳社群。',
+      },
+      '/admin': {
+        title: '後台管理系統 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+        description: '亞馬遜國家山岳協會後台管理系統。',
+      },
+    };
+
+    const currentMeta = seoMap[currentPath] || seoMap['/'];
+    document.title = currentMeta.title;
+
+    // Update meta description
+    const metaDesc = document.querySelector('meta[name="description"]');
+    if (metaDesc) metaDesc.setAttribute('content', currentMeta.description);
+
+    // Update og:title
+    const ogTitle = document.querySelector('meta[property="og:title"]');
+    if (ogTitle) ogTitle.setAttribute('content', currentMeta.title);
+
+    // Update og:description
+    const ogDesc = document.querySelector('meta[property="og:description"]');
+    if (ogDesc) ogDesc.setAttribute('content', currentMeta.description);
+
+    // Update canonical link
+    const canonicalUrl = currentPath === '/' ? 'https://amazon-hike.com/' : `https://amazon-hike.com${currentPath}`;
+    const canonicalLink = document.querySelector('link[rel="canonical"]');
+    if (canonicalLink) canonicalLink.setAttribute('href', canonicalUrl);
+
+    // Update og:url
+    const ogUrl = document.querySelector('meta[property="og:url"]');
+    if (ogUrl) ogUrl.setAttribute('content', canonicalUrl);
   }, [currentPath]);
 
   return (

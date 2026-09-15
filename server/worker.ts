@@ -13,6 +13,10 @@ interface RouteMetadata {
  * 伺服器端回傳 index.html 時，動態替換標題、說明與 canonical 網址，避免搜尋引擎判定為重複內容。
  */
 const ROUTE_META_MAP: Record<string, RouteMetadata> = {
+  '/': {
+    title: '亞馬遜國家山岳協會 | Amazon Alpine Association',
+    description: '亞馬遜國家山岳協會（Amazon Alpine Association）官方入口網站與活動行事曆，提倡全民運動、鍛鍊強健體魄、培養互助團隊精神，以及接觸大自然與山林相關知識及技能。',
+  },
   '/intro': {
     title: '登山入門指南 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
     description: '專為登山新手與山友整理的登山入門指南，涵蓋高山裝備清單、行前體能鍛鍊、山林安全自保守則與無痕山林（LNT）準則，助您安全開啟山岳旅程。',
@@ -190,17 +194,29 @@ Sitemap: /sitemap.xml
     // 3. Static Assets / SPA fallback
     // If env.ASSETS is provided (Cloudflare Workers Static Assets), delegate to it.
     if (env && env.ASSETS) {
+      const normalizedPath = pathname.replace(/\/+$/, '') || '/';
+      const isRoot = normalizedPath === '/' || pathname === '/index.html';
+      const routeMeta = ROUTE_META_MAP[normalizedPath];
+
+      // 3-1. 首頁 (/) 或 /index.html：套用首頁專屬 SEO Meta（包含完整 canonical 與 og:url）
+      if (isRoot && routeMeta) {
+        const indexRequest = new Request(new URL('/index.html', request.url), request);
+        const indexResponse = await env.ASSETS.fetch(indexRequest);
+        if (indexResponse.ok) {
+          return applyRouteMeta(indexResponse, routeMeta, 'https://amazon-hike.com/');
+        }
+        return indexResponse;
+      }
+
+      // 3-2. 靜態資源（JS, CSS, 圖檔等）
       const assetResponse = await env.ASSETS.fetch(request);
       if (assetResponse.status !== 404) {
         return assetResponse;
       }
-      // SPA Fallback for client routes (/intro, /tools, /policies, etc.)
+
+      // 3-3. SPA Fallback 客戶端路由（/intro, /tools, /highlights, /policies, /surveys 等）
       const spaRequest = new Request(new URL('/index.html', request.url), request);
       const indexResponse = await env.ASSETS.fetch(spaRequest);
-
-      // Check if pathname matches custom SEO route metadata
-      const normalizedPath = pathname.replace(/\/+$/, '') || '/';
-      const routeMeta = ROUTE_META_MAP[normalizedPath];
 
       if (routeMeta && indexResponse.ok) {
         const canonicalUrl = `https://amazon-hike.com${normalizedPath}`;

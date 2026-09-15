@@ -142,10 +142,12 @@ async function runTests() {
     const text = await res.text();
     assert(res.status === 200, 'Root / status is 200');
     assert(res.headers.get('content-type')?.includes('text/html') === true, 'Root / content-type is text/html');
-    assert(text.includes('亞馬遜國家山岳協會'), 'Root / returns front-end title');
+    assert(text.includes('亞馬遜國家山岳協會 | Amazon Alpine Association'), 'Root / returns front-end title');
+    assert(text.includes('href="https://amazon-hike.com/"'), 'Root / canonical points to https://amazon-hike.com/');
+    assert(text.includes('content="https://amazon-hike.com/"'), 'Root / og:url points to https://amazon-hike.com/');
   }
 
-  // 8. GET /intro, /tools, /highlights, /policies (Frontend SPA client route via dynamic SEO SPA fallback)
+  // 8. GET /intro, /tools, /highlights, /policies, /surveys (Frontend SPA client routes via dynamic SEO SPA fallback)
   {
     const resIntro = await worker.fetch(new Request('http://localhost/intro'), env, {});
     const textIntro = await resIntro.text();
@@ -154,24 +156,35 @@ async function runTests() {
     assert(textIntro.includes('<div id="root"></div>'), '/intro returns SPA root element');
     assert(textIntro.includes('登山入門指南 | 亞馬遜國家山岳協會 | Amazon Alpine Association'), '/intro has custom SEO title');
     assert(textIntro.includes('href="https://amazon-hike.com/intro"'), '/intro has custom canonical link');
+    assert(textIntro.includes('content="https://amazon-hike.com/intro"'), '/intro has custom og:url');
 
     const resTools = await worker.fetch(new Request('http://localhost/tools'), env, {});
     const textTools = await resTools.text();
     assert(resTools.status === 200, 'Frontend SPA route /tools status is 200');
     assert(textTools.includes('登山工具與氣象服務 | 亞馬遜國家山岳協會 | Amazon Alpine Association'), '/tools has custom SEO title');
     assert(textTools.includes('href="https://amazon-hike.com/tools"'), '/tools has custom canonical link');
+    assert(textTools.includes('content="https://amazon-hike.com/tools"'), '/tools has custom og:url');
 
     const resHighlights = await worker.fetch(new Request('http://localhost/highlights'), env, {});
     const textHighlights = await resHighlights.text();
     assert(resHighlights.status === 200, 'Frontend SPA route /highlights status is 200');
     assert(textHighlights.includes('活動花絮影音專區 | 亞馬遜國家山岳協會 | Amazon Alpine Association'), '/highlights has custom SEO title');
     assert(textHighlights.includes('href="https://amazon-hike.com/highlights"'), '/highlights has custom canonical link');
+    assert(textHighlights.includes('content="https://amazon-hike.com/highlights"'), '/highlights has custom og:url');
 
     const resPolicies = await worker.fetch(new Request('http://localhost/policies'), env, {});
     const textPolicies = await resPolicies.text();
     assert(resPolicies.status === 200, 'Frontend SPA route /policies status is 200');
     assert(textPolicies.includes('政策與章程條款 | 亞馬遜國家山岳協會 | Amazon Alpine Association'), '/policies has custom SEO title');
     assert(textPolicies.includes('href="https://amazon-hike.com/policies"'), '/policies has custom canonical link');
+    assert(textPolicies.includes('content="https://amazon-hike.com/policies"'), '/policies has custom og:url');
+
+    const resSurveys = await worker.fetch(new Request('http://localhost/surveys'), env, {});
+    const textSurveys = await resSurveys.text();
+    assert(resSurveys.status === 200, 'Frontend SPA route /surveys status is 200');
+    assert(textSurveys.includes('問卷調查專區 | 亞馬遜國家山岳協會 | Amazon Alpine Association'), '/surveys has custom SEO title');
+    assert(textSurveys.includes('href="https://amazon-hike.com/surveys"'), '/surveys has custom canonical link');
+    assert(textSurveys.includes('content="https://amazon-hike.com/surveys"'), '/surveys has custom og:url');
 
     // Unmatched route like /admin should NOT be replaced
     const resAdmin = await worker.fetch(new Request('http://localhost/admin'), env, {});

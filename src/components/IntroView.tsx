@@ -1,14 +1,23 @@
 import React from 'react';
-import { ArrowLeft, ExternalLink, BookOpen } from 'lucide-react';
-import type { IntroItem } from '../types.js';
-import { normalizeUrl } from '../utils/url.js';
+import { ArrowLeft, BookOpen, ChevronRight, Calendar } from 'lucide-react';
+import type { ChapterItem, IntroItem } from '../types.js';
 
 interface IntroViewProps {
-  intros: IntroItem[];
+  chapters?: ChapterItem[];
+  intros?: IntroItem[];
   onBack: () => void;
+  onSelectChapter?: (slug: string) => void;
 }
 
-export const IntroView: React.FC<IntroViewProps> = ({ intros, onBack }) => {
+export const IntroView: React.FC<IntroViewProps> = ({
+  chapters = [],
+  intros = [],
+  onBack,
+  onSelectChapter,
+}) => {
+  // Prefer chapters if available, otherwise fallback to intros if any
+  const hasChapters = chapters.length > 0;
+
   return (
     <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6" aria-label="登山入門專區">
       {/* Breadcrumb / Back button (回到上一層) */}
@@ -35,54 +44,85 @@ export const IntroView: React.FC<IntroViewProps> = ({ intros, onBack }) => {
               登山入門
             </h1>
             <p className="text-xs text-neutral-400 mt-0.5">
-              高山健行觀念、裝備配置與山林實用常識專題指南
+              高山健行觀念、裝備配置與山林實用常識專題指南（共 {chapters.length || intros.length} 講）
             </p>
           </div>
         </div>
       </div>
 
-      {/* Articles List */}
-      {intros.length === 0 ? (
+      {/* Chapters / Articles List */}
+      {!hasChapters && intros.length === 0 ? (
         <div className="p-12 text-center text-xs text-neutral-500 border border-neutral-800 rounded bg-neutral-900/40">
           目前暫無登山入門專文資料
         </div>
+      ) : hasChapters ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {chapters.map((item) => (
+            <a
+              key={item.id}
+              href={`/intro/${item.slug}`}
+              onClick={(e) => {
+                e.preventDefault();
+                if (onSelectChapter) {
+                  onSelectChapter(item.slug);
+                } else {
+                  window.location.pathname = `/intro/${item.slug}`;
+                }
+              }}
+              className="group border border-neutral-800 rounded bg-neutral-900/40 p-5 hover:border-neutral-700/80 hover:bg-neutral-900/80 transition-all flex flex-col justify-between cursor-pointer"
+              id={`chapter-card-${item.slug}`}
+            >
+              <div>
+                <div className="flex items-start justify-between gap-2">
+                  <h2 className="text-base font-bold text-neutral-100 group-hover:text-emerald-400 transition-colors">
+                    {item.title}
+                  </h2>
+                  <ChevronRight size={16} className="text-neutral-500 group-hover:text-emerald-400 group-hover:translate-x-0.5 shrink-0 mt-1 transition-all" />
+                </div>
+                {item.description && (
+                  <p className="text-xs sm:text-sm text-neutral-400 mt-2 leading-relaxed">
+                    {item.description}
+                  </p>
+                )}
+              </div>
+
+              <div className="pt-4 mt-3 border-t border-neutral-800/60 flex items-center justify-between text-xs">
+                <span className="font-semibold text-emerald-400 group-hover:text-emerald-300">
+                  閱讀完整專文
+                </span>
+                {item.updatedAt && (
+                  <span className="text-neutral-500 inline-flex items-center gap-1 font-mono text-[11px]">
+                    <Calendar size={11} />
+                    {item.updatedAt}
+                  </span>
+                )}
+              </div>
+            </a>
+          ))}
+        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {intros.map((item) => {
-            const url = normalizeUrl(item.url);
-
-            return (
-              <a
-                key={item.id}
-                href={url || '#'}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group border border-neutral-800 rounded bg-neutral-900/40 p-5 hover:border-neutral-700/80 hover:bg-neutral-900/80 transition-all flex flex-col justify-between"
-                id={`intro-item-${item.id}`}
-              >
-                <div>
-                  <div className="flex items-start justify-between gap-2">
-                    <h2 className="text-base font-bold text-neutral-100 group-hover:text-emerald-400 transition-colors">
-                      {item.title}
-                    </h2>
-                    <ExternalLink size={14} className="text-neutral-500 group-hover:text-emerald-400 shrink-0 mt-1 transition-colors" />
-                  </div>
-                  {item.description && (
-                    <p className="text-xs sm:text-sm text-neutral-400 mt-2 leading-relaxed">
-                      {item.description}
-                    </p>
-                  )}
-                </div>
-
-                <div className="pt-4 mt-2 border-t border-neutral-800/60 flex items-center text-xs font-semibold text-emerald-400 group-hover:text-emerald-300">
-                  <span>閱讀完整專文</span>
-                </div>
-              </a>
-            );
-          })}
+          {intros.map((item) => (
+            <div
+              key={item.id}
+              className="border border-neutral-800 rounded bg-neutral-900/40 p-5 flex flex-col justify-between"
+            >
+              <div>
+                <h2 className="text-base font-bold text-neutral-100">
+                  {item.title}
+                </h2>
+                {item.description && (
+                  <p className="text-xs sm:text-sm text-neutral-400 mt-2 leading-relaxed">
+                    {item.description}
+                  </p>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </main>
   );
 };
+
 

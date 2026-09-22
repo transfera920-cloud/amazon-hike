@@ -1,3 +1,15 @@
+export interface ChapterItem {
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+  content: string;
+  coverImage?: string;
+  sortOrder: number;
+  enabled: boolean;
+  updatedAt: string; // ISO date string e.g. '2026-09-22'
+}
+
 export interface IntroItem {
   id: string;
   title: string;
@@ -55,6 +67,7 @@ export interface AssociationDatabase {
   surveyUrl: string;
   surveys?: SurveyItem[];
   navButtons?: NavButtonItem[];
+  chapters?: ChapterItem[];
   intros: IntroItem[];
   tools: ToolItem[];
   highlights: HighlightItem[];
@@ -74,6 +87,7 @@ export interface PublicDataResponse {
   surveyUrl: string;
   surveys?: SurveyItem[];
   navButtons?: NavButtonItem[];
+  chapters?: ChapterItem[];
   intros: IntroItem[];
   tools: ToolItem[];
   highlights: HighlightItem[];

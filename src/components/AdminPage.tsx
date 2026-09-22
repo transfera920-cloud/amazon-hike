@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import type {
   IntroItem,
+  ChapterItem,
   ToolItem,
   HighlightItem,
   PolicyItem,
@@ -34,7 +35,7 @@ interface AdminPageProps {
   onDataUpdated: () => void;
 }
 
-type AdminTab = 'intro' | 'tools' | 'highlights' | 'survey' | 'policies' | 'buttons';
+type AdminTab = 'chapters' | 'intro' | 'tools' | 'highlights' | 'survey' | 'policies' | 'buttons';
 
 export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) => {
   // Auth state
@@ -46,7 +47,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
   const [loginLoading, setLoginLoading] = useState(false);
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<AdminTab>('intro');
+  const [activeTab, setActiveTab] = useState<AdminTab>('chapters');
 
   // Full admin data loaded from server
   const [adminData, setAdminData] = useState<AssociationDatabase | null>(null);
@@ -54,6 +55,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
   const [statusMessage, setStatusMessage] = useState<{ text: string; isError: boolean } | null>(null);
 
   // Edit / Form state
+  const [editingChapter, setEditingChapter] = useState<Partial<ChapterItem> | null>(null);
   const [editingIntro, setEditingIntro] = useState<Partial<IntroItem> | null>(null);
   const [editingTool, setEditingTool] = useState<Partial<ToolItem> | null>(null);
   const [editingHighlight, setEditingHighlight] = useState<Partial<HighlightItem> | null>(null);
@@ -152,6 +154,37 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
     setTimeout(() => {
       setStatusMessage((prev) => (prev?.text === text ? null : prev));
     }, 4000);
+  };
+
+  // ---------------------------------------------------------
+  // Chapter CRUD
+  // ---------------------------------------------------------
+  const handleSaveChapter = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingChapter || !editingChapter.title) return;
+
+    try {
+      const res = await fetch('/api/admin/save-chapter', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(editingChapter),
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        showFeedback('登山入門章節專文已成功寫入永久資料庫');
+        setEditingChapter(null);
+        await fetchAdminData(token);
+        onDataUpdated();
+      } else {
+        showFeedback(json.error || '儲存失敗', true);
+      }
+    } catch (err: any) {
+      showFeedback(err.message || '連線儲存失敗', true);
+    }
   };
 
   // ---------------------------------------------------------
@@ -619,6 +652,19 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
       <div className="flex items-center border-b border-neutral-800 gap-1 overflow-x-auto text-xs font-medium mb-6">
         <button
           type="button"
+          onClick={() => setActiveTab('chapters')}
+          className={`px-3.5 py-2 border-b-2 transition-colors whitespace-nowrap flex items-center gap-1.5 ${
+            activeTab === 'chapters'
+              ? 'border-emerald-500 text-emerald-400 font-semibold'
+              : 'border-transparent text-neutral-400 hover:text-neutral-200'
+          }`}
+        >
+          <BookOpen size={14} />
+          <span>章節專文管理 ({adminData?.chapters?.length ?? 0})</span>
+        </button>
+
+        <button
+          type="button"
           onClick={() => setActiveTab('intro')}
           className={`px-3.5 py-2 border-b-2 transition-colors whitespace-nowrap flex items-center gap-1.5 ${
             activeTab === 'intro'
@@ -626,8 +672,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
               : 'border-transparent text-neutral-400 hover:text-neutral-200'
           }`}
         >
-          <BookOpen size={14} />
-          <span>登山入門管理</span>
+          <Globe size={14} />
+          <span>入門外部連結</span>
         </button>
 
         <button
@@ -699,6 +745,265 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
       {loadingData && (
         <div className="py-8 text-center text-xs text-neutral-400">
           讀取最新資料中...
+        </div>
+      )}
+
+      {/* =========================================================
+          TAB 0: 登山入門章節專文管理 (chapters)
+          Fields: id, slug, title, description, content, coverImage, sortOrder, enabled, updatedAt
+          ========================================================= */}
+      {activeTab === 'chapters' && adminData && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-bold text-neutral-200">
+                登山入門章節專文清單 ({(adminData.chapters || []).length})
+              </h2>
+              <p className="text-xs text-neutral-400 mt-0.5">
+                章節專文將自動產生獨立內容頁面（/intro/chapterXX）與動態 Sitemap
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                setEditingChapter({
+                  id: '',
+                  slug: `chapter${String(((adminData.chapters || []).length || 0) + 1).padStart(2, '0')}`,
+                  title: '',
+                  description: '',
+                  content: '',
+                  coverImage: '',
+                  enabled: true,
+                  sortOrder: ((adminData.chapters || []).length || 0) + 1,
+                })
+              }
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold bg-emerald-800 hover:bg-emerald-700 text-white transition-colors"
+              id="add-chapter-btn"
+            >
+              <Plus size={14} />
+              <span>新增章節專文</span>
+            </button>
+          </div>
+
+          {/* Edit / Create Form */}
+          {editingChapter && (
+            <div className="border border-emerald-700/80 rounded bg-neutral-900 p-5 space-y-4">
+              <h3 className="text-sm font-bold text-emerald-400">
+                {editingChapter.id ? '編輯章節專文' : '新增章節專文'}
+              </h3>
+              <form onSubmit={handleSaveChapter} className="space-y-3 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-neutral-300 font-medium mb-1">
+                      章節網址代稱 (Slug) *
+                    </label>
+                    <div className="flex items-center gap-1">
+                      <span className="text-neutral-500 font-mono text-xs">/intro/</span>
+                      <input
+                        type="text"
+                        required
+                        value={editingChapter.slug || ''}
+                        onChange={(e) =>
+                          setEditingChapter({ ...editingChapter, slug: e.target.value.trim().toLowerCase() })
+                        }
+                        placeholder="例如：chapter01"
+                        className="flex-1 px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-neutral-300 font-medium mb-1">
+                      文章標題 (Title) *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editingChapter.title || ''}
+                      onChange={(e) =>
+                        setEditingChapter({ ...editingChapter, title: e.target.value })
+                      }
+                      placeholder="例如：第一講：高山裝備挑選原則"
+                      className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-neutral-300 font-medium mb-1">
+                    摘要說明 (給 SEO Meta Description 與卡片使用)
+                  </label>
+                  <input
+                    type="text"
+                    value={editingChapter.description || ''}
+                    onChange={(e) =>
+                      setEditingChapter({ ...editingChapter, description: e.target.value })
+                    }
+                    placeholder="一至兩句文章摘要"
+                    className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-neutral-300 font-medium mb-1">
+                    文章正文 (支援空行分段)
+                  </label>
+                  <textarea
+                    rows={8}
+                    value={editingChapter.content || ''}
+                    onChange={(e) =>
+                      setEditingChapter({ ...editingChapter, content: e.target.value })
+                    }
+                    placeholder="請輸入專文內容，段落之間以空行分隔..."
+                    className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 leading-relaxed font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-neutral-300 font-medium mb-1">
+                    封面圖片網址 (選填)
+                  </label>
+                  <input
+                    type="text"
+                    value={editingChapter.coverImage || ''}
+                    onChange={(e) =>
+                      setEditingChapter({ ...editingChapter, coverImage: e.target.value })
+                    }
+                    placeholder="https://..."
+                    className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                  />
+                </div>
+
+                <div className="flex items-center gap-6 pt-1">
+                  <div>
+                    <label className="block text-neutral-300 font-medium mb-1">
+                      排序序號
+                    </label>
+                    <input
+                      type="number"
+                      value={editingChapter.sortOrder ?? 0}
+                      onChange={(e) =>
+                        setEditingChapter({
+                          ...editingChapter,
+                          sortOrder: parseInt(e.target.value) || 0,
+                        })
+                      }
+                      className="w-24 px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2 mt-5">
+                    <input
+                      type="checkbox"
+                      id="chapter-enabled"
+                      checked={editingChapter.enabled ?? true}
+                      onChange={(e) =>
+                        setEditingChapter({
+                          ...editingChapter,
+                          enabled: e.target.checked,
+                        })
+                      }
+                      className="rounded border-neutral-700 text-emerald-600 focus:ring-0"
+                    />
+                    <label
+                      htmlFor="chapter-enabled"
+                      className="text-neutral-300 font-medium"
+                    >
+                      啟用顯示與 Sitemap
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-3">
+                  <button
+                    type="submit"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-semibold transition-colors"
+                  >
+                    <Save size={14} />
+                    <span>儲存至永久資料庫</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingChapter(null)}
+                    className="px-3 py-2 rounded bg-neutral-800 text-neutral-300 hover:text-white transition-colors"
+                  >
+                    取消
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {/* List Table */}
+          <div className="border border-neutral-800 rounded bg-neutral-900/40 overflow-hidden">
+            <div className="divide-y divide-neutral-800">
+              {((adminData.chapters || []).slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))).map((item) => (
+                <div
+                  key={item.id}
+                  className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 font-mono">
+                        #{item.sortOrder}
+                      </span>
+                      <span className="font-bold text-neutral-100">
+                        {item.title}
+                      </span>
+                      <span className="text-xs px-2 py-0.5 rounded bg-neutral-800 text-emerald-400 font-mono">
+                        /intro/{item.slug}
+                      </span>
+                      {!item.enabled && (
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-rose-950 text-rose-300 border border-rose-800">
+                          已停用
+                        </span>
+                      )}
+                    </div>
+                    {item.description && (
+                      <p className="text-xs text-neutral-400 line-clamp-1">
+                        {item.description}
+                      </p>
+                    )}
+                    {item.updatedAt && (
+                      <p className="text-[11px] text-neutral-500 font-mono">
+                        更新時間：{item.updatedAt}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <a
+                      href={`/intro/${item.slug}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-1.5 rounded text-neutral-400 hover:text-emerald-400 hover:bg-neutral-800 transition-colors"
+                      title="檢視前台頁面"
+                    >
+                      <ExternalLink size={15} />
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => setEditingChapter(item)}
+                      className="p-1.5 rounded text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors"
+                      title="編輯"
+                    >
+                      <Edit2 size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleDeleteItem('chapter', item.id, item.title)
+                      }
+                      className="p-1.5 rounded text-rose-400 hover:text-rose-300 hover:bg-neutral-800 transition-colors"
+                      title="刪除"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 

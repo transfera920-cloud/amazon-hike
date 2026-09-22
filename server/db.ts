@@ -1,7 +1,9 @@
 import fs from 'fs';
 import path from 'path';
+import { getDefaultChapters } from './default-chapters.js';
 import type {
   AssociationDatabase,
+  ChapterItem,
   IntroItem,
   ToolItem,
   HighlightItem,
@@ -10,6 +12,8 @@ import type {
   NavButtonItem,
   PublicDataResponse
 } from '../src/types.js';
+
+export { getDefaultChapters };
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 const DB_PATH = path.join(DATA_DIR, 'association_db.json');
@@ -56,6 +60,7 @@ function getInitialSeedData(): AssociationDatabase {
     surveyUrl: initialSurveyUrl,
     surveys: getDefaultSurveys(initialSurveyUrl),
     navButtons: getDefaultNavButtons(),
+    chapters: getDefaultChapters(),
     intros: [
       {
         id: 'intro_01',
@@ -192,6 +197,11 @@ export function loadDatabase(): AssociationDatabase {
         needsSave = true;
       }
 
+      if (!Array.isArray(parsed.chapters)) {
+        parsed.chapters = getDefaultChapters();
+        needsSave = true;
+      }
+
       if (!Array.isArray(parsed.navButtons)) {
         parsed.navButtons = getDefaultNavButtons();
         needsSave = true;
@@ -258,6 +268,9 @@ export function getPublicData(): PublicDataResponse {
     surveys: enabledSurveys,
     navButtons: (db.navButtons || [])
       .filter((b) => b.enabled)
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
+    chapters: (db.chapters || [])
+      .filter((c) => c.enabled)
       .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
     intros: (db.intros || [])
       .filter((i) => i.enabled)

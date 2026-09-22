@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Header } from './components/Header.js';
 import { Footer } from './components/Footer.js';
 import { CalendarSection } from './components/CalendarSection.js';
 import { IntroView } from './components/IntroView.js';
+import { ChapterView } from './components/ChapterView.js';
 import { ToolsView } from './components/ToolsView.js';
 import { HighlightsView } from './components/HighlightsView.js';
 import { PoliciesView } from './components/PoliciesView.js';
@@ -22,6 +23,7 @@ export default function App() {
   // Public backend data
   const [publicData, setPublicData] = useState<PublicDataResponse>({
     surveyUrl: '',
+    chapters: [],
     intros: [],
     tools: [],
     highlights: [],
@@ -111,6 +113,29 @@ export default function App() {
     }
   };
 
+  // Parse dynamic chapter slug if route matches /intro/:slug
+  const currentChapterSlug = useMemo(() => {
+    if (currentPath.startsWith('/intro/')) {
+      const slug = currentPath.replace(/^\/intro\//, '').replace(/\/+$/, '');
+      return slug.toLowerCase();
+    }
+    return null;
+  }, [currentPath]);
+
+  // Current chapter and adjacent chapters for Prev/Next
+  const sortedChapters = useMemo(() => {
+    return (publicData.chapters || []).slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  }, [publicData.chapters]);
+
+  const currentChapterIndex = useMemo(() => {
+    if (!currentChapterSlug) return -1;
+    return sortedChapters.findIndex((c) => c.slug.toLowerCase() === currentChapterSlug);
+  }, [sortedChapters, currentChapterSlug]);
+
+  const currentChapter = currentChapterIndex >= 0 ? sortedChapters[currentChapterIndex] : null;
+  const prevChapter = currentChapterIndex > 0 ? sortedChapters[currentChapterIndex - 1] : undefined;
+  const nextChapter = currentChapterIndex >= 0 && currentChapterIndex < sortedChapters.length - 1 ? sortedChapters[currentChapterIndex + 1] : undefined;
+
   // SEO: Update page title, meta description, canonical and og:url dynamically
   useEffect(() => {
     const seoMap: Record<string, { title: string; description: string }> = {
@@ -144,7 +169,21 @@ export default function App() {
       },
     };
 
-    const currentMeta = seoMap[currentPath] || seoMap['/'];
+    let currentMeta = seoMap[currentPath];
+    if (!currentMeta && currentChapter) {
+      currentMeta = {
+        title: `${currentChapter.title} | 亞馬遜國家山岳協會 | Amazon Alpine Association`,
+        description: currentChapter.description || `${currentChapter.title} - 亞馬遜國家山岳協會登山入門教學專文。`,
+      };
+    } else if (!currentMeta && currentChapterSlug) {
+      currentMeta = {
+        title: '找不到此章節 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+        description: '抱歉，您所尋找的登山入門章節不存在或已被下架。',
+      };
+    } else if (!currentMeta) {
+      currentMeta = seoMap['/'];
+    }
+
     document.title = currentMeta.title;
 
     // Update meta description
@@ -167,7 +206,7 @@ export default function App() {
     // Update og:url
     const ogUrl = document.querySelector('meta[property="og:url"]');
     if (ogUrl) ogUrl.setAttribute('content', canonicalUrl);
-  }, [currentPath]);
+  }, [currentPath, currentChapter, currentChapterSlug]);
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col font-sans selection:bg-emerald-800 selection:text-white">
@@ -193,9 +232,39 @@ export default function App() {
         {/* 登山入門 獨立專區 */}
         {currentPath === '/intro' && (
           <IntroView
+            chapters={publicData.chapters}
             intros={publicData.intros}
             onBack={() => navigate('/')}
+            onSelectChapter={(slug) => navigate(`/intro/${slug}`)}
           />
+        )}
+
+        {/* 登山入門 單篇章節頁面 /intro/:slug */}
+        {currentChapterSlug && currentChapter && (
+          <ChapterView
+            chapter={currentChapter}
+            prevChapter={prevChapter}
+            nextChapter={nextChapter}
+            onBack={() => navigate('/intro')}
+            onNavigateChapter={(slug) => navigate(`/intro/${slug}`)}
+          />
+        )}
+
+        {/* 登山入門 章節 404 狀態 */}
+        {currentChapterSlug && !currentChapter && (
+          <main className="max-w-4xl mx-auto px-4 py-16 text-center">
+            <h1 className="text-2xl font-bold text-neutral-200 mb-2">找不到該專文章節</h1>
+            <p className="text-sm text-neutral-400 mb-6">
+              您輸入的章節網址「{currentPath}」不存在或目前未發布。
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate('/intro')}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-sm font-medium transition-colors"
+            >
+              返回登山入門目錄
+            </button>
+          </main>
         )}
 
         {/* 登山工具 獨立專區 */}

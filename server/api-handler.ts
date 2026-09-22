@@ -5,6 +5,7 @@ import {
   WorkerEnv
 } from './db-kv.js';
 import type {
+  ChapterItem,
   IntroItem,
   ToolItem,
   HighlightItem,
@@ -162,6 +163,80 @@ export async function handleApiRequest(
       try {
         const db = await loadDatabaseWorker(env);
         return jsonResponse({ success: true, data: db });
+      } catch (err: any) {
+        return jsonResponse({ error: err.message }, 500);
+      }
+    }
+
+    // POST /api/admin/save-chapter
+    if (path === '/api/admin/save-chapter' && method === 'POST') {
+      try {
+        const db = await loadDatabaseWorker(env);
+        const item: ChapterItem = await request.json();
+        if (!item.title || !item.title.trim()) {
+          return jsonResponse({ error: '章節標題為必填欄位' }, 400);
+        }
+        if (!item.slug || !item.slug.trim()) {
+          return jsonResponse({ error: '網址代稱 (slug) 為必填欄位' }, 400);
+        }
+
+        const rawSlug = item.slug.trim().toLowerCase().replace(/^\/+|\/+$/g, '');
+        const cleanSlug = rawSlug.replace(/[^a-z0-9-_]/g, '') || `chapter_${Date.now()}`;
+        const todayStr = new Date().toISOString().split('T')[0];
+
+        if (!Array.isArray(db.chapters)) {
+          db.chapters = [];
+        }
+
+        const cleanTitle = item.title.trim();
+        const cleanDescription = (item.description || '').trim();
+        const cleanContent = (item.content || '').trim();
+        const cleanCoverImage = (item.coverImage || '').trim() || undefined;
+        const cleanEnabled = item.enabled ?? true;
+        const cleanSortOrder = Number(item.sortOrder) || 0;
+        const chapterId = item.id || `chap_${Date.now()}`;
+
+        const existingChapter = db.chapters.find((c) => c.id === chapterId);
+
+        let finalUpdatedAt: string;
+        if (!existingChapter) {
+          // 新增章節：設為今天日期
+          finalUpdatedAt = todayStr;
+        } else {
+          // 編輯現有章節：檢查 title、description、content、coverImage 任一欄位是否與現有值不同
+          const isContentModified =
+            existingChapter.title !== cleanTitle ||
+            (existingChapter.description || '') !== cleanDescription ||
+            (existingChapter.content || '') !== cleanContent ||
+            (existingChapter.coverImage || undefined) !== cleanCoverImage;
+
+          if (isContentModified) {
+            // 內容有變更，一律覆寫為今天的日期
+            finalUpdatedAt = todayStr;
+          } else {
+            // 內容無變更（例如僅調整排序或開關啟用狀態），保留原先的 updatedAt
+            finalUpdatedAt = existingChapter.updatedAt || todayStr;
+          }
+        }
+
+        const cleanItem: ChapterItem = {
+          id: chapterId,
+          slug: cleanSlug,
+          title: cleanTitle,
+          description: cleanDescription,
+          content: cleanContent,
+          coverImage: cleanCoverImage,
+          enabled: cleanEnabled,
+          sortOrder: cleanSortOrder,
+          updatedAt: finalUpdatedAt,
+        };
+
+        const idx = db.chapters.findIndex((c) => c.id === cleanItem.id);
+        if (idx >= 0) db.chapters[idx] = cleanItem;
+        else db.chapters.push(cleanItem);
+
+        await saveDatabaseWorker(db, env);
+        return jsonResponse({ success: true, item: cleanItem });
       } catch (err: any) {
         return jsonResponse({ error: err.message }, 500);
       }
@@ -398,7 +473,9 @@ export async function handleApiRequest(
         const normType = type.toLowerCase();
         const targetId = String(id);
 
-        if (normType === 'intro') {
+        if (normType === 'chapter') {
+          db.chapters = (db.chapters || []).filter((c) => String(c.id) !== targetId);
+        } else if (normType === 'intro') {
           db.intros = (db.intros || []).filter((i) => String(i.id) !== targetId);
         } else if (normType === 'tool') {
           db.tools = (db.tools || []).filter((t) => String(t.id) !== targetId);

@@ -205,6 +205,28 @@ async function runTests() {
     assert(resSitemap.status === 200, '/sitemap.xml status is 200');
     assert(textSitemap.includes('<urlset') && textSitemap.includes('<loc>https://amazon-hike.com/intro</loc>'), '/sitemap.xml contains URL list');
     assert(textSitemap.includes('<loc>https://amazon-hike.com/surveys</loc>'), '/sitemap.xml includes /surveys');
+    assert(textSitemap.includes('<loc>https://amazon-hike.com/intro/chapter01</loc>'), '/sitemap.xml includes /intro/chapter01');
+    assert(textSitemap.includes('<loc>https://amazon-hike.com/intro/chapter15</loc>'), '/sitemap.xml includes /intro/chapter15');
+  }
+
+  // 9-1. Dynamic Chapter SPA Route /intro/chapter01 SEO Meta
+  {
+    const res = await worker.fetch(new Request('http://localhost/intro/chapter01'), env, {});
+    const html = await res.text();
+    assert(res.status === 200, '/intro/chapter01 status is 200');
+    assert(html.includes('<title>第 1 講：登山入門心態與行前安全概念 | 亞馬遜國家山岳協會 | Amazon Alpine Association</title>'), '/intro/chapter01 has dynamic SEO title');
+    assert(html.includes('https://amazon-hike.com/intro/chapter01'), '/intro/chapter01 includes chapter canonical link');
+    assert(html.includes('<meta property="og:url" content="https://amazon-hike.com/intro/chapter01" />') || html.includes('<meta property="og:url" content="https://amazon-hike.com/intro/chapter01">'), '/intro/chapter01 has og:url meta');
+  }
+
+  // 9-2. Dynamic Chapter SPA Route 404 on Missing or Disabled Chapter
+  {
+    // A nonexistent slug
+    const res404 = await worker.fetch(new Request('http://localhost/intro/nonexistent-chapter'), env, {});
+    const html404 = await res404.text();
+    assert(res404.status === 404, '/intro/nonexistent-chapter returns HTTP 404 status');
+    assert(html404.includes('<title>找不到此章節 | 亞馬遜國家山岳協會 | Amazon Alpine Association</title>'), '/intro/nonexistent-chapter sets 404 title');
+    assert(html404.includes('找不到此章節'), '/intro/nonexistent-chapter includes 404 meta content in HTML');
   }
 
   // 10. Admin Auth & KV Write / Delete Cycle
@@ -222,6 +244,130 @@ async function runTests() {
     const loginJson: any = await loginRes.json();
     assert(loginJson.success === true && loginJson.token, 'Admin login succeeded and issued token');
     const token = loginJson.token;
+
+    // Test /api/admin/save-chapter updatedAt overwrite behavior
+    {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const testChapId = 'chap_test_updatedat';
+
+      // 1. Initial creation with an older updatedAt
+      const initChapRes = await worker.fetch(
+        new Request('http://localhost/api/admin/save-chapter', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            id: testChapId,
+            slug: 'test-updatedat',
+            title: '測試章節初始標題',
+            description: '初始摘要',
+            content: '初始內容',
+            enabled: true,
+            sortOrder: 1,
+            updatedAt: '2020-01-01',
+          }),
+        }),
+        env,
+        {}
+      );
+      const initJson: any = await initChapRes.json();
+      assert(initJson.success === true, 'Initial chapter creation succeeded');
+      assert(initJson.item.updatedAt === todayStr, 'New chapter updatedAt is set to today regardless of frontend input');
+
+      // 2. No content change (only sortOrder changed) with old updatedAt passed
+      const noChangeRes = await worker.fetch(
+        new Request('http://localhost/api/admin/save-chapter', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            id: testChapId,
+            slug: 'test-updatedat',
+            title: '測試章節初始標題',
+            description: '初始摘要',
+            content: '初始內容',
+            enabled: true,
+            sortOrder: 2, // only sortOrder changed
+            updatedAt: '1999-01-01', // old string
+          }),
+        }),
+        env,
+        {}
+      );
+      const noChangeJson: any = await noChangeRes.json();
+      assert(noChangeJson.item.updatedAt === todayStr, 'When content is untouched, previous updatedAt is preserved (not overridden by 1999-01-01)');
+
+      // 3. Content changed (title modified)
+      const contentChangeRes = await worker.fetch(
+        new Request('http://localhost/api/admin/save-chapter', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            id: testChapId,
+            slug: 'test-updatedat',
+            title: '測試章節已修改之新標題', // changed!
+            description: '初始摘要',
+            content: '初始內容',
+            enabled: true,
+            sortOrder: 2,
+            updatedAt: '2015-05-05', // old date passed from frontend
+          }),
+        }),
+        env,
+        {}
+      );
+      const contentChangeJson: any = await contentChangeRes.json();
+      assert(contentChangeJson.item.updatedAt === todayStr, 'When content changes, updatedAt is strictly overwritten to today');
+
+      // 4. Disable chapter and verify worker returns 404
+      await worker.fetch(
+        new Request('http://localhost/api/admin/save-chapter', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            id: testChapId,
+            slug: 'test-updatedat',
+            title: '測試章節已修改之新標題',
+            description: '初始摘要',
+            content: '初始內容',
+            enabled: false, // disabled!
+            sortOrder: 2,
+          }),
+        }),
+        env,
+        {}
+      );
+
+      const disabledRes = await worker.fetch(new Request('http://localhost/intro/test-updatedat'), env, {});
+      assert(disabledRes.status === 404, 'Disabled chapter returns HTTP 404 status');
+
+      // Clean up test chapter
+      await worker.fetch(
+        new Request('http://localhost/api/admin/delete-item', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            type: 'chapter',
+            id: testChapId,
+          }),
+        }),
+        env,
+        {}
+      );
+    }
 
     // Add a marked test tool item
     const addRes = await worker.fetch(

@@ -8,6 +8,7 @@ import {
   getDefaultNavButtons,
 } from './server/db.js';
 import type {
+  ChapterItem,
   IntroItem,
   ToolItem,
   HighlightItem,
@@ -158,6 +159,84 @@ apiRouter.get('/admin/data', requireAdmin, (req: Request, res: Response) => {
   try {
     const db = loadDatabase();
     res.json({ success: true, data: db });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Save Chapter Item
+apiRouter.post('/admin/save-chapter', requireAdmin, (req: Request, res: Response) => {
+  try {
+    const db = loadDatabase();
+    const item: ChapterItem = req.body;
+
+    if (!item.title || !item.title.trim()) {
+      return res.status(400).json({ error: '章節標題為必填欄位' });
+    }
+    if (!item.slug || !item.slug.trim()) {
+      return res.status(400).json({ error: '網址代稱 (slug) 為必填欄位' });
+    }
+
+    const rawSlug = item.slug.trim().toLowerCase().replace(/^\/+|\/+$/g, '');
+    const cleanSlug = rawSlug.replace(/[^a-z0-9-_]/g, '') || `chapter_${Date.now()}`;
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    if (!Array.isArray(db.chapters)) {
+      db.chapters = [];
+    }
+
+    const cleanTitle = item.title.trim();
+    const cleanDescription = (item.description || '').trim();
+    const cleanContent = (item.content || '').trim();
+    const cleanCoverImage = (item.coverImage || '').trim() || undefined;
+    const cleanEnabled = item.enabled ?? true;
+    const cleanSortOrder = Number(item.sortOrder) || 0;
+    const chapterId = item.id || `chap_${Date.now()}`;
+
+    const existingChapter = db.chapters.find((c) => c.id === chapterId);
+
+    let finalUpdatedAt: string;
+    if (!existingChapter) {
+      // 新增章節：設為今天日期
+      finalUpdatedAt = todayStr;
+    } else {
+      // 編輯現有章節：檢查 title、description、content、coverImage 任一欄位是否與現有值不同
+      const isContentModified =
+        existingChapter.title !== cleanTitle ||
+        (existingChapter.description || '') !== cleanDescription ||
+        (existingChapter.content || '') !== cleanContent ||
+        (existingChapter.coverImage || undefined) !== cleanCoverImage;
+
+      if (isContentModified) {
+        // 內容有變更，一律覆寫為今天的日期
+        finalUpdatedAt = todayStr;
+      } else {
+        // 內容無變更（例如僅調整排序或開關啟用狀態），保留原先的 updatedAt
+        finalUpdatedAt = existingChapter.updatedAt || todayStr;
+      }
+    }
+
+    const cleanItem: ChapterItem = {
+      id: chapterId,
+      slug: cleanSlug,
+      title: cleanTitle,
+      description: cleanDescription,
+      content: cleanContent,
+      coverImage: cleanCoverImage,
+      enabled: cleanEnabled,
+      sortOrder: cleanSortOrder,
+      updatedAt: finalUpdatedAt,
+    };
+
+    const existingIndex = db.chapters.findIndex((c) => c.id === cleanItem.id);
+    if (existingIndex >= 0) {
+      db.chapters[existingIndex] = cleanItem;
+    } else {
+      db.chapters.push(cleanItem);
+    }
+
+    saveDatabase(db);
+    res.json({ success: true, item: cleanItem });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -410,7 +489,9 @@ function executeDeleteItem(type: string, id: string): { success: boolean; error?
   const normalizedType = (type || '').toLowerCase();
   const targetId = String(id);
 
-  if (normalizedType === 'intro') {
+  if (normalizedType === 'chapter') {
+    db.chapters = (db.chapters || []).filter((c) => String(c.id) !== targetId);
+  } else if (normalizedType === 'intro') {
     db.intros = (db.intros || []).filter((i) => String(i.id) !== targetId);
   } else if (normalizedType === 'tool') {
     db.tools = (db.tools || []).filter((t) => String(t.id) !== targetId);
@@ -498,6 +579,23 @@ Sitemap: /sitemap.xml
 app.get('/sitemap.xml', (req: Request, res: Response) => {
   res.type('application/xml');
   const now = new Date().toISOString().split('T')[0];
+  const db = loadDatabase();
+  const enabledChapters = (db.chapters || [])
+    .filter((c) => c.enabled)
+    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+
+  const chapterUrls = enabledChapters
+    .map((chap) => {
+      const lastmod = chap.updatedAt || now;
+      return `  <url>
+    <loc>https://amazon-hike.com/intro/${chap.slug}</loc>
+    <lastmod>${lastmod}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>`;
+    })
+    .join('\n');
+
   res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
@@ -530,6 +628,13 @@ app.get('/sitemap.xml', (req: Request, res: Response) => {
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
+  <url>
+    <loc>https://amazon-hike.com/surveys</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+${chapterUrls}
 </urlset>`);
 });
 

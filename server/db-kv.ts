@@ -1,4 +1,5 @@
 import baselineData from '../data/association_db.json';
+import { getDefaultChapters } from './default-chapters.js';
 import type {
   AssociationDatabase,
   PublicDataResponse
@@ -46,6 +47,17 @@ export function isKVBound(env?: WorkerEnv): env is WorkerEnv & { ASSOCIATION_DB:
 }
 
 /**
+ * 確保資料庫包含 chapters 集合，若缺失則自動填入初始章節
+ */
+function ensureChapters(db: AssociationDatabase): boolean {
+  if (!Array.isArray(db.chapters)) {
+    db.chapters = getDefaultChapters();
+    return true;
+  }
+  return false;
+}
+
+/**
  * 「KV 優先 + 安全容錯」讀取機制：
  * 1. 若環境有綁定 ASSOCIATION_DB，優先讀取 Cloudflare KV (association_data)。
  * 2. 若 KV 內已有資料，直接返回線上權威資料，絕不覆蓋。
@@ -65,6 +77,14 @@ export async function loadDatabaseWorker(env?: WorkerEnv): Promise<AssociationDa
 
       // 3. 若 KV 內已有正式資料，直接返回線上權威資料，絕不覆蓋
       if (kvValue && isValidDatabase(kvValue)) {
+        const needsSave = ensureChapters(kvValue);
+        if (needsSave) {
+          try {
+            await env.ASSOCIATION_DB.put(KV_KEY, JSON.stringify(kvValue, null, 2));
+          } catch (e) {
+            console.warn('⚠️ [Cloudflare KV] 更新補全 chapters 失敗:', e);
+          }
+        }
         memoryWorkerDb = kvValue;
         return kvValue;
       }
@@ -72,6 +92,7 @@ export async function loadDatabaseWorker(env?: WorkerEnv): Promise<AssociationDa
       // 4. 僅在 KV 完全沒有資料時（首次啟動），才載入靜態種子檔並自動初始化到 KV
       console.log('ℹ️ [Cloudflare KV] KV 為空，首次載入種子檔 baselineData 並自動寫入 KV (key: association_data)...');
       const seed = JSON.parse(JSON.stringify(baselineData)) as AssociationDatabase;
+      ensureChapters(seed);
       try {
         await env.ASSOCIATION_DB.put(KV_KEY, JSON.stringify(seed, null, 2));
         console.log('✅ [Cloudflare KV] 初始種子資料已成功存入 Cloudflare KV');
@@ -92,10 +113,12 @@ export async function loadDatabaseWorker(env?: WorkerEnv): Promise<AssociationDa
 
   // 若尚未綁定 KV 或讀取異常時的安全退回機制
   if (memoryWorkerDb && isValidDatabase(memoryWorkerDb)) {
+    ensureChapters(memoryWorkerDb);
     return memoryWorkerDb;
   }
 
   const seed = JSON.parse(JSON.stringify(baselineData)) as AssociationDatabase;
+  ensureChapters(seed);
   memoryWorkerDb = seed;
   return seed;
 }
@@ -145,6 +168,9 @@ export function formatPublicData(db: AssociationDatabase): PublicDataResponse {
     surveys: enabledSurveys,
     navButtons: (db.navButtons || [])
       .filter((b) => b.enabled)
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
+    chapters: (db.chapters || [])
+      .filter((c) => c.enabled)
       .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
     intros: (db.intros || [])
       .filter((i) => i.enabled)

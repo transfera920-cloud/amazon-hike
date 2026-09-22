@@ -1,4 +1,5 @@
 import { handleApiRequest } from './api-handler.js';
+import { loadDatabaseWorker } from './db-kv.js';
 import type { WorkerEnv } from './db-kv.js';
 
 declare const HTMLRewriter: any;
@@ -45,10 +46,14 @@ const ROUTE_META_MAP: Record<string, RouteMetadata> = {
 async function applyRouteMeta(
   response: Response,
   meta: RouteMetadata,
-  canonicalUrl: string
+  canonicalUrl: string,
+  statusCode?: number
 ): Promise<Response> {
+  const targetStatus = statusCode ?? response.status;
+  const targetStatusText = statusCode ? (statusCode === 404 ? 'Not Found' : response.statusText) : response.statusText;
+
   if (typeof HTMLRewriter !== 'undefined') {
-    return new HTMLRewriter()
+    const transformed = new HTMLRewriter()
       .on('title', {
         element(e: any) {
           e.setInnerContent(meta.title);
@@ -80,6 +85,15 @@ async function applyRouteMeta(
         },
       })
       .transform(response);
+
+    if (statusCode && statusCode !== response.status) {
+      return new Response(transformed.body, {
+        status: targetStatus,
+        statusText: targetStatusText,
+        headers: transformed.headers,
+      });
+    }
+    return transformed;
   }
 
   // 測試環境（如 Node.js test-worker.ts）未定義 HTMLRewriter 時的安全退回處理
@@ -107,8 +121,8 @@ async function applyRouteMeta(
   );
 
   return new Response(html, {
-    status: response.status,
-    statusText: response.statusText,
+    status: targetStatus,
+    statusText: targetStatusText,
     headers: response.headers,
   });
 }
@@ -142,6 +156,23 @@ Sitemap: /sitemap.xml
 
     if (pathname === '/sitemap.xml') {
       const now = new Date().toISOString().split('T')[0];
+      const db = await loadDatabaseWorker(env);
+      const enabledChapters = (db.chapters || [])
+        .filter((c) => c.enabled)
+        .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+
+      const chapterUrls = enabledChapters
+        .map((chap) => {
+          const lastmod = chap.updatedAt || now;
+          return `  <url>
+    <loc>https://amazon-hike.com/intro/${chap.slug}</loc>
+    <lastmod>${lastmod}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>`;
+        })
+        .join('\n');
+
       return new Response(
         `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
@@ -181,6 +212,7 @@ Sitemap: /sitemap.xml
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
+${chapterUrls}
 </urlset>`,
         {
           headers: {
@@ -196,7 +228,34 @@ Sitemap: /sitemap.xml
     if (env && env.ASSETS) {
       const normalizedPath = pathname.replace(/\/+$/, '') || '/';
       const isRoot = normalizedPath === '/' || pathname === '/index.html';
-      const routeMeta = ROUTE_META_MAP[normalizedPath];
+      let routeMeta = ROUTE_META_MAP[normalizedPath];
+
+      // Dynamic chapter route matching: /intro/:slug
+      let isChapterNotFound = false;
+      if (!routeMeta && normalizedPath.startsWith('/intro/')) {
+        const slug = normalizedPath.replace(/^\/intro\//, '').toLowerCase();
+        if (slug) {
+          try {
+            const db = await loadDatabaseWorker(env);
+            const chapter = (db.chapters || []).find((c) => c.slug.toLowerCase() === slug);
+            if (chapter && chapter.enabled) {
+              routeMeta = {
+                title: `${chapter.title} | 亞馬遜國家山岳協會 | Amazon Alpine Association`,
+                description: chapter.description || `${chapter.title} - 亞馬遜國家山岳協會登山入門教學專文。`,
+              };
+            } else {
+              // 找不到此章節或找到但 enabled 為 false
+              isChapterNotFound = true;
+              routeMeta = {
+                title: '找不到此章節 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+                description: '很抱歉，您所尋找的登山入門專文不存在、已下架或網址錯誤。請返回登山入門專頁瀏覽其他專題文章。',
+              };
+            }
+          } catch (err) {
+            console.error('Error resolving dynamic chapter metadata:', err);
+          }
+        }
+      }
 
       // 3-1. 首頁 (/) 或 /index.html：套用首頁專屬 SEO Meta（包含完整 canonical 與 og:url）
       if (isRoot && routeMeta) {
@@ -214,13 +273,18 @@ Sitemap: /sitemap.xml
         return assetResponse;
       }
 
-      // 3-3. SPA Fallback 客戶端路由（/intro, /tools, /highlights, /policies, /surveys 等）
+      // 3-3. SPA Fallback 客戶端路由（/intro, /tools, /highlights, /policies, /surveys, /intro/:slug 等）
       const spaRequest = new Request(new URL('/index.html', request.url), request);
       const indexResponse = await env.ASSETS.fetch(spaRequest);
 
       if (routeMeta && indexResponse.ok) {
         const canonicalUrl = `https://amazon-hike.com${normalizedPath}`;
-        return applyRouteMeta(indexResponse, routeMeta, canonicalUrl);
+        return applyRouteMeta(
+          indexResponse,
+          routeMeta,
+          canonicalUrl,
+          isChapterNotFound ? 404 : undefined
+        );
       }
 
       return indexResponse;

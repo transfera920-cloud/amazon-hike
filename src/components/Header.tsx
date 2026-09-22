@@ -69,9 +69,15 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyU
                 className="group inline-block text-left shrink-0"
                 id="brand-home-link"
               >
-                <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-neutral-100 group-hover:text-emerald-400 transition-colors whitespace-nowrap">
-                  亞馬遜國家山岳協會
-                </h1>
+                {currentPath === '/' ? (
+                  <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-neutral-100 group-hover:text-emerald-400 transition-colors whitespace-nowrap">
+                    亞馬遜國家山岳協會
+                  </h1>
+                ) : (
+                  <p className="text-xl sm:text-2xl font-bold tracking-tight text-neutral-100 group-hover:text-emerald-400 transition-colors whitespace-nowrap">
+                    亞馬遜國家山岳協會
+                  </p>
+                )}
                 <p className="text-xs sm:text-sm font-medium tracking-wide text-neutral-400 group-hover:text-neutral-300 transition-colors">
                   Amazon Alpine Association
                 </p>

@@ -279,7 +279,10 @@ ${chapterUrls}
       // 3-2. 靜態資源（JS, CSS, 圖檔等）
       const assetResponse = await env.ASSETS.fetch(request);
       if (assetResponse.ok) {
-        return assetResponse;
+        const debugResponse = new Response(assetResponse.body, assetResponse);
+        debugResponse.headers.set('X-Debug-Asset-Status', String(assetResponse.status));
+        debugResponse.headers.set('X-Debug-Branch', 'returned-from-3-2-ok');
+        return debugResponse;
       }
 
       // 3-3. SPA Fallback 客戶端路由（/intro, /tools, /highlights, /policies, /surveys, /intro/:slug 等）
@@ -288,15 +291,23 @@ ${chapterUrls}
 
       if (routeMeta && indexResponse.ok) {
         const canonicalUrl = `https://amazon-hike.com${normalizedPath}`;
-        return applyRouteMeta(
+        const finalResponse = await applyRouteMeta(
           indexResponse,
           routeMeta,
           canonicalUrl,
           isChapterNotFound ? 404 : undefined
         );
+        finalResponse.headers.set('X-Debug-Asset-Status', String(assetResponse.status));
+        finalResponse.headers.set('X-Debug-Index-Status', String(indexResponse.status));
+        finalResponse.headers.set('X-Debug-Branch', 'returned-from-3-3-applyRouteMeta');
+        return finalResponse;
       }
 
-      return indexResponse;
+      const debugIndexResponse = new Response(indexResponse.body, indexResponse);
+      debugIndexResponse.headers.set('X-Debug-Asset-Status', String(assetResponse.status));
+      debugIndexResponse.headers.set('X-Debug-Index-Status', String(indexResponse.status));
+      debugIndexResponse.headers.set('X-Debug-Branch', 'returned-from-3-3-fallthrough');
+      return debugIndexResponse;
     }
 
     // Fallback if accessed in testing harness without ASSETS binding

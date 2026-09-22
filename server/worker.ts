@@ -132,15 +132,6 @@ export default {
     const url = new URL(request.url);
     const pathname = url.pathname;
 
-    console.log('[DEBUG] worker.ts fetch() 已執行，pathname=', pathname);
-
-    if (url.searchParams.get('debugcheck') === '1') {
-      return new Response('WORKER_REACHED_OK path=' + pathname, {
-        status: 200,
-        headers: { 'Content-Type': 'text/plain' },
-      });
-    }
-
     // 1. All /api/* requests are handled strictly by the API Handler
     if (pathname.startsWith('/api/') || pathname === '/api') {
       return handleApiRequest(request, env, url);
@@ -268,7 +259,7 @@ ${chapterUrls}
 
       // 3-1. 首頁 (/) 或 /index.html：套用首頁專屬 SEO Meta（包含完整 canonical 與 og:url）
       if (isRoot && routeMeta) {
-        const indexRequest = new Request(new URL('/index.html', request.url), request);
+        const indexRequest = new Request(new URL('/', request.url), request);
         const indexResponse = await env.ASSETS.fetch(indexRequest);
         if (indexResponse.ok) {
           return applyRouteMeta(indexResponse, routeMeta, 'https://amazon-hike.com/');
@@ -279,41 +270,30 @@ ${chapterUrls}
       // 3-2. 靜態資源（JS, CSS, 圖檔等）
       const assetResponse = await env.ASSETS.fetch(request);
       if (assetResponse.ok) {
-        const debugResponse = new Response(assetResponse.body, assetResponse);
-        debugResponse.headers.set('X-Debug-Asset-Status', String(assetResponse.status));
-        debugResponse.headers.set('X-Debug-Branch', 'returned-from-3-2-ok');
-        return debugResponse;
+        return assetResponse;
       }
 
       // 3-3. SPA Fallback 客戶端路由（/intro, /tools, /highlights, /policies, /surveys, /intro/:slug 等）
-      const spaRequest = new Request(new URL('/index.html', request.url), request);
+      const spaRequest = new Request(new URL('/', request.url), request);
       const indexResponse = await env.ASSETS.fetch(spaRequest);
 
       if (routeMeta && indexResponse.ok) {
         const canonicalUrl = `https://amazon-hike.com${normalizedPath}`;
-        const finalResponse = await applyRouteMeta(
+        return applyRouteMeta(
           indexResponse,
           routeMeta,
           canonicalUrl,
           isChapterNotFound ? 404 : undefined
         );
-        finalResponse.headers.set('X-Debug-Asset-Status', String(assetResponse.status));
-        finalResponse.headers.set('X-Debug-Index-Status', String(indexResponse.status));
-        finalResponse.headers.set('X-Debug-Branch', 'returned-from-3-3-applyRouteMeta');
-        return finalResponse;
       }
 
-      const debugIndexResponse = new Response(indexResponse.body, indexResponse);
-      debugIndexResponse.headers.set('X-Debug-Asset-Status', String(assetResponse.status));
-      debugIndexResponse.headers.set('X-Debug-Index-Status', String(indexResponse.status));
-      debugIndexResponse.headers.set('X-Debug-Branch', 'returned-from-3-3-fallthrough');
-      return debugIndexResponse;
+      return indexResponse;
     }
 
     // Fallback if accessed in testing harness without ASSETS binding
     return new Response('Cloudflare Worker Entry Point active. Static assets require ASSETS binding.', {
       status: 200,
-      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'X-Debug-Reached': 'fallback-no-assets' },
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
     });
   },
 };

@@ -32,11 +32,23 @@ class MockKV {
   }
 }
 
-// Mock ASSETS fetcher that reads from actual dist/ directory
+// Mock ASSETS fetcher that simulates Cloudflare Workers Assets behavior:
+// For certain non-static SPA paths, Cloudflare Workers Assets may return 307 Temporary Redirect (Location: /).
+// Static files return 200, missing static paths return 404 or 307.
 const mockAssets = {
   async fetch(req: Request | string): Promise<Response> {
     const requestUrl = typeof req === 'string' ? new URL(req, 'http://localhost') : new URL(req.url);
-    let filePath = path.join(process.cwd(), 'dist', requestUrl.pathname);
+    const p = requestUrl.pathname;
+
+    // Simulate Cloudflare Workers Assets returning 307 on SPA directory-like paths when queried directly
+    if (p === '/intro' || p === '/tools' || p === '/highlights' || p === '/surveys') {
+      return new Response(null, {
+        status: 307,
+        headers: { Location: '/' },
+      });
+    }
+
+    let filePath = path.join(process.cwd(), 'dist', p);
 
     // If directory, try index.html
     if (fs.existsSync(filePath) && fs.statSync(filePath).isDirectory()) {

@@ -269,7 +269,7 @@ ${chapterUrls}
 
       // 3-2. 靜態資源（JS, CSS, 圖檔等）
       const assetResponse = await env.ASSETS.fetch(request);
-      if (assetResponse.status !== 404) {
+      if (assetResponse.ok) {
         return assetResponse;
       }
 

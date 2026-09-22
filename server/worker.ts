@@ -132,6 +132,15 @@ export default {
     const url = new URL(request.url);
     const pathname = url.pathname;
 
+    console.log('[DEBUG] worker.ts fetch() 已執行，pathname=', pathname);
+
+    if (url.searchParams.get('debugcheck') === '1') {
+      return new Response('WORKER_REACHED_OK path=' + pathname, {
+        status: 200,
+        headers: { 'Content-Type': 'text/plain' },
+      });
+    }
+
     // 1. All /api/* requests are handled strictly by the API Handler
     if (pathname.startsWith('/api/') || pathname === '/api') {
       return handleApiRequest(request, env, url);
@@ -293,7 +302,7 @@ ${chapterUrls}
     // Fallback if accessed in testing harness without ASSETS binding
     return new Response('Cloudflare Worker Entry Point active. Static assets require ASSETS binding.', {
       status: 200,
-      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'X-Debug-Reached': 'fallback-no-assets' },
     });
   },
 };

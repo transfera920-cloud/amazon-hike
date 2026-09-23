@@ -1,6 +1,5 @@
 import fs from 'fs';
 import path from 'path';
-import { getDefaultChapters } from './default-chapters.js';
 import type {
   AssociationDatabase,
   ChapterItem,
@@ -12,8 +11,6 @@ import type {
   NavButtonItem,
   PublicDataResponse
 } from '../src/types.js';
-
-export { getDefaultChapters };
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 const DB_PATH = path.join(DATA_DIR, 'association_db.json');
@@ -60,7 +57,7 @@ function getInitialSeedData(): AssociationDatabase {
     surveyUrl: initialSurveyUrl,
     surveys: getDefaultSurveys(initialSurveyUrl),
     navButtons: getDefaultNavButtons(),
-    chapters: getDefaultChapters(),
+    chapters: [],
     intros: [
       {
         id: 'intro_01',
@@ -198,7 +195,7 @@ export function loadDatabase(): AssociationDatabase {
       }
 
       if (!Array.isArray(parsed.chapters)) {
-        parsed.chapters = getDefaultChapters();
+        parsed.chapters = [];
         needsSave = true;
       }
 

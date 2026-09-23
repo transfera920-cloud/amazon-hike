@@ -1,5 +1,4 @@
 import baselineData from '../data/association_db.json';
-import { getDefaultChapters } from './default-chapters.js';
 import type {
   AssociationDatabase,
   PublicDataResponse
@@ -47,11 +46,12 @@ export function isKVBound(env?: WorkerEnv): env is WorkerEnv & { ASSOCIATION_DB:
 }
 
 /**
- * 確保資料庫包含 chapters 集合，若缺失則自動填入初始章節
+ * 確保資料庫包含 chapters 集合欄位；若缺失，只補一個空陣列，
+ * 絕不自動塞入罐頭範例內容（真實章節內容一律由後台手動新增）。
  */
 function ensureChapters(db: AssociationDatabase): boolean {
   if (!Array.isArray(db.chapters)) {
-    db.chapters = getDefaultChapters();
+    db.chapters = [];
     return true;
   }
   return false;

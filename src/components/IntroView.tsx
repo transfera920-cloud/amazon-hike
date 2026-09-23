@@ -1,5 +1,6 @@
 import React from 'react';
-import { ArrowLeft, BookOpen, ChevronRight, Calendar } from 'lucide-react';
+import { ArrowLeft, BookOpen, ChevronRight, Calendar, ExternalLink } from 'lucide-react';
+import { normalizeUrl } from '../utils/url.js';
 import type { ChapterItem, IntroItem } from '../types.js';
 
 interface IntroViewProps {
@@ -102,23 +103,37 @@ export const IntroView: React.FC<IntroViewProps> = ({
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {intros.map((item) => (
-            <div
-              key={item.id}
-              className="border border-neutral-800 rounded bg-neutral-900/40 p-5 flex flex-col justify-between"
-            >
-              <div>
-                <h2 className="text-base font-bold text-neutral-100">
-                  {item.title}
-                </h2>
-                {item.description && (
-                  <p className="text-xs sm:text-sm text-neutral-400 mt-2 leading-relaxed">
-                    {item.description}
-                  </p>
-                )}
-              </div>
-            </div>
-          ))}
+          {intros.map((item) => {
+            const url = normalizeUrl(item.url);
+            return (
+              <a
+                key={item.id}
+                href={url || '#'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group border border-neutral-800 rounded bg-neutral-900/40 p-5 hover:border-neutral-700/80 hover:bg-neutral-900/80 transition-all flex flex-col justify-between"
+                id={`intro-item-${item.id}`}
+              >
+                <div>
+                  <div className="flex items-start justify-between gap-2">
+                    <h2 className="text-base font-bold text-neutral-100 group-hover:text-emerald-400 transition-colors">
+                      {item.title}
+                    </h2>
+                    <ExternalLink size={14} className="text-neutral-500 group-hover:text-emerald-400 shrink-0 mt-1 transition-colors" />
+                  </div>
+                  {item.description && (
+                    <p className="text-xs sm:text-sm text-neutral-400 mt-2 leading-relaxed">
+                      {item.description}
+                    </p>
+                  )}
+                </div>
+
+                <div className="pt-4 mt-2 border-t border-neutral-800/60 flex items-center text-xs font-semibold text-emerald-400 group-hover:text-emerald-300">
+                  <span>閱讀完整專文</span>
+                </div>
+              </a>
+            );
+          })}
         </div>
       )}
     </main>

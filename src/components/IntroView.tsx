@@ -58,48 +58,56 @@ export const IntroView: React.FC<IntroViewProps> = ({
         </div>
       ) : hasChapters ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {chapters.map((item) => (
-            <a
-              key={item.id}
-              href={`/intro/${item.slug}`}
-              onClick={(e) => {
-                e.preventDefault();
-                if (onSelectChapter) {
-                  onSelectChapter(item.slug);
-                } else {
-                  window.location.pathname = `/intro/${item.slug}`;
-                }
-              }}
-              className="group border border-neutral-800 rounded bg-neutral-900/40 p-5 hover:border-neutral-700/80 hover:bg-neutral-900/80 transition-all flex flex-col justify-between cursor-pointer"
-              id={`chapter-card-${item.slug}`}
-            >
-              <div>
-                <div className="flex items-start justify-between gap-2">
-                  <h2 className="text-base font-bold text-neutral-100 group-hover:text-emerald-400 transition-colors">
-                    {item.title}
-                  </h2>
-                  <ChevronRight size={16} className="text-neutral-500 group-hover:text-emerald-400 group-hover:translate-x-0.5 shrink-0 mt-1 transition-all" />
-                </div>
-                {item.description && (
-                  <p className="text-xs sm:text-sm text-neutral-400 mt-2 leading-relaxed">
-                    {item.description}
-                  </p>
-                )}
-              </div>
+          {chapters.map((item) => {
+            const isFormal = /^chapter(0[1-9]|1[0-5])$/i.test(item.slug);
+            const href = isFormal ? `/${item.slug.toLowerCase()}/` : `/intro/${item.slug}`;
 
-              <div className="pt-4 mt-3 border-t border-neutral-800/60 flex items-center justify-between text-xs">
-                <span className="font-semibold text-emerald-400 group-hover:text-emerald-300">
-                  閱讀完整專文
-                </span>
-                {item.updatedAt && (
-                  <span className="text-neutral-500 inline-flex items-center gap-1 font-mono text-[11px]">
-                    <Calendar size={11} />
-                    {item.updatedAt}
+            return (
+              <a
+                key={item.id}
+                href={href}
+                onClick={(e) => {
+                  if (isFormal) {
+                    return;
+                  }
+                  e.preventDefault();
+                  if (onSelectChapter) {
+                    onSelectChapter(item.slug);
+                  } else {
+                    window.location.pathname = `/intro/${item.slug}`;
+                  }
+                }}
+                className="group border border-neutral-800 rounded bg-neutral-900/40 p-5 hover:border-neutral-700/80 hover:bg-neutral-900/80 transition-all flex flex-col justify-between cursor-pointer"
+                id={`chapter-card-${item.slug}`}
+              >
+                <div>
+                  <div className="flex items-start justify-between gap-2">
+                    <h2 className="text-base font-bold text-neutral-100 group-hover:text-emerald-400 transition-colors">
+                      {item.title}
+                    </h2>
+                    <ChevronRight size={16} className="text-neutral-500 group-hover:text-emerald-400 group-hover:translate-x-0.5 shrink-0 mt-1 transition-all" />
+                  </div>
+                  {item.description && (
+                    <p className="text-xs sm:text-sm text-neutral-400 mt-2 leading-relaxed">
+                      {item.description}
+                    </p>
+                  )}
+                </div>
+
+                <div className="pt-4 mt-3 border-t border-neutral-800/60 flex items-center justify-between text-xs">
+                  <span className="font-semibold text-emerald-400 group-hover:text-emerald-300">
+                    閱讀完整專文
                   </span>
-                )}
-              </div>
-            </a>
-          ))}
+                  {item.updatedAt && (
+                    <span className="text-neutral-500 inline-flex items-center gap-1 font-mono text-[11px]">
+                      <Calendar size={11} />
+                      {item.updatedAt}
+                    </span>
+                  )}
+                </div>
+              </a>
+            );
+          })}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

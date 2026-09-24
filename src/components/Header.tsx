@@ -36,6 +36,17 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyU
     onNavigate(path);
   };
 
+  const handleInternalLinkClick = (e: React.MouseEvent<HTMLAnchorElement>, path: string) => {
+    // Let browser handle special clicks: Ctrl, Cmd, Shift, Alt, or middle-click
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) {
+      return;
+    }
+    e.preventDefault();
+    setMobileMenuOpen(false);
+    setContactOpen(false);
+    onNavigate(path);
+  };
+
   // Process and sort enabled navigation buttons
   const displayButtons: NavButtonItem[] = (
     navButtons && navButtons.length > 0
@@ -62,10 +73,7 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyU
             <div className="flex items-center justify-between sm:block shrink-0">
               <a
                 href="/"
-                onClick={(e) => {
-                  e.preventDefault();
-                  onNavigate('/');
-                }}
+                onClick={(e) => handleInternalLinkClick(e, '/')}
                 className="group inline-block text-left shrink-0"
                 id="brand-home-link"
               >
@@ -174,10 +182,14 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyU
               )}
             </div>
 
-            {/* Admin link */}
+            {/* Admin link - 維持 <button> */}
             <button
               type="button"
-              onClick={() => onNavigate('/admin')}
+              onClick={() => {
+                setMobileMenuOpen(false);
+                setContactOpen(false);
+                onNavigate('/admin');
+              }}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border transition-colors ${
                 currentPath === '/admin'
                   ? 'border-emerald-600 bg-emerald-950 text-emerald-300'
@@ -192,7 +204,7 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyU
         </div>
       </div>
 
-      {/* Navigation Bar: Dynamic Portals (Supports admin editing, enlarged font, no text wrapping) */}
+      {/* Navigation Bar: Dynamic Portals */}
       <nav className="border-t border-neutral-800 bg-neutral-900/95 shadow-inner" aria-label="主要導覽">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="hidden md:flex items-center justify-between gap-1 lg:gap-1.5 py-2 w-full text-center flex-nowrap">
@@ -216,10 +228,11 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyU
 
               const isActive = currentPath === btn.url;
               return (
-                <button
+                <a
                   key={btn.id}
-                  type="button"
-                  onClick={() => handleNavClick(btn.url)}
+                  href={btn.url}
+                  onClick={(e) => handleInternalLinkClick(e, btn.url)}
+                  aria-current={isActive ? 'page' : undefined}
                   className={`flex-1 flex items-center justify-center px-2 lg:px-3.5 py-2.5 rounded-md transition-all whitespace-nowrap text-[15px] lg:text-base font-bold ${
                     isActive
                       ? 'bg-neutral-800 text-emerald-400 font-bold border-b-2 border-emerald-400 shadow'
@@ -228,12 +241,12 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyU
                   id={`nav-btn-${btn.id}`}
                 >
                   {btn.title}
-                </button>
+                </a>
               );
             })}
           </div>
 
-          {/* Mobile Collapsible Navigation Menu (Enlarged touch targets, no wrap) */}
+          {/* Mobile Collapsible Navigation Menu */}
           {mobileMenuOpen && (
             <div className="md:hidden py-3 space-y-1.5 border-t border-neutral-800 text-base font-bold" id="mobile-nav-panel">
               {displayButtons.map((btn, idx) => {
@@ -256,16 +269,17 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyU
 
                 const isActive = currentPath === btn.url;
                 return (
-                  <button
+                  <a
                     key={btn.id}
-                    type="button"
-                    onClick={() => handleNavClick(btn.url)}
-                    className={`w-full text-left px-4 py-2.5 rounded whitespace-nowrap ${
+                    href={btn.url}
+                    onClick={(e) => handleInternalLinkClick(e, btn.url)}
+                    aria-current={isActive ? 'page' : undefined}
+                    className={`block w-full text-left px-4 py-2.5 rounded whitespace-nowrap ${
                       isActive ? 'bg-neutral-800 text-emerald-400 font-bold' : 'text-neutral-100 hover:bg-neutral-800'
                     }`}
                   >
                     {idx + 1}. {btn.title}
-                  </button>
+                  </a>
                 );
               })}
 
@@ -286,7 +300,10 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyU
                 </a>
                 <button
                   type="button"
-                  onClick={() => handleNavClick('/admin')}
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onNavigate('/admin');
+                  }}
                   className="w-full text-left flex items-center gap-2 px-4 py-2.5 mt-2 text-sm text-emerald-400 font-medium bg-neutral-900 rounded"
                 >
                   <ShieldCheck size={16} />

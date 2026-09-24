@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Header } from './components/Header.js';
 import { Footer } from './components/Footer.js';
 import { CalendarSection } from './components/CalendarSection.js';
@@ -9,33 +9,40 @@ import { HighlightsView } from './components/HighlightsView.js';
 import { PoliciesView } from './components/PoliciesView.js';
 import { SurveysView } from './components/SurveysView.js';
 import { AdminPage } from './components/AdminPage.js';
-import type { PublicDataResponse, CalendarActivity } from './types.js';
+import type { AssociationDatabase, CalendarActivity } from './types.js';
+
+const KNOWN_PATHS = new Set(['/', '/intro', '/tools', '/highlights', '/policies', '/surveys', '/admin']);
+
+function normalizePath(p: string): string {
+  if (!p || p === '/') return '/';
+  const stripped = p.replace(/\/+$/, '');
+  return stripped === '' ? '/' : stripped;
+}
 
 export default function App() {
-  // Current route pathname
   const [currentPath, setCurrentPath] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      return window.location.pathname || '/';
-    }
-    return '/';
+    return normalizePath(window.location.pathname || '/');
   });
 
-  // Public backend data
-  const [publicData, setPublicData] = useState<PublicDataResponse>({
+  const [publicData, setPublicData] = useState<AssociationDatabase>({
+    version: 1,
     surveyUrl: '',
-    chapters: [],
     intros: [],
     tools: [],
     highlights: [],
     policies: [],
+    surveys: [],
+    navButtons: [],
+    chapters: [],
   });
 
-  // Calendar activities from external official API
+  // 章節資料是否已載入完成（避免資料載入前誤判章節不存在 → 404 / noindex）
+  const [publicDataLoaded, setPublicDataLoaded] = useState(false);
   const [activities, setActivities] = useState<CalendarActivity[]>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(true);
   const [activitiesError, setActivitiesError] = useState<string | null>(null);
 
-  // Fetch public data from backend
+  // Fetch baseline / dynamic public data (tools, policies, highlights, navButtons, chapters)
   const fetchPublicData = useCallback(async () => {
     try {
       const res = await fetch(`/api/public-data?_t=${Date.now()}`, {
@@ -43,18 +50,21 @@ export default function App() {
       });
       const contentType = res.headers.get('content-type') || '';
       if (!res.ok) {
-        throw new Error(`HTTP error ${res.status}`);
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
       }
       if (!contentType.includes('application/json')) {
-        const text = await res.text();
-        throw new Error(`預期收到 JSON，但收到 ${contentType} (HTTP ${res.status})：${text.slice(0, 80)}`);
+        throw new Error(`非預期的回應格式: ${contentType}`);
       }
       const json = await res.json();
       if (json.success && json.data) {
         setPublicData(json.data);
+      } else {
+        throw new Error(json.error || '無法取得協會公開資料');
       }
-    } catch (err: any) {
-      console.error('Failed to load public data:', err);
+    } catch (err) {
+      console.warn('Failed to load public data:', err);
+    } finally {
+      setPublicDataLoaded(true);
     }
   }, []);
 
@@ -98,7 +108,7 @@ export default function App() {
   // Handle browser popstate (back / forward buttons)
   useEffect(() => {
     const handlePopState = () => {
-      setCurrentPath(window.location.pathname || '/');
+      setCurrentPath(normalizePath(window.location.pathname || '/'));
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
@@ -106,9 +116,16 @@ export default function App() {
 
   // Routing navigation helper
   const navigate = (path: string) => {
-    if (path !== currentPath) {
-      window.history.pushState({}, '', path);
-      setCurrentPath(path);
+    const m = path.match(/^\/intro\/(chapter(?:0[1-9]|1[0-5]))\/?$/i);
+    if (m) {
+      window.location.assign(`/${m[1].toLowerCase()}/`);
+      return;
+    }
+
+    const target = normalizePath(path);
+    if (target !== currentPath) {
+      window.history.pushState({}, '', target);
+      setCurrentPath(target);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
@@ -136,8 +153,17 @@ export default function App() {
   const prevChapter = currentChapterIndex > 0 ? sortedChapters[currentChapterIndex - 1] : undefined;
   const nextChapter = currentChapterIndex >= 0 && currentChapterIndex < sortedChapters.length - 1 ? sortedChapters[currentChapterIndex + 1] : undefined;
 
-  // SEO: Update page title, meta description, canonical and og:url dynamically
+  // Determine if current route is an unknown path
+  const isUnknownPath = useMemo(() => {
+    if (KNOWN_PATHS.has(currentPath)) return false;
+    if (currentPath.startsWith('/intro/')) return false; // Handled by dynamic chapter view or chapter 404
+    return true;
+  }, [currentPath]);
+
+  // SEO: Update page title, meta description, canonical, og:url, twitter:title, twitter:description, and robots
   useEffect(() => {
+    if (currentChapterSlug && !currentChapter && !publicDataLoaded) return;
+
     const seoMap: Record<string, { title: string; description: string }> = {
       '/': {
         title: '亞馬遜國家山岳協會 | Amazon Alpine Association',
@@ -170,12 +196,21 @@ export default function App() {
     };
 
     let currentMeta = seoMap[currentPath];
-    if (!currentMeta && currentChapter) {
+    let is404 = false;
+
+    if (isUnknownPath) {
+      is404 = true;
+      currentMeta = {
+        title: '找不到此頁面 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+        description: '很抱歉，您所尋找的頁面不存在或已被移除。請返回首頁或瀏覽其他專題專區。',
+      };
+    } else if (!currentMeta && currentChapter) {
       currentMeta = {
         title: `${currentChapter.title} | 亞馬遜國家山岳協會 | Amazon Alpine Association`,
         description: currentChapter.description || `${currentChapter.title} - 亞馬遜國家山岳協會登山入門教學專文。`,
       };
     } else if (!currentMeta && currentChapterSlug) {
+      is404 = true;
       currentMeta = {
         title: '找不到此章節 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
         description: '抱歉，您所尋找的登山入門章節不存在或已被下架。',
@@ -198,15 +233,37 @@ export default function App() {
     const ogDesc = document.querySelector('meta[property="og:description"]');
     if (ogDesc) ogDesc.setAttribute('content', currentMeta.description);
 
-    // Update canonical link
-    const canonicalUrl = currentPath === '/' ? 'https://amazon-hike.com/' : `https://amazon-hike.com${currentPath}`;
+    // Update twitter:title & twitter:description
+    const twitterTitle = document.querySelector('meta[name="twitter:title"]');
+    if (twitterTitle) twitterTitle.setAttribute('content', currentMeta.title);
+
+    const twitterDesc = document.querySelector('meta[name="twitter:description"]');
+    if (twitterDesc) twitterDesc.setAttribute('content', currentMeta.description);
+
+    // Update canonical link: 未知路徑 404 canonical 指向首頁
+    const canonicalUrl = isUnknownPath || currentPath === '/'
+      ? 'https://amazon-hike.com/'
+      : `https://amazon-hike.com${currentPath}`;
     const canonicalLink = document.querySelector('link[rel="canonical"]');
     if (canonicalLink) canonicalLink.setAttribute('href', canonicalUrl);
 
     // Update og:url
     const ogUrl = document.querySelector('meta[property="og:url"]');
     if (ogUrl) ogUrl.setAttribute('content', canonicalUrl);
-  }, [currentPath, currentChapter, currentChapterSlug]);
+
+    // Update robots meta tag: 404 時設為 noindex, follow
+    let robotsMeta = document.querySelector('meta[name="robots"]');
+    if (!robotsMeta) {
+      robotsMeta = document.createElement('meta');
+      robotsMeta.setAttribute('name', 'robots');
+      document.head.appendChild(robotsMeta);
+    }
+    if (is404) {
+      robotsMeta.setAttribute('content', 'noindex, follow');
+    } else {
+      robotsMeta.setAttribute('content', 'index, follow');
+    }
+  }, [currentPath, currentChapter, currentChapterSlug, isUnknownPath, publicDataLoaded]);
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col font-sans selection:bg-emerald-800 selection:text-white">
@@ -220,8 +277,34 @@ export default function App() {
 
       {/* 2. Main Content based on route */}
       <div className="flex-1">
+        {/* 未知路徑 404 畫面 */}
+        {isUnknownPath && (
+          <main className="max-w-4xl mx-auto px-4 py-20 text-center">
+            <h1 className="text-3xl font-extrabold text-neutral-100 mb-3">找不到此頁面</h1>
+            <p className="text-base text-neutral-400 mb-8 max-w-lg mx-auto">
+              很抱歉，您輸入或點選的網址不存在或已被移除。請返回協會首頁或使用上方主導覽前往其他專區。
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-4">
+              <button
+                type="button"
+                onClick={() => navigate('/')}
+                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md text-sm font-semibold transition-colors shadow-lg shadow-emerald-950"
+              >
+                返回協會首頁
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate('/intro')}
+                className="px-5 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 rounded-md text-sm font-semibold transition-colors border border-neutral-700"
+              >
+                瀏覽登山入門指南
+              </button>
+            </div>
+          </main>
+        )}
+
         {/* 首頁: 活動行事曆 ONLY (沒有任何堆疊的多餘區塊) */}
-        {currentPath === '/' && (
+        {!isUnknownPath && currentPath === '/' && (
           <CalendarSection
             activities={activities}
             loading={activitiesLoading}
@@ -230,7 +313,7 @@ export default function App() {
         )}
 
         {/* 登山入門 獨立專區 */}
-        {currentPath === '/intro' && (
+        {!isUnknownPath && currentPath === '/intro' && (
           <IntroView
             chapters={publicData.chapters}
             intros={publicData.intros}
@@ -240,7 +323,7 @@ export default function App() {
         )}
 
         {/* 登山入門 單篇章節頁面 /intro/:slug */}
-        {currentChapterSlug && currentChapter && (
+        {!isUnknownPath && currentChapterSlug && currentChapter && (
           <ChapterView
             chapter={currentChapter}
             prevChapter={prevChapter}
@@ -251,7 +334,7 @@ export default function App() {
         )}
 
         {/* 登山入門 章節 404 狀態 */}
-        {currentChapterSlug && !currentChapter && (
+        {!isUnknownPath && currentChapterSlug && !currentChapter && (
           <main className="max-w-4xl mx-auto px-4 py-16 text-center">
             <h1 className="text-2xl font-bold text-neutral-200 mb-2">找不到該專文章節</h1>
             <p className="text-sm text-neutral-400 mb-6">
@@ -268,7 +351,7 @@ export default function App() {
         )}
 
         {/* 登山工具 獨立專區 */}
-        {currentPath === '/tools' && (
+        {!isUnknownPath && currentPath === '/tools' && (
           <ToolsView
             tools={publicData.tools}
             onBack={() => navigate('/')}
@@ -276,7 +359,7 @@ export default function App() {
         )}
 
         {/* 活動花絮 YouTube 影音專區 */}
-        {currentPath === '/highlights' && (
+        {!isUnknownPath && currentPath === '/highlights' && (
           <HighlightsView
             highlights={publicData.highlights}
             onBack={() => navigate('/')}
@@ -284,7 +367,7 @@ export default function App() {
         )}
 
         {/* 政策與條款 獨立專區 */}
-        {currentPath === '/policies' && (
+        {!isUnknownPath && currentPath === '/policies' && (
           <PoliciesView
             policies={publicData.policies}
             onBack={() => navigate('/')}
@@ -292,7 +375,7 @@ export default function App() {
         )}
 
         {/* 問卷調查 獨立選單專區 */}
-        {currentPath === '/surveys' && (
+        {!isUnknownPath && currentPath === '/surveys' && (
           <SurveysView
             surveys={publicData.surveys}
             onBack={() => navigate('/')}
@@ -300,7 +383,7 @@ export default function App() {
         )}
 
         {/* 後台管理 /admin */}
-        {currentPath === '/admin' && (
+        {!isUnknownPath && currentPath === '/admin' && (
           <AdminPage
             onBack={() => navigate('/')}
             onDataUpdated={fetchPublicData}

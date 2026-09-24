@@ -572,7 +572,7 @@ app.get('/robots.txt', (req: Request, res: Response) => {
   res.send(`User-agent: *
 Allow: /
 Disallow: /admin
-Sitemap: /sitemap.xml
+Sitemap: https://amazon-hike.com/sitemap.xml
 `);
 });
 
@@ -580,6 +580,7 @@ app.get('/sitemap.xml', (req: Request, res: Response) => {
   res.type('application/xml');
   const now = new Date().toISOString().split('T')[0];
   const db = loadDatabase();
+  const CHAPTER_SLUG_RE = /^chapter(0[1-9]|1[0-5])$/;
   const enabledChapters = (db.chapters || [])
     .filter((c) => c.enabled)
     .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
@@ -587,8 +588,11 @@ app.get('/sitemap.xml', (req: Request, res: Response) => {
   const chapterUrls = enabledChapters
     .map((chap) => {
       const lastmod = chap.updatedAt || now;
+      const loc = CHAPTER_SLUG_RE.test((chap.slug || '').toLowerCase())
+        ? `https://amazon-hike.com/${chap.slug.toLowerCase()}/`
+        : `https://amazon-hike.com/intro/${chap.slug}`;
       return `  <url>
-    <loc>https://amazon-hike.com/intro/${chap.slug}</loc>
+    <loc>${loc}</loc>
     <lastmod>${lastmod}</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>

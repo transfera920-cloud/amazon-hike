@@ -1,6 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import worker from './server/worker.ts';
+import { getDefaultChapters } from './server/default-chapters.ts';
+import baselineData from './data/association_db.json';
 
 // In-memory KV mock for simulation and verification
 class MockKV {
@@ -165,7 +167,7 @@ async function runTests() {
     const textIntro = await resIntro.text();
     assert(resIntro.status === 200, 'Frontend SPA route /intro status is 200');
     assert(resIntro.headers.get('content-type')?.includes('text/html') === true, '/intro content-type is text/html');
-    assert(textIntro.includes('<div id="root"></div>'), '/intro returns SPA root element');
+    assert(textIntro.includes('<div id="root"'), '/intro returns SPA root element');
     assert(textIntro.includes('登山入門指南 | 亞馬遜國家山岳協會 | Amazon Alpine Association'), '/intro has custom SEO title');
     assert(textIntro.includes('href="https://amazon-hike.com/intro"'), '/intro has custom canonical link');
     assert(textIntro.includes('content="https://amazon-hike.com/intro"'), '/intro has custom og:url');
@@ -207,28 +209,42 @@ async function runTests() {
 
   // 9. SEO Endpoints
   {
+    // Ensure mockKV has the 15 default chapters so sitemap and intro links can reflect them
+    const currentDb = await env.ASSOCIATION_DB.get('association_data', 'json') || baselineData;
+    const chapters = getDefaultChapters();
+    await env.ASSOCIATION_DB.put('association_data', JSON.stringify({ ...currentDb, chapters }));
+
     const resRobots = await worker.fetch(new Request('http://localhost/robots.txt'), env, {});
     const textRobots = await resRobots.text();
     assert(resRobots.status === 200, '/robots.txt status is 200');
-    assert(textRobots.includes('Sitemap: /sitemap.xml'), '/robots.txt contains sitemap directive');
+    assert(textRobots.includes('Sitemap: https://amazon-hike.com/sitemap.xml'), '/robots.txt contains sitemap directive');
 
     const resSitemap = await worker.fetch(new Request('http://localhost/sitemap.xml'), env, {});
     const textSitemap = await resSitemap.text();
     assert(resSitemap.status === 200, '/sitemap.xml status is 200');
     assert(textSitemap.includes('<urlset') && textSitemap.includes('<loc>https://amazon-hike.com/intro</loc>'), '/sitemap.xml contains URL list');
     assert(textSitemap.includes('<loc>https://amazon-hike.com/surveys</loc>'), '/sitemap.xml includes /surveys');
-    assert(textSitemap.includes('<loc>https://amazon-hike.com/intro/chapter01</loc>'), '/sitemap.xml includes /intro/chapter01');
-    assert(textSitemap.includes('<loc>https://amazon-hike.com/intro/chapter15</loc>'), '/sitemap.xml includes /intro/chapter15');
+    assert(textSitemap.includes('<loc>https://amazon-hike.com/chapter01/</loc>'), '/sitemap.xml includes /chapter01/');
+    assert(textSitemap.includes('<loc>https://amazon-hike.com/chapter15/</loc>'), '/sitemap.xml includes /chapter15/');
+    assert(!textSitemap.includes('/intro/chapter01'), '/sitemap.xml does not contain /intro/chapter01');
   }
 
-  // 9-1. Dynamic Chapter SPA Route /intro/chapter01 SEO Meta
+  // 9-1. Chapter 301 Redirects and /intro Injected Links
   {
-    const res = await worker.fetch(new Request('http://localhost/intro/chapter01'), env, {});
-    const html = await res.text();
-    assert(res.status === 200, '/intro/chapter01 status is 200');
-    assert(html.includes('<title>第 1 講：登山入門心態與行前安全概念 | 亞馬遜國家山岳協會 | Amazon Alpine Association</title>'), '/intro/chapter01 has dynamic SEO title');
-    assert(html.includes('https://amazon-hike.com/intro/chapter01'), '/intro/chapter01 includes chapter canonical link');
-    assert(html.includes('<meta property="og:url" content="https://amazon-hike.com/intro/chapter01" />') || html.includes('<meta property="og:url" content="https://amazon-hike.com/intro/chapter01">'), '/intro/chapter01 has og:url meta');
+    const resIntroRedirect = await worker.fetch(new Request('http://localhost/intro/chapter01', { redirect: 'manual' }), env, {});
+    assert(resIntroRedirect.status === 301, '/intro/chapter01 returns 301 redirect');
+    assert(resIntroRedirect.headers.get('location') === 'https://amazon-hike.com/chapter01/', '/intro/chapter01 redirects to https://amazon-hike.com/chapter01/');
+
+    const resChapterRedirect = await worker.fetch(new Request('http://localhost/chapter01', { redirect: 'manual' }), env, {});
+    assert(resChapterRedirect.status === 301, 'GET /chapter01 returns 301 redirect');
+    assert(resChapterRedirect.headers.get('location') === 'https://amazon-hike.com/chapter01/', 'GET /chapter01 redirects to https://amazon-hike.com/chapter01/');
+
+    const resIntro = await worker.fetch(new Request('http://localhost/intro'), env, {});
+    const htmlIntro = await resIntro.text();
+    assert(resIntro.status === 200, '/intro status is 200');
+    assert(htmlIntro.includes('href="/chapter01/"'), '/intro HTML includes href="/chapter01/"');
+    assert(htmlIntro.includes('href="/chapter15/"'), '/intro HTML includes href="/chapter15/"');
+    assert(!htmlIntro.includes('<h1'), '/intro HTML does not contain <h1');
   }
 
   // 9-2. Dynamic Chapter SPA Route 404 on Missing or Disabled Chapter
@@ -239,6 +255,39 @@ async function runTests() {
     assert(res404.status === 404, '/intro/nonexistent-chapter returns HTTP 404 status');
     assert(html404.includes('<title>找不到此章節 | 亞馬遜國家山岳協會 | Amazon Alpine Association</title>'), '/intro/nonexistent-chapter sets 404 title');
     assert(html404.includes('找不到此章節'), '/intro/nonexistent-chapter includes 404 meta content in HTML');
+  }
+
+  // 9-3. SEO Shell, Trailing Slash 301, Unknown Route 404, and Index.html Static Links
+  {
+    // 1. /tools 外殼 (buildSectionShellHtml 注入 <main><h1>登山工具...</h1> 與 site nav)
+    const resTools = await worker.fetch(new Request('http://localhost/tools'), env, {});
+    const htmlTools = await resTools.text();
+    assert(resTools.status === 200, '/tools returns 200');
+    assert(htmlTools.includes('<main><h1>登山工具與氣象服務'), '/tools includes static section shell with <h1>');
+    assert(htmlTools.includes('<nav aria-label="主要導覽">'), '/tools includes site nav shell');
+
+    // 2. /intro/ 帶結尾斜線 301 導向無斜線版本 /intro
+    const resIntroSlash = await worker.fetch(new Request('http://localhost/intro/', { redirect: 'manual' }), env, {});
+    assert(resIntroSlash.status === 301, '/intro/ returns 301 redirect');
+    assert(resIntroSlash.headers.get('location') === 'https://amazon-hike.com/intro', '/intro/ redirects to https://amazon-hike.com/intro');
+
+    // 3. 未知路徑 404 (例如 /unknown-route)
+    const resUnknown = await worker.fetch(new Request('http://localhost/unknown-route'), env, {});
+    const htmlUnknown = await resUnknown.text();
+    assert(resUnknown.status === 404, 'Unknown path returns HTTP 404 status');
+    assert(htmlUnknown.includes('<title>找不到此頁面 | 亞馬遜國家山岳協會 | Amazon Alpine Association</title>'), 'Unknown path sets 404 title');
+    assert(htmlUnknown.includes('content="noindex, follow"'), 'Unknown path has noindex, follow robots meta');
+    assert(htmlUnknown.includes('href="https://amazon-hike.com/"'), 'Unknown path canonical points to home');
+
+    // 4. index.html 靜態連結（未執行 JS 時首頁包含的靜態導覽與簡介）
+    const resHome = await worker.fetch(new Request('http://localhost/'), env, {});
+    const htmlHome = await resHome.text();
+    assert(htmlHome.includes('<h1>亞馬遜國家山岳協會</h1>'), 'index.html includes static <h1> title');
+    assert(htmlHome.includes('href="/intro"'), 'index.html includes static link to /intro');
+    assert(htmlHome.includes('href="/tools"'), 'index.html includes static link to /tools');
+    assert(htmlHome.includes('href="/highlights"'), 'index.html includes static link to /highlights');
+    assert(htmlHome.includes('href="/surveys"'), 'index.html includes static link to /surveys');
+    assert(htmlHome.includes('href="/policies"'), 'index.html includes static link to /policies');
   }
 
   // 10. Admin Auth & KV Write / Delete Cycle

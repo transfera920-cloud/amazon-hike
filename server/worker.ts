@@ -384,10 +384,14 @@ ${chapterUrls}
       const isRoot = normalizedPath === '/' || pathname === '/index.html';
       let routeMeta = ROUTE_META_MAP[normalizedPath];
 
-      // Dynamic chapter route matching: /intro/:slug
+      // Dynamic chapter route matching: /intro/:slug 以及正式章節網址 /chapterXX/
       let isChapterNotFound = false;
-      if (!routeMeta && normalizedPath.startsWith('/intro/')) {
-        const slug = normalizedPath.replace(/^\/intro\//, '').toLowerCase();
+      const isBareChapterPath = CHAPTER_SLUG_RE.test(normalizedPath.slice(1).toLowerCase());
+      if (!routeMeta && (normalizedPath.startsWith('/intro/') || isBareChapterPath)) {
+        const slug = (normalizedPath.startsWith('/intro/')
+          ? normalizedPath.replace(/^\/intro\//, '')
+          : normalizedPath.slice(1)
+        ).toLowerCase();
         if (slug) {
           try {
             const db = await loadDatabaseWorker(env);

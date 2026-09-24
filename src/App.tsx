@@ -12,6 +12,7 @@ import { AdminPage } from './components/AdminPage.js';
 import type { AssociationDatabase, CalendarActivity } from './types.js';
 
 const KNOWN_PATHS = new Set(['/', '/intro', '/tools', '/highlights', '/policies', '/surveys', '/admin']);
+const CHAPTER_PATH_RE = /^\/chapter(0[1-9]|1[0-5])$/i;
 
 function normalizePath(p: string): string {
   if (!p || p === '/') return '/';
@@ -136,6 +137,9 @@ export default function App() {
       const slug = currentPath.replace(/^\/intro\//, '').replace(/\/+$/, '');
       return slug.toLowerCase();
     }
+    if (CHAPTER_PATH_RE.test(currentPath)) {
+      return currentPath.slice(1).toLowerCase();
+    }
     return null;
   }, [currentPath]);
 
@@ -157,6 +161,7 @@ export default function App() {
   const isUnknownPath = useMemo(() => {
     if (KNOWN_PATHS.has(currentPath)) return false;
     if (currentPath.startsWith('/intro/')) return false; // Handled by dynamic chapter view or chapter 404
+    if (CHAPTER_PATH_RE.test(currentPath)) return false; // 正式章節網址 /chapterXX/
     return true;
   }, [currentPath]);
 

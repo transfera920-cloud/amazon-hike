@@ -410,14 +410,11 @@ apiRouter.post('/admin/save-nav-button', requireAdmin, (req: Request, res: Respo
     if (!item.title || !item.title.trim()) {
       return res.status(400).json({ error: '按鈕名稱為必填欄位' });
     }
-    if (!item.url || !item.url.trim()) {
-      return res.status(400).json({ error: '按鈕連結網址或路徑為必填欄位' });
-    }
 
     const cleanItem: NavButtonItem = {
       id: item.id || `btn_${Date.now()}`,
       title: item.title.trim(),
-      url: item.url.trim(),
+      url: (item.url || '').trim(),
       isExternal: Boolean(item.isExternal),
       enabled: item.enabled ?? true,
       sortOrder: Number(item.sortOrder) || 0,

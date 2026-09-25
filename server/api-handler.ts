@@ -375,13 +375,10 @@ export async function handleApiRequest(
         if (!item.title || !item.title.trim()) {
           return jsonResponse({ error: '按鈕名稱為必填欄位' }, 400);
         }
-        if (!item.url || !item.url.trim()) {
-          return jsonResponse({ error: '連結網址為必填欄位' }, 400);
-        }
         const cleanItem: NavButtonItem = {
           id: item.id || `btn_${Date.now()}`,
           title: item.title.trim(),
-          url: item.url.trim(),
+          url: (item.url || '').trim(),
           isExternal: Boolean(item.isExternal),
           enabled: item.enabled ?? true,
           sortOrder: Number(item.sortOrder) || 0,

@@ -213,9 +213,12 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyU
               const hasEnabledActivities = (navButtonActivities || []).some(
                 (a) => a.navButtonId === btn.id && a.enabled === true
               );
+              const hasExternalUrl = Boolean(
+                btn.url && (btn.url.startsWith('http://') || btn.url.startsWith('https://'))
+              );
               const effectiveIsExternal = hasEnabledActivities
                 ? false
-                : (btn.isExternal || btn.url.startsWith('http://') || btn.url.startsWith('https://'));
+                : Boolean(btn.isExternal || hasExternalUrl);
 
               if (effectiveIsExternal) {
                 return (
@@ -244,10 +247,10 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyU
               }
 
               const buttonNavPath = btn.url && btn.url.startsWith('/nav/') ? btn.url : `/nav/${btn.id}`;
-              const targetUrl = hasEnabledActivities ? buttonNavPath : btn.url;
+              const targetUrl = hasEnabledActivities ? buttonNavPath : (btn.url || buttonNavPath);
               const isActive = hasEnabledActivities
                 ? (currentPath.startsWith(`/nav/${btn.id}`) || currentPath === buttonNavPath || isRouteActive)
-                : (currentPath === btn.url);
+                : (Boolean(btn.url) && currentPath === btn.url);
 
               return (
                 <a
@@ -275,9 +278,12 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyU
                 const hasEnabledActivities = (navButtonActivities || []).some(
                   (a) => a.navButtonId === btn.id && a.enabled === true
                 );
+                const hasExternalUrl = Boolean(
+                  btn.url && (btn.url.startsWith('http://') || btn.url.startsWith('https://'))
+                );
                 const effectiveIsExternal = hasEnabledActivities
                   ? false
-                  : (btn.isExternal || btn.url.startsWith('http://') || btn.url.startsWith('https://'));
+                  : Boolean(btn.isExternal || hasExternalUrl);
 
                 if (effectiveIsExternal) {
                   return (
@@ -306,10 +312,10 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyU
                 }
 
                 const buttonNavPath = btn.url && btn.url.startsWith('/nav/') ? btn.url : `/nav/${btn.id}`;
-                const targetUrl = hasEnabledActivities ? buttonNavPath : btn.url;
+                const targetUrl = hasEnabledActivities ? buttonNavPath : (btn.url || buttonNavPath);
                 const isActive = hasEnabledActivities
                   ? (currentPath.startsWith(`/nav/${btn.id}`) || currentPath === buttonNavPath || isRouteActive)
-                  : (currentPath === btn.url);
+                  : (Boolean(btn.url) && currentPath === btn.url);
 
                 return (
                   <a

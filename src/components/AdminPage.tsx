@@ -351,7 +351,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
   // ---------------------------------------------------------
   const handleSaveNavButton = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingNavButton || !editingNavButton.title || !editingNavButton.url) return;
+    if (!editingNavButton || !editingNavButton.title) return;
 
     try {
       const res = await fetch('/api/admin/save-nav-button', {
@@ -2220,11 +2220,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
 
                 <div>
                   <label className="block text-neutral-300 font-medium mb-1">
-                    連結目標（內部路徑或外部網址）*
+                    連結目標（內部路徑或外部網址）
                   </label>
                   <input
                     type="text"
-                    required
                     value={editingNavButton.url || ''}
                     onChange={(e) => {
                       const val = e.target.value;
@@ -2235,11 +2234,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                         isExternal: isExt ? true : editingNavButton.isExternal,
                       });
                     }}
-                    placeholder="內部路徑如 / 或 /intro 或外部網址如 https://..."
+                    placeholder="內部路徑如 / 或 /intro 或外部網址如 https://...（選填）"
                     className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 font-mono"
                   />
                   <p className="text-[11px] text-neutral-400 mt-1">
-                    內部專區範例：首頁行事曆「/」、登山入門「/intro」、登山工具「/tools」、活動花絮「/highlights」、問卷調查「/surveys」、政策條款「/policies」
+                    選填。若此按鈕底下有啟用中的活動，前台點擊將優先開啟活動列表；若無活動，則導向此處設定之網址或路徑。
                   </p>
                 </div>
 

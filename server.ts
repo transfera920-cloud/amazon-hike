@@ -16,6 +16,7 @@ import type {
   SurveyItem,
   NavButtonItem,
   NavButtonEntry,
+  NavButtonActivity,
 } from './src/types.js';
 
 const app = express();
@@ -483,6 +484,57 @@ apiRouter.post('/admin/save-nav-button-entry', requireAdmin, (req: Request, res:
   }
 });
 
+// Save Nav Button Activity (Add / Edit)
+apiRouter.post('/admin/save-nav-button-activity', requireAdmin, (req: Request, res: Response) => {
+  try {
+    const db = loadDatabase();
+    const item: NavButtonActivity = req.body;
+
+    if (!item.title || !item.title.trim()) {
+      return res.status(400).json({ error: '行程／活動名稱為必填欄位' });
+    }
+    if (!item.navButtonId || !item.navButtonId.trim()) {
+      return res.status(400).json({ error: '所屬按鈕為必填欄位' });
+    }
+    if (!item.slug || !item.slug.trim()) {
+      return res.status(400).json({ error: '主站內部路徑為必填欄位' });
+    }
+    if (!item.externalUrl || !item.externalUrl.trim()) {
+      return res.status(400).json({ error: '完整行程／報名網址為必填欄位' });
+    }
+
+    const rawSlug = item.slug.trim().toLowerCase().replace(/^\/+|\/+$/g, '');
+    const cleanSlug = rawSlug.replace(/[^a-z0-9-_]/g, '') || `activity_${Date.now()}`;
+
+    const cleanItem: NavButtonActivity = {
+      id: item.id || `act_${Date.now()}`,
+      navButtonId: item.navButtonId.trim(),
+      slug: cleanSlug,
+      title: item.title.trim(),
+      description: (item.description || '').trim(),
+      externalUrl: item.externalUrl.trim(),
+      sortOrder: Number(item.sortOrder) || 0,
+      enabled: item.enabled ?? true,
+    };
+
+    if (!Array.isArray(db.navButtonActivities)) {
+      db.navButtonActivities = [];
+    }
+
+    const existingIndex = db.navButtonActivities.findIndex((a) => a.id === cleanItem.id);
+    if (existingIndex >= 0) {
+      db.navButtonActivities[existingIndex] = cleanItem;
+    } else {
+      db.navButtonActivities.push(cleanItem);
+    }
+
+    saveDatabase(db);
+    res.json({ success: true, item: cleanItem });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Reset Nav Buttons to default 8
 apiRouter.post('/admin/reset-nav-buttons', requireAdmin, (req: Request, res: Response) => {
   try {
@@ -549,12 +601,19 @@ function executeDeleteItem(type: string, id: string): { success: boolean; error?
     db.surveyUrl = firstEnabled ? firstEnabled.url : '';
   } else if (normalizedType === 'navbutton' || normalizedType === 'nav_button') {
     db.navButtons = (db.navButtons || []).filter((b) => String(b.id) !== targetId);
+    db.navButtonActivities = (db.navButtonActivities || []).filter((a) => String(a.navButtonId) !== targetId);
   } else if (
     normalizedType === 'navbuttonentry' ||
     normalizedType === 'nav_button_entry' ||
     normalizedType === 'navbuttonentries'
   ) {
     db.navButtonEntries = (db.navButtonEntries || []).filter((e) => String(e.id) !== targetId);
+  } else if (
+    normalizedType === 'navbuttonactivity' ||
+    normalizedType === 'nav_button_activity' ||
+    normalizedType === 'navbuttonactivities'
+  ) {
+    db.navButtonActivities = (db.navButtonActivities || []).filter((a) => String(a.id) !== targetId);
   } else {
     return { success: false, error: `未知的資料類別: ${type}` };
   }

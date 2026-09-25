@@ -20,7 +20,8 @@ import {
   Globe,
   ChevronDown,
   ChevronRight,
-  CornerDownRight
+  CornerDownRight,
+  Compass
 } from 'lucide-react';
 import type {
   IntroItem,
@@ -31,6 +32,7 @@ import type {
   SurveyItem,
   NavButtonItem,
   NavButtonEntry,
+  NavButtonActivity,
   AssociationDatabase
 } from '../types.js';
 
@@ -69,6 +71,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
   const [editingNavButton, setEditingNavButton] = useState<Partial<NavButtonItem> | null>(null);
   const [editingNavEntry, setEditingNavEntry] = useState<Partial<NavButtonEntry> | null>(null);
   const [expandedButtonIds, setExpandedButtonIds] = useState<Record<string, boolean>>({});
+  const [editingNavButtonActivity, setEditingNavButtonActivity] = useState<Partial<NavButtonActivity> | null>(null);
+  const [expandedActivityButtonId, setExpandedActivityButtonId] = useState<string | null>(null);
 
   // In-app deletion modal
   const [deleteTarget, setDeleteTarget] = useState<{
@@ -412,6 +416,41 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
     }
   };
 
+  const handleSaveNavButtonActivity = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (
+      !editingNavButtonActivity ||
+      !editingNavButtonActivity.title ||
+      !editingNavButtonActivity.slug ||
+      !editingNavButtonActivity.externalUrl ||
+      !editingNavButtonActivity.navButtonId
+    )
+      return;
+
+    try {
+      const res = await fetch('/api/admin/save-nav-button-activity', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(editingNavButtonActivity),
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        showFeedback('活動資料已成功儲存');
+        setEditingNavButtonActivity(null);
+        await fetchAdminData(token);
+        onDataUpdated();
+      } else {
+        showFeedback(json.error || '儲存失敗', true);
+      }
+    } catch (err: any) {
+      showFeedback(err.message || '連線儲存失敗', true);
+    }
+  };
+
   const handleConfirmResetNav = async () => {
     if (isResettingNav) return;
     setIsResettingNav(true);
@@ -534,12 +573,19 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
             next.policies = (next.policies || []).filter((p) => String(p.id) !== targetId);
           } else if (targetType === 'navbutton' || targetType === 'nav_button') {
             next.navButtons = (next.navButtons || []).filter((b) => String(b.id) !== targetId);
+            next.navButtonActivities = (next.navButtonActivities || []).filter((a) => String(a.navButtonId) !== targetId);
           } else if (
             targetType === 'navbuttonentry' ||
             targetType === 'nav_button_entry' ||
             targetType === 'navbuttonentries'
           ) {
             next.navButtonEntries = (next.navButtonEntries || []).filter((e) => String(e.id) !== targetId);
+          } else if (
+            targetType === 'navbuttonactivity' ||
+            targetType === 'nav_button_activity' ||
+            targetType === 'navbuttonactivities'
+          ) {
+            next.navButtonActivities = (next.navButtonActivities || []).filter((a) => String(a.id) !== targetId);
           }
           return next;
         });
@@ -552,6 +598,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
         if (editingPolicy?.id === deleteTarget.id) setEditingPolicy(null);
         if (editingNavButton?.id === deleteTarget.id) setEditingNavButton(null);
         if (editingNavEntry?.id === deleteTarget.id) setEditingNavEntry(null);
+        if (editingNavButtonActivity?.id === deleteTarget.id) setEditingNavButtonActivity(null);
 
         setDeleteTarget(null);
         await fetchAdminData(token);
@@ -2279,8 +2326,12 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
             <div className="divide-y divide-neutral-800">
               {(adminData.navButtons || []).map((item) => {
                 const isExpanded = Boolean(expandedButtonIds[item.id]);
+                const isActivityExpanded = expandedActivityButtonId === item.id;
                 const buttonEntries = (adminData.navButtonEntries || [])
                   .filter((e) => e.navButtonId === item.id)
+                  .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+                const buttonActivities = (adminData.navButtonActivities || [])
+                  .filter((a) => a.navButtonId === item.id)
                   .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
 
                 return (
@@ -2329,6 +2380,18 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                         >
                           {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                           <span>次層項目 ({buttonEntries.length})</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => toggleExpandActivityButton(item.id)}
+                          className={`inline-flex items-center gap-1 p-1.5 rounded transition-colors ${
+                            isActivityExpanded
+                              ? 'text-emerald-400 bg-neutral-800 border border-emerald-600/60'
+                              : 'text-neutral-300 hover:text-white hover:bg-neutral-800'
+                          }`}
+                          title="管理活動"
+                        >
+                          <Compass size={15} />
                         </button>
                         <button
                           type="button"

@@ -71,12 +71,24 @@ export interface NavButtonEntry {
   sortOrder: number;
 }
 
+export interface NavButtonActivity {
+  id: string;
+  navButtonId: string;   // 父按鈕 id，代表父子關係
+  slug: string;          // 全站唯一的內部路徑代稱，例如 "biyang-trail"
+  title: string;         // 行程／活動名稱
+  description: string;   // 說明
+  externalUrl: string;   // 完整行程／報名的外部網址
+  sortOrder: number;
+  enabled: boolean;      // true = 前台顯示，false = 後台保留、前台不顯示
+}
+
 export interface AssociationDatabase {
   version: number;
   surveyUrl: string;
   surveys?: SurveyItem[];
   navButtons?: NavButtonItem[];
   navButtonEntries?: NavButtonEntry[];
+  navButtonActivities?: NavButtonActivity[];
   chapters?: ChapterItem[];
   intros: IntroItem[];
   tools: ToolItem[];
@@ -98,6 +110,7 @@ export interface PublicDataResponse {
   surveys?: SurveyItem[];
   navButtons?: NavButtonItem[];
   navButtonEntries?: NavButtonEntry[];
+  navButtonActivities?: NavButtonActivity[];
   chapters?: ChapterItem[];
   intros: IntroItem[];
   tools: ToolItem[];

@@ -12,7 +12,8 @@ import type {
   PolicyItem,
   SurveyItem,
   NavButtonItem,
-  NavButtonEntry
+  NavButtonEntry,
+  NavButtonActivity
 } from '../src/types.js';
 
 const ADMIN_SECRET_TOKEN = 'amazon-alpine-secure-token-2026';
@@ -435,6 +436,53 @@ export async function handleApiRequest(
       }
     }
 
+    // POST /api/admin/save-nav-button-activity
+    if (path === '/api/admin/save-nav-button-activity' && method === 'POST') {
+      try {
+        const db = await loadDatabaseWorker(env);
+        const item: NavButtonActivity = await request.json();
+        if (!item.title || !item.title.trim()) {
+          return jsonResponse({ error: '行程／活動名稱為必填欄位' }, 400);
+        }
+        if (!item.navButtonId || !item.navButtonId.trim()) {
+          return jsonResponse({ error: '所屬按鈕為必填欄位' }, 400);
+        }
+        if (!item.slug || !item.slug.trim()) {
+          return jsonResponse({ error: '主站內部路徑為必填欄位' }, 400);
+        }
+        if (!item.externalUrl || !item.externalUrl.trim()) {
+          return jsonResponse({ error: '完整行程／報名網址為必填欄位' }, 400);
+        }
+
+        const rawSlug = item.slug.trim().toLowerCase().replace(/^\/+|\/+$/g, '');
+        const cleanSlug = rawSlug.replace(/[^a-z0-9-_]/g, '') || `activity_${Date.now()}`;
+
+        if (!Array.isArray(db.navButtonActivities)) {
+          db.navButtonActivities = [];
+        }
+
+        const cleanItem: NavButtonActivity = {
+          id: item.id || `act_${Date.now()}`,
+          navButtonId: item.navButtonId.trim(),
+          slug: cleanSlug,
+          title: item.title.trim(),
+          description: (item.description || '').trim(),
+          externalUrl: item.externalUrl.trim(),
+          sortOrder: Number(item.sortOrder) || 0,
+          enabled: item.enabled ?? true,
+        };
+
+        const idx = db.navButtonActivities.findIndex((a) => a.id === cleanItem.id);
+        if (idx >= 0) db.navButtonActivities[idx] = cleanItem;
+        else db.navButtonActivities.push(cleanItem);
+
+        await saveDatabaseWorker(db, env);
+        return jsonResponse({ success: true, item: cleanItem });
+      } catch (err: any) {
+        return jsonResponse({ error: err.message }, 500);
+      }
+    }
+
     // POST /api/admin/reset-nav-buttons
     if (path === '/api/admin/reset-nav-buttons' && method === 'POST') {
       try {
@@ -529,12 +577,19 @@ export async function handleApiRequest(
           db.surveyUrl = first ? first.url : '';
         } else if (normType === 'navbutton' || normType === 'nav_button') {
           db.navButtons = (db.navButtons || []).filter((b) => String(b.id) !== targetId);
+          db.navButtonActivities = (db.navButtonActivities || []).filter((a) => String(a.navButtonId) !== targetId);
         } else if (
           normType === 'navbuttonentry' ||
           normType === 'nav_button_entry' ||
           normType === 'navbuttonentries'
         ) {
           db.navButtonEntries = (db.navButtonEntries || []).filter((e) => String(e.id) !== targetId);
+        } else if (
+          normType === 'navbuttonactivity' ||
+          normType === 'nav_button_activity' ||
+          normType === 'navbuttonactivities'
+        ) {
+          db.navButtonActivities = (db.navButtonActivities || []).filter((a) => String(a.id) !== targetId);
         } else {
           return jsonResponse({ error: `未知的資料類別: ${type}` }, 400);
         }

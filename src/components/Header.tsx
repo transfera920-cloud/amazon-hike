@@ -53,14 +53,14 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyU
     navButtons && navButtons.length > 0
       ? navButtons.filter((b) => b.enabled)
       : [
-          { id: '1', title: '活動行事曆', url: '/', isExternal: false, sortOrder: 1, enabled: true },
-          { id: '2', title: '近期活動', url: 'https://amazon-trail.ai.studio/activity/', isExternal: true, sortOrder: 2, enabled: true },
-          { id: '3', title: '登山入門', url: '/intro', isExternal: false, sortOrder: 3, enabled: true },
-          { id: '4', title: '登山工具', url: '/tools', isExternal: false, sortOrder: 4, enabled: true },
-          { id: '5', title: '活動花絮', url: '/highlights', isExternal: false, sortOrder: 5, enabled: true },
-          { id: '6', title: '問卷調查', url: '/surveys', isExternal: false, sortOrder: 6, enabled: true },
-          { id: '7', title: '政策與條款', url: '/policies', isExternal: false, sortOrder: 7, enabled: true },
-          { id: '8', title: '行程總表', url: 'https://amazon-data.ai.studio/routes', isExternal: true, sortOrder: 8, enabled: true },
+          { id: 'btn_calendar', title: '活動行事曆', url: '/', isExternal: false, sortOrder: 1, enabled: true },
+          { id: 'btn_recent', title: '近期活動', url: 'https://amazon-trail.ai.studio/activity/', isExternal: true, sortOrder: 2, enabled: true },
+          { id: 'btn_intro', title: '登山入門', url: '/intro', isExternal: false, sortOrder: 3, enabled: true },
+          { id: 'btn_tools', title: '登山工具', url: '/tools', isExternal: false, sortOrder: 4, enabled: true },
+          { id: 'btn_highlights', title: '活動花絮', url: '/highlights', isExternal: false, sortOrder: 5, enabled: true },
+          { id: 'btn_survey', title: '問卷調查', url: '/surveys', isExternal: false, sortOrder: 6, enabled: true },
+          { id: 'btn_policies', title: '政策與條款', url: '/policies', isExternal: false, sortOrder: 7, enabled: true },
+          { id: 'btn_routes', title: '行程總表', url: 'https://amazon-data.ai.studio/routes', isExternal: true, sortOrder: 8, enabled: true },
         ]
   ).sort((a, b) => a.sortOrder - b.sortOrder);
 
@@ -243,9 +243,10 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyU
                 );
               }
 
-              const targetUrl = hasEnabledActivities ? `/nav/${btn.id}` : btn.url;
+              const buttonNavPath = btn.url && btn.url.startsWith('/nav/') ? btn.url : `/nav/${btn.id}`;
+              const targetUrl = hasEnabledActivities ? buttonNavPath : btn.url;
               const isActive = hasEnabledActivities
-                ? (currentPath.startsWith(`/nav/${btn.id}`) || isRouteActive)
+                ? (currentPath.startsWith(`/nav/${btn.id}`) || currentPath === buttonNavPath || isRouteActive)
                 : (currentPath === btn.url);
 
               return (
@@ -304,9 +305,10 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyU
                   );
                 }
 
-                const targetUrl = hasEnabledActivities ? `/nav/${btn.id}` : btn.url;
+                const buttonNavPath = btn.url && btn.url.startsWith('/nav/') ? btn.url : `/nav/${btn.id}`;
+                const targetUrl = hasEnabledActivities ? buttonNavPath : btn.url;
                 const isActive = hasEnabledActivities
-                  ? (currentPath.startsWith(`/nav/${btn.id}`) || isRouteActive)
+                  ? (currentPath.startsWith(`/nav/${btn.id}`) || currentPath === buttonNavPath || isRouteActive)
                   : (currentPath === btn.url);
 
                 return (

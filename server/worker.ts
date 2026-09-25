@@ -454,7 +454,14 @@ ${activityUrls}
         if (buttonId) {
           try {
             const db = await loadDatabaseWorker(env);
-            const btn = (db.navButtons || []).find((b) => b.id === buttonId);
+            const btn = (db.navButtons || []).find((b) => {
+              if (b.id === buttonId) return true;
+              if (b.url === normalizedPath) return true;
+              if (b.url === `/nav/${buttonId}`) return true;
+              const strippedUrl = (b.url || '').replace(/^\/nav\//, '').replace(/\/+$/, '');
+              if (strippedUrl && strippedUrl === buttonId) return true;
+              return false;
+            });
             if (btn) {
               routeMeta = {
                 title: `${btn.title} - 活動列表 | 亞馬遜國家山岳協會 | Amazon Alpine Association`,
@@ -552,9 +559,18 @@ ${activityUrls}
           const buttonId = normalizedPath.replace(/^\/nav\//, '');
           try {
             const db = await loadDatabaseWorker(env);
-            const btn = (db.navButtons || []).find((b) => b.id === buttonId);
-            const acts = (db.navButtonActivities || []).filter((a) => a.navButtonId === buttonId && a.enabled);
-            const listHtml = acts.map(a => `<li><a href="/route/${a.slug}">${escapeHtml(a.title)}</a></li>`).join('');
+            const btn = (db.navButtons || []).find((b) => {
+              if (b.id === buttonId) return true;
+              if (b.url === normalizedPath) return true;
+              if (b.url === `/nav/${buttonId}`) return true;
+              const strippedUrl = (b.url || '').replace(/^\/nav\//, '').replace(/\/+$/, '');
+              if (strippedUrl && strippedUrl === buttonId) return true;
+              return false;
+            });
+            const acts = btn
+              ? (db.navButtonActivities || []).filter((a) => a.navButtonId === btn.id && a.enabled)
+              : [];
+            const listHtml = acts.map((a) => `<li><a href="/route/${a.slug}">${escapeHtml(a.title)}</a></li>`).join('');
             rootHtml = `<main><h1>${escapeHtml(btn ? btn.title : '活動列表')}</h1><ul>${listHtml}</ul>${buildSiteNavHtml()}</main>`;
           } catch (e) {
             rootHtml = buildSectionShellHtml(routeMeta.title, routeMeta.description);

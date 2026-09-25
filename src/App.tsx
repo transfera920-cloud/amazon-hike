@@ -169,19 +169,28 @@ export default function App() {
     return null;
   }, [currentPath]);
 
-  // Current nav button
+  // Current nav button: matches by id or by url matching /nav/:buttonId
   const currentNavButton = useMemo(() => {
     if (!currentNavButtonId) return null;
-    return (publicData.navButtons || []).find((b) => b.id === currentNavButtonId) || null;
-  }, [publicData.navButtons, currentNavButtonId]);
+    return (
+      (publicData.navButtons || []).find((b) => {
+        if (b.id === currentNavButtonId) return true;
+        if (b.url === currentPath) return true;
+        if (b.url === `/nav/${currentNavButtonId}`) return true;
+        const stripped = (b.url || '').replace(/^\/nav\//, '').replace(/\/+$/, '');
+        if (stripped && stripped === currentNavButtonId) return true;
+        return false;
+      }) || null
+    );
+  }, [publicData.navButtons, currentNavButtonId, currentPath]);
 
   // Enabled activities for current nav button
   const currentNavActivities = useMemo(() => {
-    if (!currentNavButtonId) return [];
+    if (!currentNavButton) return [];
     return (publicData.navButtonActivities || [])
-      .filter((a) => a.navButtonId === currentNavButtonId && a.enabled)
+      .filter((a) => a.navButtonId === currentNavButton.id && a.enabled)
       .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-  }, [publicData.navButtonActivities, currentNavButtonId]);
+  }, [publicData.navButtonActivities, currentNavButton]);
 
   // Dynamic route slug if route matches /route/:slug
   const currentRouteSlug = useMemo(() => {

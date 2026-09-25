@@ -58,6 +58,17 @@ function ensureChapters(db: AssociationDatabase): boolean {
 }
 
 /**
+ * 確保資料庫包含 navButtonEntries 集合欄位；若缺失，補一個空陣列。
+ */
+function ensureNavButtonEntries(db: AssociationDatabase): boolean {
+  if (!Array.isArray(db.navButtonEntries)) {
+    db.navButtonEntries = [];
+    return true;
+  }
+  return false;
+}
+
+/**
  * 「KV 優先 + 安全容錯」讀取機制：
  * 1. 若環境有綁定 ASSOCIATION_DB，優先讀取 Cloudflare KV (association_data)。
  * 2. 若 KV 內已有資料，直接返回線上權威資料，絕不覆蓋。
@@ -77,12 +88,14 @@ export async function loadDatabaseWorker(env?: WorkerEnv): Promise<AssociationDa
 
       // 3. 若 KV 內已有正式資料，直接返回線上權威資料，絕不覆蓋
       if (kvValue && isValidDatabase(kvValue)) {
-        const needsSave = ensureChapters(kvValue);
+        const needsSaveChapters = ensureChapters(kvValue);
+        const needsSaveEntries = ensureNavButtonEntries(kvValue);
+        const needsSave = needsSaveChapters || needsSaveEntries;
         if (needsSave) {
           try {
             await env.ASSOCIATION_DB.put(KV_KEY, JSON.stringify(kvValue, null, 2));
           } catch (e) {
-            console.warn('⚠️ [Cloudflare KV] 更新補全 chapters 失敗:', e);
+            console.warn('⚠️ [Cloudflare KV] 更新補全 chapters/navButtonEntries 失敗:', e);
           }
         }
         memoryWorkerDb = kvValue;
@@ -93,6 +106,7 @@ export async function loadDatabaseWorker(env?: WorkerEnv): Promise<AssociationDa
       console.log('ℹ️ [Cloudflare KV] KV 為空，首次載入種子檔 baselineData 並自動寫入 KV (key: association_data)...');
       const seed = JSON.parse(JSON.stringify(baselineData)) as AssociationDatabase;
       ensureChapters(seed);
+      ensureNavButtonEntries(seed);
       try {
         await env.ASSOCIATION_DB.put(KV_KEY, JSON.stringify(seed, null, 2));
         console.log('✅ [Cloudflare KV] 初始種子資料已成功存入 Cloudflare KV');
@@ -114,11 +128,13 @@ export async function loadDatabaseWorker(env?: WorkerEnv): Promise<AssociationDa
   // 若尚未綁定 KV 或讀取異常時的安全退回機制
   if (memoryWorkerDb && isValidDatabase(memoryWorkerDb)) {
     ensureChapters(memoryWorkerDb);
+    ensureNavButtonEntries(memoryWorkerDb);
     return memoryWorkerDb;
   }
 
   const seed = JSON.parse(JSON.stringify(baselineData)) as AssociationDatabase;
   ensureChapters(seed);
+  ensureNavButtonEntries(seed);
   memoryWorkerDb = seed;
   return seed;
 }
@@ -168,6 +184,9 @@ export function formatPublicData(db: AssociationDatabase): PublicDataResponse {
     surveys: enabledSurveys,
     navButtons: (db.navButtons || [])
       .filter((b) => b.enabled)
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
+    navButtonEntries: (db.navButtonEntries || [])
+      .slice()
       .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
     chapters: (db.chapters || [])
       .filter((c) => c.enabled)

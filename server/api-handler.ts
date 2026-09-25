@@ -11,7 +11,8 @@ import type {
   HighlightItem,
   PolicyItem,
   SurveyItem,
-  NavButtonItem
+  NavButtonItem,
+  NavButtonEntry
 } from '../src/types.js';
 
 const ADMIN_SECRET_TOKEN = 'amazon-alpine-secure-token-2026';
@@ -395,6 +396,45 @@ export async function handleApiRequest(
       }
     }
 
+    // POST /api/admin/save-nav-button-entry
+    if (path === '/api/admin/save-nav-button-entry' && method === 'POST') {
+      try {
+        const db = await loadDatabaseWorker(env);
+        const item: NavButtonEntry = await request.json();
+        if (!item.title || !item.title.trim()) {
+          return jsonResponse({ error: '項目標題為必填欄位' }, 400);
+        }
+        if (!item.url || !item.url.trim()) {
+          return jsonResponse({ error: '連結網址為必填欄位' }, 400);
+        }
+        if (!item.navButtonId || !item.navButtonId.trim()) {
+          return jsonResponse({ error: '所屬按鈕為必填欄位' }, 400);
+        }
+
+        if (!Array.isArray(db.navButtonEntries)) {
+          db.navButtonEntries = [];
+        }
+
+        const cleanItem: NavButtonEntry = {
+          id: item.id || `entry_${Date.now()}`,
+          navButtonId: item.navButtonId.trim(),
+          title: item.title.trim(),
+          description: (item.description || '').trim(),
+          url: item.url.trim(),
+          sortOrder: Number(item.sortOrder) || 0,
+        };
+
+        const idx = db.navButtonEntries.findIndex((e) => e.id === cleanItem.id);
+        if (idx >= 0) db.navButtonEntries[idx] = cleanItem;
+        else db.navButtonEntries.push(cleanItem);
+
+        await saveDatabaseWorker(db, env);
+        return jsonResponse({ success: true, item: cleanItem });
+      } catch (err: any) {
+        return jsonResponse({ error: err.message }, 500);
+      }
+    }
+
     // POST /api/admin/reset-nav-buttons
     if (path === '/api/admin/reset-nav-buttons' && method === 'POST') {
       try {
@@ -489,6 +529,12 @@ export async function handleApiRequest(
           db.surveyUrl = first ? first.url : '';
         } else if (normType === 'navbutton' || normType === 'nav_button') {
           db.navButtons = (db.navButtons || []).filter((b) => String(b.id) !== targetId);
+        } else if (
+          normType === 'navbuttonentry' ||
+          normType === 'nav_button_entry' ||
+          normType === 'navbuttonentries'
+        ) {
+          db.navButtonEntries = (db.navButtonEntries || []).filter((e) => String(e.id) !== targetId);
         } else {
           return jsonResponse({ error: `未知的資料類別: ${type}` }, 400);
         }

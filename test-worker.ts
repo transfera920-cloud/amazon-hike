@@ -117,6 +117,7 @@ async function runTests() {
     assert(Array.isArray(json.data.policies) && json.data.policies.length >= 1, '/api/public-data policies has items');
     assert(Array.isArray(json.data.highlights), '/api/public-data highlights is array');
     assert(Array.isArray(json.data.navButtons) && json.data.navButtons.length >= 1, '/api/public-data navButtons has items');
+    assert(Array.isArray(json.data.navButtonEntries), '/api/public-data navButtonEntries is array');
   }
 
   // 3. GET /api/content
@@ -483,6 +484,58 @@ async function runTests() {
     const stillThere = afterDelJson.data.tools.find((t: any) => t.id === 'tool_test_verify');
     assert(!stillThere, 'Verified test item was cleanly deleted');
     assert(Array.isArray(afterDelJson.data.tools), 'Tools collection remains valid');
+
+    // Test save-nav-button-entry API
+    const addEntryRes = await worker.fetch(
+      new Request('http://localhost/api/admin/save-nav-button-entry', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          id: 'entry_test_verify',
+          navButtonId: 'btn_calendar',
+          title: '[TEST_ENTRY] 測試次層項目',
+          description: '僅供相容性驗證',
+          url: 'https://example.com/test-sub',
+          sortOrder: 1,
+        }),
+      }),
+      env,
+      {}
+    );
+    assert(addEntryRes.status === 200, 'Admin save-nav-button-entry succeeded');
+
+    // Verify entry in public-data
+    const verifyEntryRes = await worker.fetch(new Request('http://localhost/api/public-data'), env, {});
+    const verifyEntryJson: any = await verifyEntryRes.json();
+    const foundEntry = verifyEntryJson.data.navButtonEntries.find((e: any) => e.id === 'entry_test_verify');
+    assert(Boolean(foundEntry) && foundEntry.navButtonId === 'btn_calendar', 'Verified test navButtonEntry is readable from public-data');
+
+    // Delete test navButtonEntry
+    const delEntryRes = await worker.fetch(
+      new Request('http://localhost/api/admin/delete-item', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          type: 'navButtonEntry',
+          id: 'entry_test_verify',
+        }),
+      }),
+      env,
+      {}
+    );
+    assert(delEntryRes.status === 200, 'Admin delete navButtonEntry succeeded');
+
+    // Re-verify entry is deleted
+    const afterDelEntryRes = await worker.fetch(new Request('http://localhost/api/public-data'), env, {});
+    const afterDelEntryJson: any = await afterDelEntryRes.json();
+    const entryStillThere = afterDelEntryJson.data.navButtonEntries.find((e: any) => e.id === 'entry_test_verify');
+    assert(!entryStillThere, 'Verified test navButtonEntry was cleanly deleted');
   }
 
   console.log(`\n=== TEST SUITE COMPLETE: ${allPassed ? 'ALL TESTS PASSED' : 'SOME TESTS FAILED'} ===`);

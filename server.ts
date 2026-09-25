@@ -15,6 +15,7 @@ import type {
   PolicyItem,
   SurveyItem,
   NavButtonItem,
+  NavButtonEntry,
 } from './src/types.js';
 
 const app = express();
@@ -439,6 +440,49 @@ apiRouter.post('/admin/save-nav-button', requireAdmin, (req: Request, res: Respo
   }
 });
 
+// Save Nav Button Entry (Add / Edit)
+apiRouter.post('/admin/save-nav-button-entry', requireAdmin, (req: Request, res: Response) => {
+  try {
+    const db = loadDatabase();
+    const item: NavButtonEntry = req.body;
+
+    if (!item.title || !item.title.trim()) {
+      return res.status(400).json({ error: '項目名稱為必填欄位' });
+    }
+    if (!item.url || !item.url.trim()) {
+      return res.status(400).json({ error: '連結網址為必填欄位' });
+    }
+    if (!item.navButtonId || !item.navButtonId.trim()) {
+      return res.status(400).json({ error: '所屬按鈕為必填欄位' });
+    }
+
+    const cleanItem: NavButtonEntry = {
+      id: item.id || `entry_${Date.now()}`,
+      navButtonId: item.navButtonId.trim(),
+      title: item.title.trim(),
+      description: (item.description || '').trim(),
+      url: item.url.trim(),
+      sortOrder: Number(item.sortOrder) || 0,
+    };
+
+    if (!Array.isArray(db.navButtonEntries)) {
+      db.navButtonEntries = [];
+    }
+
+    const existingIndex = db.navButtonEntries.findIndex((e) => e.id === cleanItem.id);
+    if (existingIndex >= 0) {
+      db.navButtonEntries[existingIndex] = cleanItem;
+    } else {
+      db.navButtonEntries.push(cleanItem);
+    }
+
+    saveDatabase(db);
+    res.json({ success: true, item: cleanItem });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Reset Nav Buttons to default 8
 apiRouter.post('/admin/reset-nav-buttons', requireAdmin, (req: Request, res: Response) => {
   try {
@@ -505,6 +549,12 @@ function executeDeleteItem(type: string, id: string): { success: boolean; error?
     db.surveyUrl = firstEnabled ? firstEnabled.url : '';
   } else if (normalizedType === 'navbutton' || normalizedType === 'nav_button') {
     db.navButtons = (db.navButtons || []).filter((b) => String(b.id) !== targetId);
+  } else if (
+    normalizedType === 'navbuttonentry' ||
+    normalizedType === 'nav_button_entry' ||
+    normalizedType === 'navbuttonentries'
+  ) {
+    db.navButtonEntries = (db.navButtonEntries || []).filter((e) => String(e.id) !== targetId);
   } else {
     return { success: false, error: `未知的資料類別: ${type}` };
   }

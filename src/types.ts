@@ -62,11 +62,21 @@ export interface NavButtonItem {
   sortOrder: number;
 }
 
+export interface NavButtonEntry {
+  id: string;
+  navButtonId: string; // 父按鈕 id
+  title: string;
+  description: string;
+  url: string;
+  sortOrder: number;
+}
+
 export interface AssociationDatabase {
   version: number;
   surveyUrl: string;
   surveys?: SurveyItem[];
   navButtons?: NavButtonItem[];
+  navButtonEntries?: NavButtonEntry[];
   chapters?: ChapterItem[];
   intros: IntroItem[];
   tools: ToolItem[];
@@ -87,6 +97,7 @@ export interface PublicDataResponse {
   surveyUrl: string;
   surveys?: SurveyItem[];
   navButtons?: NavButtonItem[];
+  navButtonEntries?: NavButtonEntry[];
   chapters?: ChapterItem[];
   intros: IntroItem[];
   tools: ToolItem[];

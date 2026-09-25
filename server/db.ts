@@ -57,6 +57,7 @@ function getInitialSeedData(): AssociationDatabase {
     surveyUrl: initialSurveyUrl,
     surveys: getDefaultSurveys(initialSurveyUrl),
     navButtons: getDefaultNavButtons(),
+    navButtonEntries: [],
     chapters: [],
     intros: [
       {
@@ -199,6 +200,11 @@ export function loadDatabase(): AssociationDatabase {
         needsSave = true;
       }
 
+      if (!Array.isArray(parsed.navButtonEntries)) {
+        parsed.navButtonEntries = [];
+        needsSave = true;
+      }
+
       if (!Array.isArray(parsed.navButtons)) {
         parsed.navButtons = getDefaultNavButtons();
         needsSave = true;
@@ -265,6 +271,9 @@ export function getPublicData(): PublicDataResponse {
     surveys: enabledSurveys,
     navButtons: (db.navButtons || [])
       .filter((b) => b.enabled)
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
+    navButtonEntries: (db.navButtonEntries || [])
+      .slice()
       .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
     chapters: (db.chapters || [])
       .filter((c) => c.enabled)

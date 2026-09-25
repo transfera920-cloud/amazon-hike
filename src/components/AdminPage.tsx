@@ -17,7 +17,10 @@ import {
   LayoutGrid,
   RotateCcw,
   ExternalLink,
-  Globe
+  Globe,
+  ChevronDown,
+  ChevronRight,
+  CornerDownRight
 } from 'lucide-react';
 import type {
   IntroItem,
@@ -27,6 +30,7 @@ import type {
   PolicyItem,
   SurveyItem,
   NavButtonItem,
+  NavButtonEntry,
   AssociationDatabase
 } from '../types.js';
 
@@ -63,6 +67,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
   const [editingSurvey, setEditingSurvey] = useState<Partial<SurveyItem> | null>(null);
   const [editingPolicy, setEditingPolicy] = useState<Partial<PolicyItem> | null>(null);
   const [editingNavButton, setEditingNavButton] = useState<Partial<NavButtonItem> | null>(null);
+  const [editingNavEntry, setEditingNavEntry] = useState<Partial<NavButtonEntry> | null>(null);
+  const [expandedButtonIds, setExpandedButtonIds] = useState<Record<string, boolean>>({});
 
   // In-app deletion modal
   const [deleteTarget, setDeleteTarget] = useState<{
@@ -371,6 +377,41 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
     setShowResetNavModal(true);
   };
 
+  const toggleExpandButton = (btnId: string) => {
+    setExpandedButtonIds((prev) => ({
+      ...prev,
+      [btnId]: !prev[btnId],
+    }));
+  };
+
+  const handleSaveNavEntry = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingNavEntry || !editingNavEntry.title || !editingNavEntry.url || !editingNavEntry.navButtonId) return;
+
+    try {
+      const res = await fetch('/api/admin/save-nav-button-entry', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(editingNavEntry),
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        showFeedback('按鈕次層項目已成功儲存');
+        setEditingNavEntry(null);
+        await fetchAdminData(token);
+        onDataUpdated();
+      } else {
+        showFeedback(json.error || '儲存失敗', true);
+      }
+    } catch (err: any) {
+      showFeedback(err.message || '連線儲存失敗', true);
+    }
+  };
+
   const handleConfirmResetNav = async () => {
     if (isResettingNav) return;
     setIsResettingNav(true);
@@ -493,6 +534,12 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
             next.policies = (next.policies || []).filter((p) => String(p.id) !== targetId);
           } else if (targetType === 'navbutton' || targetType === 'nav_button') {
             next.navButtons = (next.navButtons || []).filter((b) => String(b.id) !== targetId);
+          } else if (
+            targetType === 'navbuttonentry' ||
+            targetType === 'nav_button_entry' ||
+            targetType === 'navbuttonentries'
+          ) {
+            next.navButtonEntries = (next.navButtonEntries || []).filter((e) => String(e.id) !== targetId);
           }
           return next;
         });
@@ -504,6 +551,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
         if (editingSurvey?.id === deleteTarget.id) setEditingSurvey(null);
         if (editingPolicy?.id === deleteTarget.id) setEditingPolicy(null);
         if (editingNavButton?.id === deleteTarget.id) setEditingNavButton(null);
+        if (editingNavEntry?.id === deleteTarget.id) setEditingNavEntry(null);
 
         setDeleteTarget(null);
         await fetchAdminData(token);
@@ -2229,63 +2277,270 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
           {/* Navigation Buttons Table */}
           <div className="border border-neutral-800 rounded bg-neutral-900/40 overflow-hidden">
             <div className="divide-y divide-neutral-800">
-              {(adminData.navButtons || []).map((item) => (
-                <div
-                  key={item.id}
-                  className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                >
-                  <div className="space-y-1.5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 font-mono">
-                        #{item.sortOrder}
-                      </span>
-                      <span className="font-bold text-neutral-100 text-sm">
-                        {item.title}
-                      </span>
-                      {item.isExternal ? (
-                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-sky-950 text-sky-300 border border-sky-800 inline-flex items-center gap-0.5">
-                          <ExternalLink size={10} />
-                          外部連結
-                        </span>
-                      ) : (
-                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-300 border border-emerald-800">
-                          內部專區
-                        </span>
-                      )}
-                      {!item.enabled && (
-                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-rose-950 text-rose-300 border border-rose-800">
-                          已隱藏
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-xs text-neutral-400 font-mono flex items-center gap-1">
-                      <Globe size={12} className="text-neutral-500 shrink-0" />
-                      <span className="break-all">{item.url}</span>
-                    </div>
-                  </div>
+              {(adminData.navButtons || []).map((item) => {
+                const isExpanded = Boolean(expandedButtonIds[item.id]);
+                const buttonEntries = (adminData.navButtonEntries || [])
+                  .filter((e) => e.navButtonId === item.id)
+                  .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
 
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => setEditingNavButton(item)}
-                      className="p-1.5 rounded text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors"
-                      title="編輯按鈕"
-                    >
-                      <Edit2 size={15} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        handleDeleteItem('navButton', item.id, item.title)
-                      }
-                      className="p-1.5 rounded text-rose-400 hover:text-rose-300 hover:bg-neutral-800 transition-colors"
-                      title="刪除按鈕"
-                    >
-                      <Trash2 size={15} />
-                    </button>
+                return (
+                  <div key={item.id} className="divide-y divide-neutral-800/60">
+                    <div className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 font-mono">
+                            #{item.sortOrder}
+                          </span>
+                          <span className="font-bold text-neutral-100 text-sm">
+                            {item.title}
+                          </span>
+                          {item.isExternal ? (
+                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-sky-950 text-sky-300 border border-sky-800 inline-flex items-center gap-0.5">
+                              <ExternalLink size={10} />
+                              外部連結
+                            </span>
+                          ) : (
+                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-300 border border-emerald-800">
+                              內部專區
+                            </span>
+                          )}
+                          {!item.enabled && (
+                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-rose-950 text-rose-300 border border-rose-800">
+                              已隱藏
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-neutral-400 font-mono flex items-center gap-1">
+                          <Globe size={12} className="text-neutral-500 shrink-0" />
+                          <span className="break-all">{item.url}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => toggleExpandButton(item.id)}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium transition-colors border ${
+                            isExpanded
+                              ? 'bg-neutral-800 text-emerald-300 border-neutral-700'
+                              : 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:bg-neutral-800 hover:text-white'
+                          }`}
+                          title="展開或收合此按鈕的次層項目清單"
+                        >
+                          {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                          <span>次層項目 ({buttonEntries.length})</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingNavButton(item)}
+                          className="p-1.5 rounded text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors"
+                          title="編輯按鈕"
+                        >
+                          <Edit2 size={15} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleDeleteItem('navButton', item.id, item.title)
+                          }
+                          className="p-1.5 rounded text-rose-400 hover:text-rose-300 hover:bg-neutral-800 transition-colors"
+                          title="刪除按鈕"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Expanded Sub-entries Management */}
+                    {isExpanded && (
+                      <div className="bg-neutral-950/70 p-4 border-t border-neutral-800/80 pl-6 sm:pl-10 space-y-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            <CornerDownRight size={14} className="text-emerald-500 shrink-0" />
+                            <span className="text-xs font-semibold text-neutral-300">
+                              「{item.title}」次層項目清單 ({buttonEntries.length})
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditingNavEntry({
+                                id: '',
+                                navButtonId: item.id,
+                                title: '',
+                                description: '',
+                                url: '',
+                                sortOrder: buttonEntries.length + 1,
+                              })
+                            }
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium bg-emerald-900/80 hover:bg-emerald-800 text-emerald-200 border border-emerald-700/60 transition-colors"
+                          >
+                            <Plus size={13} />
+                            <span>新增次層項目</span>
+                          </button>
+                        </div>
+
+                        {/* Add / Edit Entry Form */}
+                        {editingNavEntry && editingNavEntry.navButtonId === item.id && (
+                          <div className="border border-emerald-700/60 rounded bg-neutral-900/95 p-4 space-y-3">
+                            <h4 className="text-xs font-bold text-emerald-400">
+                              {editingNavEntry.id ? '編輯次層項目' : '新增次層項目'}（所屬按鈕：{item.title}）
+                            </h4>
+                            <form onSubmit={handleSaveNavEntry} className="space-y-3 text-xs">
+                              <div>
+                                <label className="block text-neutral-300 font-medium mb-1">
+                                  項目標題 *
+                                </label>
+                                <input
+                                  type="text"
+                                  required
+                                  value={editingNavEntry.title || ''}
+                                  onChange={(e) =>
+                                    setEditingNavEntry({
+                                      ...editingNavEntry,
+                                      title: e.target.value,
+                                    })
+                                  }
+                                  placeholder="例如：裝備檢查表、線上報名、常見問題"
+                                  className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 font-bold"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-neutral-300 font-medium mb-1">
+                                  項目描述
+                                </label>
+                                <input
+                                  type="text"
+                                  value={editingNavEntry.description || ''}
+                                  onChange={(e) =>
+                                    setEditingNavEntry({
+                                      ...editingNavEntry,
+                                      description: e.target.value,
+                                    })
+                                  }
+                                  placeholder="簡要描述此項目內容（選填）"
+                                  className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-neutral-300 font-medium mb-1">
+                                  連結網址 *
+                                </label>
+                                <input
+                                  type="text"
+                                  required
+                                  value={editingNavEntry.url || ''}
+                                  onChange={(e) =>
+                                    setEditingNavEntry({
+                                      ...editingNavEntry,
+                                      url: e.target.value,
+                                    })
+                                  }
+                                  placeholder="內部路徑如 /tools 或外部連結如 https://..."
+                                  className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 font-mono"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-neutral-300 font-medium mb-1">
+                                  排序序號
+                                </label>
+                                <input
+                                  type="number"
+                                  value={editingNavEntry.sortOrder ?? 0}
+                                  onChange={(e) =>
+                                    setEditingNavEntry({
+                                      ...editingNavEntry,
+                                      sortOrder: parseInt(e.target.value) || 0,
+                                    })
+                                  }
+                                  className="w-24 px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                                />
+                              </div>
+
+                              <div className="flex items-center gap-2 pt-2">
+                                <button
+                                  type="submit"
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-semibold transition-colors"
+                                >
+                                  <Save size={13} />
+                                  <span>儲存次層項目</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingNavEntry(null)}
+                                  className="px-3 py-1.5 rounded bg-neutral-800 text-neutral-300 hover:text-white transition-colors"
+                                >
+                                  取消
+                                </button>
+                              </div>
+                            </form>
+                          </div>
+                        )}
+
+                        {/* Entries List */}
+                        {buttonEntries.length > 0 ? (
+                          <div className="divide-y divide-neutral-800 border border-neutral-800 rounded bg-neutral-900/60 overflow-hidden">
+                            {buttonEntries.map((entry) => (
+                              <div
+                                key={entry.id}
+                                className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs"
+                              >
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[11px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 font-mono">
+                                      #{entry.sortOrder}
+                                    </span>
+                                    <span className="font-bold text-neutral-200">
+                                      {entry.title}
+                                    </span>
+                                  </div>
+                                  {entry.description && (
+                                    <p className="text-[11px] text-neutral-400">
+                                      {entry.description}
+                                    </p>
+                                  )}
+                                  <div className="text-[11px] text-neutral-400 font-mono flex items-center gap-1">
+                                    <Globe size={11} className="text-neutral-500 shrink-0" />
+                                    <span className="break-all">{entry.url}</span>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingNavEntry(entry)}
+                                    className="p-1 rounded text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors"
+                                    title="編輯次層項目"
+                                  >
+                                    <Edit2 size={13} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleDeleteItem('navButtonEntry', entry.id, entry.title)
+                                    }
+                                    className="p-1 rounded text-rose-400 hover:text-rose-300 hover:bg-neutral-800 transition-colors"
+                                    title="刪除次層項目"
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="p-3 rounded border border-dashed border-neutral-800 text-xs text-neutral-500 text-center">
+                            此按鈕尚無次層項目，可點擊上方「新增次層項目」建立。
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {(!adminData.navButtons || adminData.navButtons.length === 0) && (
                 <div className="p-4 text-xs text-neutral-500 text-center">
                   目前沒有設定前台按鈕，請點擊上方按鈕新增，或點擊「重設回預設八大按鈕」。

@@ -34,6 +34,7 @@ export default function App() {
     policies: [],
     surveys: [],
     navButtons: [],
+    navButtonEntries: [],
     chapters: [],
   });
 

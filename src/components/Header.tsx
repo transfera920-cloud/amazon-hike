@@ -1,16 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronDown, Mail, Phone, ExternalLink, ShieldCheck, Menu, X } from 'lucide-react';
 import { normalizeUrl } from '../utils/url.js';
-import type { NavButtonItem } from '../types.js';
+import type { NavButtonItem, NavButtonActivity } from '../types.js';
 
 interface HeaderProps {
   currentPath: string;
   onNavigate: (path: string) => void;
   surveyUrl?: string;
   navButtons?: NavButtonItem[];
+  navButtonActivities?: NavButtonActivity[];
 }
 
-export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyUrl, navButtons }) => {
+export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyUrl, navButtons, navButtonActivities }) => {
   const [contactOpen, setContactOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const contactRef = useRef<HTMLDivElement>(null);
@@ -209,6 +210,43 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyU
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="hidden md:flex items-center justify-between gap-1 lg:gap-1.5 py-2 w-full text-center flex-nowrap">
             {displayButtons.map((btn) => {
+              const hasEnabledActivities = Boolean(
+                navButtonActivities?.some(
+                  (a) => a.navButtonId === btn.id && a.enabled === true
+                )
+              );
+
+              if (hasEnabledActivities) {
+                let isRouteActive = false;
+                if (currentPath.startsWith('/route/')) {
+                  const routeSlug = currentPath.replace(/^\/route\//, '').replace(/\/+$/, '').toLowerCase();
+                  isRouteActive = Boolean(
+                    navButtonActivities?.some(
+                      (a) => a.navButtonId === btn.id && a.slug.toLowerCase() === routeSlug
+                    )
+                  );
+                }
+                const isActive = currentPath.startsWith(`/nav/${btn.id}`) || isRouteActive;
+                const targetUrl = `/nav/${btn.id}`;
+
+                return (
+                  <a
+                    key={btn.id}
+                    href={targetUrl}
+                    onClick={(e) => handleInternalLinkClick(e, targetUrl)}
+                    aria-current={isActive ? 'page' : undefined}
+                    className={`flex-1 flex items-center justify-center px-2 lg:px-3.5 py-2.5 rounded-md transition-all whitespace-nowrap text-[15px] lg:text-base font-bold ${
+                      isActive
+                        ? 'bg-neutral-800 text-emerald-400 font-bold border-b-2 border-emerald-400 shadow'
+                        : 'text-neutral-200 hover:bg-neutral-800/80 hover:text-white'
+                    }`}
+                    id={`nav-btn-${btn.id}`}
+                  >
+                    {btn.title}
+                  </a>
+                );
+              }
+
               const isExternal = btn.isExternal || btn.url.startsWith('http://') || btn.url.startsWith('https://');
               if (isExternal) {
                 return (
@@ -250,6 +288,40 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyU
           {mobileMenuOpen && (
             <div className="md:hidden py-3 space-y-1.5 border-t border-neutral-800 text-base font-bold" id="mobile-nav-panel">
               {displayButtons.map((btn, idx) => {
+                const hasEnabledActivities = Boolean(
+                  navButtonActivities?.some(
+                    (a) => a.navButtonId === btn.id && a.enabled === true
+                  )
+                );
+
+                if (hasEnabledActivities) {
+                  let isRouteActive = false;
+                  if (currentPath.startsWith('/route/')) {
+                    const routeSlug = currentPath.replace(/^\/route\//, '').replace(/\/+$/, '').toLowerCase();
+                    isRouteActive = Boolean(
+                      navButtonActivities?.some(
+                        (a) => a.navButtonId === btn.id && a.slug.toLowerCase() === routeSlug
+                      )
+                    );
+                  }
+                  const isActive = currentPath.startsWith(`/nav/${btn.id}`) || isRouteActive;
+                  const targetUrl = `/nav/${btn.id}`;
+
+                  return (
+                    <a
+                      key={btn.id}
+                      href={targetUrl}
+                      onClick={(e) => handleInternalLinkClick(e, targetUrl)}
+                      aria-current={isActive ? 'page' : undefined}
+                      className={`block w-full text-left px-4 py-2.5 rounded whitespace-nowrap ${
+                        isActive ? 'bg-neutral-800 text-emerald-400 font-bold' : 'text-neutral-100 hover:bg-neutral-800'
+                      }`}
+                    >
+                      {idx + 1}. {btn.title}
+                    </a>
+                  );
+                }
+
                 const isExternal = btn.isExternal || btn.url.startsWith('http://') || btn.url.startsWith('https://');
                 if (isExternal) {
                   return (

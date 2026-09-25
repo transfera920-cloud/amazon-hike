@@ -35,6 +35,7 @@ export default function App() {
     surveys: [],
     navButtons: [],
     navButtonEntries: [],
+    navButtonActivities: [],
     chapters: [],
   });
 
@@ -279,6 +280,7 @@ export default function App() {
         onNavigate={navigate}
         surveyUrl={publicData.surveyUrl}
         navButtons={publicData.navButtons}
+        navButtonActivities={publicData.navButtonActivities}
       />
 
       {/* 2. Main Content based on route */}

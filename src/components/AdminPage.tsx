@@ -388,6 +388,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
     }));
   };
 
+  const toggleExpandActivityButton = (btnId: string) => {
+    setExpandedActivityButtonId((prev) => (prev === btnId ? null : btnId));
+  };
+
   const handleSaveNavEntry = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingNavEntry || !editingNavEntry.title || !editingNavEntry.url || !editingNavEntry.navButtonId) return;
@@ -1260,7 +1264,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
           {/* List Table */}
           <div className="border border-neutral-800 rounded bg-neutral-900/40 overflow-hidden">
             <div className="divide-y divide-neutral-800">
-              {adminData.intros.map((item) => (
+              {((adminData.intros || []).slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))).map((item) => (
                 <div
                   key={item.id}
                   className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
@@ -1464,7 +1468,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
           {/* Tools Table */}
           <div className="border border-neutral-800 rounded bg-neutral-900/40 overflow-hidden">
             <div className="divide-y divide-neutral-800">
-              {adminData.tools.map((item) => (
+              {((adminData.tools || []).slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))).map((item) => (
                 <div
                   key={item.id}
                   className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
@@ -1639,7 +1643,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
           {/* Highlights Table */}
           <div className="border border-neutral-800 rounded bg-neutral-900/40 overflow-hidden">
             <div className="divide-y divide-neutral-800">
-              {adminData.highlights.map((item) => (
+              {((adminData.highlights || []).slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))).map((item) => (
                 <div
                   key={item.id}
                   className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
@@ -1847,7 +1851,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
           {/* Surveys Table */}
           <div className="border border-neutral-800 rounded-lg bg-neutral-900/40 overflow-hidden shadow">
             <div className="divide-y divide-neutral-800">
-              {(adminData.surveys || []).map((item) => (
+              {((adminData.surveys || []).slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))).map((item) => (
                 <div
                   key={item.id}
                   className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-neutral-900/60 transition-colors"
@@ -2091,7 +2095,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
           {/* Policies Table */}
           <div className="border border-neutral-800 rounded bg-neutral-900/40 overflow-hidden">
             <div className="divide-y divide-neutral-800">
-              {adminData.policies.map((item) => (
+              {((adminData.policies || []).slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))).map((item) => (
                 <div
                   key={item.id}
                   className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
@@ -2324,7 +2328,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
           {/* Navigation Buttons Table */}
           <div className="border border-neutral-800 rounded bg-neutral-900/40 overflow-hidden">
             <div className="divide-y divide-neutral-800">
-              {(adminData.navButtons || []).map((item) => {
+              {((adminData.navButtons || []).slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))).map((item) => {
                 const isExpanded = Boolean(expandedButtonIds[item.id]);
                 const isActivityExpanded = expandedActivityButtonId === item.id;
                 const buttonEntries = (adminData.navButtonEntries || [])

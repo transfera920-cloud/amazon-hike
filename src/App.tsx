@@ -9,6 +9,8 @@ import { HighlightsView } from './components/HighlightsView.js';
 import { PoliciesView } from './components/PoliciesView.js';
 import { SurveysView } from './components/SurveysView.js';
 import { AdminPage } from './components/AdminPage.js';
+import { NavActivitiesView } from './components/NavActivitiesView.js';
+import { RouteActivityView } from './components/RouteActivityView.js';
 import type { AssociationDatabase, CalendarActivity } from './types.js';
 
 const KNOWN_PATHS = new Set(['/', '/intro', '/tools', '/highlights', '/policies', '/surveys', '/admin']);
@@ -159,17 +161,72 @@ export default function App() {
   const prevChapter = currentChapterIndex > 0 ? sortedChapters[currentChapterIndex - 1] : undefined;
   const nextChapter = currentChapterIndex >= 0 && currentChapterIndex < sortedChapters.length - 1 ? sortedChapters[currentChapterIndex + 1] : undefined;
 
+  // Dynamic nav button ID if route matches /nav/:buttonId
+  const currentNavButtonId = useMemo(() => {
+    if (currentPath.startsWith('/nav/')) {
+      return currentPath.replace(/^\/nav\//, '').replace(/\/+$/, '');
+    }
+    return null;
+  }, [currentPath]);
+
+  // Current nav button
+  const currentNavButton = useMemo(() => {
+    if (!currentNavButtonId) return null;
+    return (publicData.navButtons || []).find((b) => b.id === currentNavButtonId) || null;
+  }, [publicData.navButtons, currentNavButtonId]);
+
+  // Enabled activities for current nav button
+  const currentNavActivities = useMemo(() => {
+    if (!currentNavButtonId) return [];
+    return (publicData.navButtonActivities || [])
+      .filter((a) => a.navButtonId === currentNavButtonId && a.enabled)
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  }, [publicData.navButtonActivities, currentNavButtonId]);
+
+  // Dynamic route slug if route matches /route/:slug
+  const currentRouteSlug = useMemo(() => {
+    if (currentPath.startsWith('/route/')) {
+      return currentPath.replace(/^\/route\//, '').replace(/\/+$/, '').toLowerCase();
+    }
+    return null;
+  }, [currentPath]);
+
+  // Current route activity
+  const currentRouteActivity = useMemo(() => {
+    if (!currentRouteSlug) return null;
+    return (
+      (publicData.navButtonActivities || []).find(
+        (a) => a.slug.toLowerCase() === currentRouteSlug && a.enabled
+      ) || null
+    );
+  }, [publicData.navButtonActivities, currentRouteSlug]);
+
+  const currentRouteParentButton = useMemo(() => {
+    if (!currentRouteActivity) return undefined;
+    return (publicData.navButtons || []).find((b) => b.id === currentRouteActivity.navButtonId);
+  }, [publicData.navButtons, currentRouteActivity]);
+
   // Determine if current route is an unknown path
   const isUnknownPath = useMemo(() => {
     if (KNOWN_PATHS.has(currentPath)) return false;
     if (currentPath.startsWith('/intro/')) return false; // Handled by dynamic chapter view or chapter 404
     if (CHAPTER_PATH_RE.test(currentPath)) return false; // 正式章節網址 /chapterXX/
+    if (currentPath.startsWith('/nav/')) {
+      if (!publicDataLoaded) return false;
+      return !currentNavButton;
+    }
+    if (currentPath.startsWith('/route/')) {
+      if (!publicDataLoaded) return false;
+      return !currentRouteActivity;
+    }
     return true;
-  }, [currentPath]);
+  }, [currentPath, publicDataLoaded, currentNavButton, currentRouteActivity]);
 
   // SEO: Update page title, meta description, canonical, og:url, twitter:title, twitter:description, and robots
   useEffect(() => {
     if (currentChapterSlug && !currentChapter && !publicDataLoaded) return;
+    if (currentNavButtonId && !currentNavButton && !publicDataLoaded) return;
+    if (currentRouteSlug && !currentRouteActivity && !publicDataLoaded) return;
 
     const seoMap: Record<string, { title: string; description: string }> = {
       '/': {
@@ -210,6 +267,18 @@ export default function App() {
       currentMeta = {
         title: '找不到此頁面 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
         description: '很抱歉，您所尋找的頁面不存在或已被移除。請返回首頁或瀏覽其他專題專區。',
+      };
+    } else if (!currentMeta && currentRouteActivity) {
+      currentMeta = {
+        title: `${currentRouteActivity.title} | 亞馬遜國家山岳協會 | Amazon Alpine Association`,
+        description:
+          currentRouteActivity.description ||
+          `${currentRouteActivity.title} - 亞馬遜國家山岳協會登山行程活動說明與完整報名資訊。`,
+      };
+    } else if (!currentMeta && currentNavButton) {
+      currentMeta = {
+        title: `${currentNavButton.title} - 活動列表 | 亞馬遜國家山岳協會 | Amazon Alpine Association`,
+        description: `亞馬遜國家山岳協會 ${currentNavButton.title} 活動與行程清單。`,
       };
     } else if (!currentMeta && currentChapter) {
       currentMeta = {
@@ -356,6 +425,32 @@ export default function App() {
               返回登山入門目錄
             </button>
           </main>
+        )}
+
+        {/* 按鈕活動列表專區 /nav/:buttonId */}
+        {!isUnknownPath && currentNavButtonId && currentNavButton && (
+          <NavActivitiesView
+            button={currentNavButton}
+            activities={currentNavActivities}
+            onBack={() => navigate('/')}
+            onSelectActivity={(slug) => navigate(`/route/${slug}`)}
+          />
+        )}
+
+        {/* 單一活動內部頁面 /route/:slug */}
+        {!isUnknownPath && currentRouteSlug && currentRouteActivity && (
+          <RouteActivityView
+            activity={currentRouteActivity}
+            parentButton={currentRouteParentButton}
+            onBack={() => {
+              if (currentRouteActivity.navButtonId) {
+                navigate(`/nav/${currentRouteActivity.navButtonId}`);
+              } else {
+                navigate('/');
+              }
+            }}
+            onNavigateHome={() => navigate('/')}
+          />
         )}
 
         {/* 登山工具 獨立專區 */}

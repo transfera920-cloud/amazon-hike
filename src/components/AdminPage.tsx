@@ -2388,14 +2388,15 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                         <button
                           type="button"
                           onClick={() => toggleExpandActivityButton(item.id)}
-                          className={`inline-flex items-center gap-1 p-1.5 rounded transition-colors ${
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium transition-colors border ${
                             isActivityExpanded
-                              ? 'text-emerald-400 bg-neutral-800 border border-emerald-600/60'
-                              : 'text-neutral-300 hover:text-white hover:bg-neutral-800'
+                              ? 'bg-neutral-800 text-emerald-300 border-emerald-600/60'
+                              : 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:bg-neutral-800 hover:text-white'
                           }`}
-                          title="管理活動"
+                          title="管理活動清單"
                         >
-                          <Compass size={15} />
+                          <Compass size={14} />
+                          <span>管理活動 ({buttonActivities.length})</span>
                         </button>
                         <button
                           type="button"
@@ -2601,6 +2602,246 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                         ) : (
                           <div className="p-3 rounded border border-dashed border-neutral-800 text-xs text-neutral-500 text-center">
                             此按鈕尚無次層項目，可點擊上方「新增次層項目」建立。
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Expanded Activities Management */}
+                    {isActivityExpanded && (
+                      <div className="bg-neutral-950/70 p-4 border-t border-neutral-800/80 pl-6 sm:pl-10 space-y-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            <Compass size={14} className="text-emerald-500 shrink-0" />
+                            <span className="text-xs font-semibold text-neutral-300">
+                              「{item.title}」活動行程清單 ({buttonActivities.length})
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditingNavButtonActivity({
+                                id: '',
+                                navButtonId: item.id,
+                                title: '',
+                                slug: '',
+                                description: '',
+                                externalUrl: '',
+                                sortOrder: buttonActivities.length + 1,
+                                enabled: true,
+                              })
+                            }
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium bg-emerald-900/80 hover:bg-emerald-800 text-emerald-200 border border-emerald-700/60 transition-colors"
+                          >
+                            <Plus size={13} />
+                            <span>新增活動</span>
+                          </button>
+                        </div>
+
+                        {/* Add / Edit Activity Form */}
+                        {editingNavButtonActivity && editingNavButtonActivity.navButtonId === item.id && (
+                          <div className="p-4 rounded border border-neutral-700 bg-neutral-900/90 space-y-3">
+                            <div className="text-xs font-bold text-emerald-400">
+                              {editingNavButtonActivity.id ? '編輯活動' : '新增活動'}
+                            </div>
+
+                            <form onSubmit={handleSaveNavButtonActivity} className="space-y-3 text-xs">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                  <label className="block text-neutral-400 mb-1">
+                                    活動名稱 <span className="text-rose-500">*</span>
+                                  </label>
+                                  <input
+                                    type="text"
+                                    required
+                                    value={editingNavButtonActivity.title || ''}
+                                    onChange={(e) =>
+                                      setEditingNavButtonActivity((prev) => ({
+                                        ...prev,
+                                        title: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="例如：畢羊縱走、合歡群峰"
+                                    className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500"
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className="block text-neutral-400 mb-1">
+                                    主站內部路徑代稱 slug <span className="text-rose-500">*</span>
+                                  </label>
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-neutral-500 font-mono text-[11px]">/route/</span>
+                                    <input
+                                      type="text"
+                                      required
+                                      value={editingNavButtonActivity.slug || ''}
+                                      onChange={(e) =>
+                                        setEditingNavButtonActivity((prev) => ({
+                                          ...prev,
+                                          slug: e.target.value,
+                                        }))
+                                      }
+                                      placeholder="例如：biyang"
+                                      className="flex-1 px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 font-mono text-[11px] focus:outline-none focus:border-emerald-500"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div>
+                                <label className="block text-neutral-400 mb-1">
+                                  完整行程／報名外部網址 <span className="text-rose-500">*</span>
+                                </label>
+                                <input
+                                  type="url"
+                                  required
+                                  value={editingNavButtonActivity.externalUrl || ''}
+                                  onChange={(e) =>
+                                    setEditingNavButtonActivity((prev) => ({
+                                      ...prev,
+                                      externalUrl: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="https://..."
+                                  className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 font-mono text-[11px]"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-neutral-400 mb-1">活動說明</label>
+                                <textarea
+                                  rows={3}
+                                  value={editingNavButtonActivity.description || ''}
+                                  onChange={(e) =>
+                                    setEditingNavButtonActivity((prev) => ({
+                                      ...prev,
+                                      description: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="填寫活動簡介或行程說明..."
+                                  className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 resize-y"
+                                />
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+                                <div>
+                                  <label className="block text-neutral-400 mb-1">排序 (數字越小越靠前)</label>
+                                  <input
+                                    type="number"
+                                    value={editingNavButtonActivity.sortOrder ?? 0}
+                                    onChange={(e) =>
+                                      setEditingNavButtonActivity((prev) => ({
+                                        ...prev,
+                                        sortOrder: parseInt(e.target.value, 10) || 0,
+                                      }))
+                                    }
+                                    className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500"
+                                  />
+                                </div>
+
+                                <div className="pt-4 flex items-center gap-2">
+                                  <label className="inline-flex items-center gap-2 cursor-pointer text-neutral-300">
+                                    <input
+                                      type="checkbox"
+                                      checked={editingNavButtonActivity.enabled ?? true}
+                                      onChange={(e) =>
+                                        setEditingNavButtonActivity((prev) => ({
+                                          ...prev,
+                                          enabled: e.target.checked,
+                                        }))
+                                      }
+                                      className="rounded bg-neutral-950 border-neutral-700 text-emerald-600 focus:ring-emerald-500"
+                                    />
+                                    <span>啟用此活動 (前台顯示)</span>
+                                  </label>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2 pt-2">
+                                <button
+                                  type="submit"
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-semibold transition-colors"
+                                >
+                                  <Save size={13} />
+                                  <span>儲存活動</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingNavButtonActivity(null)}
+                                  className="px-3 py-1.5 rounded bg-neutral-800 text-neutral-300 hover:text-white transition-colors"
+                                >
+                                  取消
+                                </button>
+                              </div>
+                            </form>
+                          </div>
+                        )}
+
+                        {/* Activities List */}
+                        {buttonActivities.length > 0 ? (
+                          <div className="divide-y divide-neutral-800 border border-neutral-800 rounded bg-neutral-900/60 overflow-hidden">
+                            {buttonActivities.map((act) => (
+                              <div
+                                key={act.id}
+                                className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs"
+                              >
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-[11px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 font-mono">
+                                      #{act.sortOrder}
+                                    </span>
+                                    <span className="font-bold text-neutral-200">{act.title}</span>
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-neutral-800 text-emerald-400 border border-neutral-700">
+                                      /route/{act.slug}
+                                    </span>
+                                    {act.enabled ? (
+                                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-300 border border-emerald-800">
+                                        已啟用
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-rose-950 text-rose-300 border border-rose-800">
+                                        已停用
+                                      </span>
+                                    )}
+                                  </div>
+                                  {act.description && (
+                                    <p className="text-[11px] text-neutral-400 line-clamp-1">
+                                      {act.description}
+                                    </p>
+                                  )}
+                                  <div className="text-[11px] text-neutral-400 font-mono flex items-center gap-1">
+                                    <ExternalLink size={11} className="text-neutral-500 shrink-0" />
+                                    <span className="break-all">{act.externalUrl}</span>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingNavButtonActivity(act)}
+                                    className="p-1 rounded text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors"
+                                    title="編輯活動"
+                                  >
+                                    <Edit2 size={13} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleDeleteItem('navButtonActivity', act.id, act.title)
+                                    }
+                                    className="p-1 rounded text-rose-400 hover:text-rose-300 hover:bg-neutral-800 transition-colors"
+                                    title="刪除活動"
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="p-3 rounded border border-dashed border-neutral-800 text-xs text-neutral-500 text-center">
+                            此按鈕尚無活動，可點擊上方「新增活動」建立。
                           </div>
                         )}
                       </div>

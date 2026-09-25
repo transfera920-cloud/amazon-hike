@@ -709,6 +709,34 @@ app.get('/sitemap.xml', (req: Request, res: Response) => {
     })
     .join('\n');
 
+  const enabledActivities = (db.navButtonActivities || [])
+    .filter((a) => a.enabled)
+    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  const activityUrls = enabledActivities
+    .map(
+      (act) => `  <url>
+    <loc>https://amazon-hike.com/route/${act.slug}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>`
+    )
+    .join('\n');
+
+  const navButtonsWithActivities = (db.navButtons || []).filter(
+    (b) => b.enabled && (db.navButtonActivities || []).some((a) => a.navButtonId === b.id && a.enabled)
+  );
+  const navUrls = navButtonsWithActivities
+    .map(
+      (btn) => `  <url>
+    <loc>https://amazon-hike.com/nav/${btn.id}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>`
+    )
+    .join('\n');
+
   res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
@@ -748,6 +776,8 @@ app.get('/sitemap.xml', (req: Request, res: Response) => {
     <priority>0.6</priority>
   </url>
 ${chapterUrls}
+${navUrls}
+${activityUrls}
 </urlset>`);
 });
 

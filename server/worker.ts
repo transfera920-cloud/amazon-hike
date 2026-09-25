@@ -301,6 +301,34 @@ Sitemap: https://amazon-hike.com/sitemap.xml
         })
         .join('\n');
 
+      const enabledActivities = (db.navButtonActivities || [])
+        .filter((a) => a.enabled)
+        .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+      const activityUrls = enabledActivities
+        .map(
+          (act) => `  <url>
+    <loc>https://amazon-hike.com/route/${act.slug}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>`
+        )
+        .join('\n');
+
+      const navButtonsWithActivities = (db.navButtons || []).filter(
+        (b) => b.enabled && (db.navButtonActivities || []).some((a) => a.navButtonId === b.id && a.enabled)
+      );
+      const navUrls = navButtonsWithActivities
+        .map(
+          (btn) => `  <url>
+    <loc>https://amazon-hike.com/nav/${btn.id}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>`
+        )
+        .join('\n');
+
       return new Response(
         `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
@@ -341,6 +369,8 @@ Sitemap: https://amazon-hike.com/sitemap.xml
     <priority>0.6</priority>
   </url>
 ${chapterUrls}
+${navUrls}
+${activityUrls}
 </urlset>`,
         {
           headers: {
@@ -365,13 +395,15 @@ ${chapterUrls}
       }
     }
 
-    // 2-2. 已知路由若帶有結尾斜線（例如 /intro/、/tools/、/highlights/、/policies/、/surveys/、/admin/），301 重定向到無斜線版本
+    // 2-2. 已知路由若帶有結尾斜線（例如 /intro/、/tools/、/highlights/、/policies/、/surveys/、/admin/、/nav/、/route/），301 重定向到無斜線版本
     if (pathname.length > 1 && pathname.endsWith('/')) {
       const withoutTrailing = pathname.replace(/\/+$/, '');
       if (
         withoutTrailing in ROUTE_META_MAP ||
         withoutTrailing === '/admin' ||
-        withoutTrailing.startsWith('/intro/')
+        withoutTrailing.startsWith('/intro/') ||
+        withoutTrailing.startsWith('/nav/') ||
+        withoutTrailing.startsWith('/route/')
       ) {
         return Response.redirect(`https://amazon-hike.com${withoutTrailing}`, 301);
       }
@@ -415,6 +447,62 @@ ${chapterUrls}
         }
       }
 
+      // Dynamic nav route matching: /nav/:buttonId
+      let isNavNotFound = false;
+      if (!routeMeta && normalizedPath.startsWith('/nav/')) {
+        const buttonId = normalizedPath.replace(/^\/nav\//, '');
+        if (buttonId) {
+          try {
+            const db = await loadDatabaseWorker(env);
+            const btn = (db.navButtons || []).find((b) => b.id === buttonId);
+            if (btn) {
+              routeMeta = {
+                title: `${btn.title} - 活動列表 | 亞馬遜國家山岳協會 | Amazon Alpine Association`,
+                description: `亞馬遜國家山岳協會 ${btn.title} 活動與行程清單。`,
+              };
+            } else {
+              isNavNotFound = true;
+              routeMeta = {
+                title: '找不到此活動專區 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+                description: '很抱歉，您所尋找的活動專區不存在或已被移除。',
+              };
+            }
+          } catch (err) {
+            console.error('Error resolving dynamic nav metadata:', err);
+          }
+        }
+      }
+
+      // Dynamic single activity route matching: /route/:slug
+      let isRouteNotFound = false;
+      if (!routeMeta && normalizedPath.startsWith('/route/')) {
+        const slug = normalizedPath.replace(/^\/route\//, '').toLowerCase();
+        if (slug) {
+          try {
+            const db = await loadDatabaseWorker(env);
+            const act = (db.navButtonActivities || []).find(
+              (a) => a.slug.toLowerCase() === slug && a.enabled
+            );
+            if (act) {
+              routeMeta = {
+                title: `${act.title} | 亞馬遜國家山岳協會 | Amazon Alpine Association`,
+                description:
+                  act.description ||
+                  `${act.title} - 亞馬遜國家山岳協會登山行程活動說明與完整報名資訊。`,
+              };
+            } else {
+              isRouteNotFound = true;
+              routeMeta = {
+                title: '找不到此活動 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+                description: '很抱歉，您所尋找的活動行程不存在或已下架。',
+              };
+            }
+          } catch (err) {
+            console.error('Error resolving dynamic route metadata:', err);
+          }
+        }
+      }
+
       // 3-1. 首頁 (/) 或 /index.html：套用首頁專屬 SEO Meta
       if (isRoot && routeMeta) {
         const indexRequest = new Request(new URL('/', request.url), request);
@@ -447,17 +535,42 @@ ${chapterUrls}
         let rootHtml: string | undefined;
         if (normalizedPath === '/intro') {
           rootHtml = await buildIntroLinksHtml(env);
+        } else if (normalizedPath.startsWith('/route/') && !isRouteNotFound) {
+          const slug = normalizedPath.replace(/^\/route\//, '').toLowerCase();
+          try {
+            const db = await loadDatabaseWorker(env);
+            const act = (db.navButtonActivities || []).find((a) => a.slug.toLowerCase() === slug && a.enabled);
+            if (act) {
+              rootHtml = `<main><h1>${escapeHtml(act.title)}</h1><p>${escapeHtml(act.description || '')}</p><p><a href="${escapeHtml(act.externalUrl)}" target="_blank" rel="noopener noreferrer">完整行程／報名</a></p><p>主站內部網址：https://amazon-hike.com${normalizedPath}</p>${buildSiteNavHtml()}</main>`;
+            } else {
+              rootHtml = buildSectionShellHtml(routeMeta.title, routeMeta.description);
+            }
+          } catch (e) {
+            rootHtml = buildSectionShellHtml(routeMeta.title, routeMeta.description);
+          }
+        } else if (normalizedPath.startsWith('/nav/') && !isNavNotFound) {
+          const buttonId = normalizedPath.replace(/^\/nav\//, '');
+          try {
+            const db = await loadDatabaseWorker(env);
+            const btn = (db.navButtons || []).find((b) => b.id === buttonId);
+            const acts = (db.navButtonActivities || []).filter((a) => a.navButtonId === buttonId && a.enabled);
+            const listHtml = acts.map(a => `<li><a href="/route/${a.slug}">${escapeHtml(a.title)}</a></li>`).join('');
+            rootHtml = `<main><h1>${escapeHtml(btn ? btn.title : '活動列表')}</h1><ul>${listHtml}</ul>${buildSiteNavHtml()}</main>`;
+          } catch (e) {
+            rootHtml = buildSectionShellHtml(routeMeta.title, routeMeta.description);
+          }
         } else if (!normalizedPath.startsWith('/intro/')) {
           rootHtml = buildSectionShellHtml(routeMeta.title, routeMeta.description);
         }
 
+        const isNotFound = isChapterNotFound || isNavNotFound || isRouteNotFound;
         return applyRouteMeta(
           indexResponse,
           routeMeta,
-          canonicalUrl,
-          isChapterNotFound ? 404 : undefined,
+          isNotFound ? 'https://amazon-hike.com/' : canonicalUrl,
+          isNotFound ? 404 : undefined,
           rootHtml,
-          isChapterNotFound
+          isNotFound
         );
       }
 

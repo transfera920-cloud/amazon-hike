@@ -48,6 +48,7 @@
     }
   ],
   "surveys": [],
+  "calendarActivities": [],
   "navButtons": [
     {
       "id": "btn_calendar",

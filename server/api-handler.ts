@@ -13,17 +13,13 @@ import type {
   SurveyItem,
   NavButtonItem,
   NavButtonEntry,
-  NavButtonActivity
+  NavButtonActivity,
+  CalendarActivity
 } from '../src/types.js';
 import { RESERVED_SLUGS, getCategorySlug } from '../src/utils/activitySeo.js';
 
 const ADMIN_SECRET_TOKEN = 'amazon-alpine-secure-token-2026';
 const ADMIN_PASSWORD = 'yy661003';
-
-// In-memory cache for calendar activities within Worker instance
-let cachedActivities: any[] | null = null;
-let cacheTime = 0;
-const CACHE_DURATION_MS = 60 * 1000;
 
 function jsonResponse(data: any, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -90,48 +86,14 @@ export async function handleApiRequest(
 
   // GET /api/calendar-activities or /api/activities
   if ((path === '/api/calendar-activities' || path === '/api/activities') && method === 'GET') {
-    const now = Date.now();
-    if (cachedActivities && now - cacheTime < CACHE_DURATION_MS) {
-      return jsonResponse({ success: true, source: 'cache', activities: cachedActivities });
-    }
-
     try {
-      const externalRes = await fetch('https://amazon-trail.ai.studio/api/activities', {
-        headers: { Accept: 'application/json' },
-      });
-
-      if (!externalRes.ok) {
-        throw new Error(`External API responded with status ${externalRes.status}`);
-      }
-
-      const json: any = await externalRes.json();
-      const rawList = Array.isArray(json.activities) ? json.activities : [];
-
-      const formatted = rawList
-        .filter((a: any) => a && a.startDate && a.startDate.trim() !== '')
-        .map((a: any) => ({
-          id: String(a.id || Math.random()),
-          title: String(a.title || '登山行程').trim(),
-          startDate: String(a.startDate).trim(),
-          endDate: String(a.endDate || a.startDate).trim(),
-          url: a.url || a.link || 'https://amazon-trail.ai.studio/activity/',
-        }));
-
-      cachedActivities = formatted;
-      cacheTime = now;
-      return jsonResponse({ success: true, source: 'live', activities: formatted });
+      const db = await loadDatabaseWorker(env);
+      const list = (db.calendarActivities || [])
+        .filter((a) => a.enabled)
+        .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+      return jsonResponse({ success: true, source: 'db', activities: list });
     } catch (err: any) {
-      if (cachedActivities) {
-        return jsonResponse({ success: true, source: 'stale-cache', activities: cachedActivities });
-      }
-      return jsonResponse(
-        {
-          success: false,
-          error: `無法自活動中心取得最新行程資料：${err.message}`,
-          activities: [],
-        },
-        502
-      );
+      return jsonResponse({ success: false, error: err.message, activities: [] }, 500);
     }
   }
 
@@ -292,6 +254,55 @@ export async function handleApiRequest(
         const idx = db.tools.findIndex((t) => t.id === cleanItem.id);
         if (idx >= 0) db.tools[idx] = cleanItem;
         else db.tools.push(cleanItem);
+
+        await saveDatabaseWorker(db, env);
+        return jsonResponse({ success: true, item: cleanItem });
+      } catch (err: any) {
+        return jsonResponse({ error: err.message }, 500);
+      }
+    }
+
+    // POST /api/admin/save-calendar-activity
+    if (path === '/api/admin/save-calendar-activity' && method === 'POST') {
+      try {
+        const db = await loadDatabaseWorker(env);
+        const item: CalendarActivity = await request.json();
+        if (!item.title || !item.title.trim()) {
+          return jsonResponse({ error: '活動名稱為必填欄位' }, 400);
+        }
+        if (!item.startDate || !item.startDate.trim()) {
+          return jsonResponse({ error: '開始日期為必填欄位' }, 400);
+        }
+        const sDate = item.startDate.trim();
+        const eDate = (item.endDate || '').trim() || sDate;
+
+        let days = item.days;
+        if (!days && sDate && eDate) {
+          const d1 = new Date(sDate).getTime();
+          const d2 = new Date(eDate).getTime();
+          if (!isNaN(d1) && !isNaN(d2)) {
+            days = Math.max(1, Math.round((d2 - d1) / (1000 * 60 * 60 * 24)) + 1);
+          }
+        }
+
+        const cleanItem: CalendarActivity = {
+          id: item.id || `cal_${Date.now()}`,
+          title: item.title.trim(),
+          startDate: sDate,
+          endDate: eDate,
+          url: (item.url || '').trim(),
+          days: days || 1,
+          enabled: item.enabled ?? true,
+          sortOrder: Number(item.sortOrder) || 0,
+        };
+
+        if (!Array.isArray(db.calendarActivities)) {
+          db.calendarActivities = [];
+        }
+
+        const idx = db.calendarActivities.findIndex((a) => a.id === cleanItem.id);
+        if (idx >= 0) db.calendarActivities[idx] = cleanItem;
+        else db.calendarActivities.push(cleanItem);
 
         await saveDatabaseWorker(db, env);
         return jsonResponse({ success: true, item: cleanItem });
@@ -634,6 +645,12 @@ export async function handleApiRequest(
           normType === 'navbuttonactivities'
         ) {
           db.navButtonActivities = (db.navButtonActivities || []).filter((a) => String(a.id) !== targetId);
+        } else if (
+          normType === 'calendaractivity' ||
+          normType === 'calendar_activity' ||
+          normType === 'calendaractivities'
+        ) {
+          db.calendarActivities = (db.calendarActivities || []).filter((a) => String(a.id) !== targetId);
         } else {
           return jsonResponse({ error: `未知的資料類別: ${type}` }, 400);
         }

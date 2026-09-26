@@ -32,7 +32,8 @@ export function isValidDatabase(obj: any): obj is AssociationDatabase {
     Array.isArray(obj.tools) &&
     Array.isArray(obj.policies) &&
     Array.isArray(obj.highlights) &&
-    Array.isArray(obj.navButtons)
+    Array.isArray(obj.navButtons) &&
+    (!obj.calendarActivities || Array.isArray(obj.calendarActivities))
   );
 }
 
@@ -80,6 +81,17 @@ function ensureNavButtonActivities(db: AssociationDatabase): boolean {
 }
 
 /**
+ * 確保資料庫包含 calendarActivities 集合欄位；若缺失，補一個空陣列。
+ */
+function ensureCalendarActivities(db: AssociationDatabase): boolean {
+  if (!Array.isArray(db.calendarActivities)) {
+    db.calendarActivities = [];
+    return true;
+  }
+  return false;
+}
+
+/**
  * 「KV 優先 + 安全容錯」讀取機制：
  * 1. 若環境有綁定 ASSOCIATION_DB，優先讀取 Cloudflare KV (association_data)。
  * 2. 若 KV 內已有資料，直接返回線上權威資料，絕不覆蓋。
@@ -102,12 +114,13 @@ export async function loadDatabaseWorker(env?: WorkerEnv): Promise<AssociationDa
         const needsSaveChapters = ensureChapters(kvValue);
         const needsSaveEntries = ensureNavButtonEntries(kvValue);
         const needsSaveActivities = ensureNavButtonActivities(kvValue);
-        const needsSave = needsSaveChapters || needsSaveEntries || needsSaveActivities;
+        const needsSaveCalendar = ensureCalendarActivities(kvValue);
+        const needsSave = needsSaveChapters || needsSaveEntries || needsSaveActivities || needsSaveCalendar;
         if (needsSave) {
           try {
             await env.ASSOCIATION_DB.put(KV_KEY, JSON.stringify(kvValue, null, 2));
           } catch (e) {
-            console.warn('⚠️ [Cloudflare KV] 更新補全 chapters/navButtonEntries/navButtonActivities 失敗:', e);
+            console.warn('⚠️ [Cloudflare KV] 更新補全 chapters/navButtonEntries/navButtonActivities/calendarActivities 失敗:', e);
           }
         }
         memoryWorkerDb = kvValue;
@@ -120,6 +133,7 @@ export async function loadDatabaseWorker(env?: WorkerEnv): Promise<AssociationDa
       ensureChapters(seed);
       ensureNavButtonEntries(seed);
       ensureNavButtonActivities(seed);
+      ensureCalendarActivities(seed);
       try {
         await env.ASSOCIATION_DB.put(KV_KEY, JSON.stringify(seed, null, 2));
         console.log('✅ [Cloudflare KV] 初始種子資料已成功存入 Cloudflare KV');
@@ -143,6 +157,7 @@ export async function loadDatabaseWorker(env?: WorkerEnv): Promise<AssociationDa
     ensureChapters(memoryWorkerDb);
     ensureNavButtonEntries(memoryWorkerDb);
     ensureNavButtonActivities(memoryWorkerDb);
+    ensureCalendarActivities(memoryWorkerDb);
     return memoryWorkerDb;
   }
 
@@ -150,6 +165,7 @@ export async function loadDatabaseWorker(env?: WorkerEnv): Promise<AssociationDa
   ensureChapters(seed);
   ensureNavButtonEntries(seed);
   ensureNavButtonActivities(seed);
+  ensureCalendarActivities(seed);
   memoryWorkerDb = seed;
   return seed;
 }
@@ -220,6 +236,9 @@ export function formatPublicData(db: AssociationDatabase): PublicDataResponse {
       .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
     policies: (db.policies || [])
       .filter((p) => p.enabled)
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
+    calendarActivities: (db.calendarActivities || [])
+      .filter((a) => a.enabled)
       .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
   };
 }

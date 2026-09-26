@@ -105,6 +105,7 @@ export interface AssociationDatabase {
   tools: ToolItem[];
   highlights: HighlightItem[];
   policies: PolicyItem[];
+  calendarActivities?: CalendarActivity[];
 }
 
 export interface CalendarActivity {
@@ -114,6 +115,8 @@ export interface CalendarActivity {
   endDate: string;   // 'YYYY-MM-DD'
   url: string;
   days?: number;
+  enabled: boolean;
+  sortOrder: number;
 }
 
 export interface PublicDataResponse {
@@ -127,4 +130,5 @@ export interface PublicDataResponse {
   tools: ToolItem[];
   highlights: HighlightItem[];
   policies: PolicyItem[];
+  calendarActivities?: CalendarActivity[];
 }

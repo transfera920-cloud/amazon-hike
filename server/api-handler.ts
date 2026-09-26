@@ -15,6 +15,7 @@ import type {
   NavButtonEntry,
   NavButtonActivity
 } from '../src/types.js';
+import { RESERVED_SLUGS, getCategorySlug } from '../src/utils/activitySeo.js';
 
 const ADMIN_SECRET_TOKEN = 'amazon-alpine-secure-token-2026';
 const ADMIN_PASSWORD = 'yy661003';
@@ -375,6 +376,31 @@ export async function handleApiRequest(
         if (!item.title || !item.title.trim()) {
           return jsonResponse({ error: '按鈕名稱為必填欄位' }, 400);
         }
+
+        const cleanCatSlug = (item.categorySlug || '').trim().toLowerCase();
+        if (cleanCatSlug) {
+          if (RESERVED_SLUGS.has(cleanCatSlug) || /^chapter(0[1-9]|1[0-5])$/i.test(cleanCatSlug)) {
+            return jsonResponse({ error: '此代稱與系統既有路徑衝突，請更換' }, 400);
+          }
+        }
+
+        if (!Array.isArray(db.navButtons)) {
+          db.navButtons = [];
+        }
+
+        const effectiveCatSlug = getCategorySlug({
+          id: item.id || 'new',
+          title: item.title.trim(),
+          categorySlug: cleanCatSlug || undefined,
+        });
+
+        const isDuplicateCat = db.navButtons.some(
+          (b) => b.id !== item.id && getCategorySlug(b) === effectiveCatSlug
+        );
+        if (isDuplicateCat) {
+          return jsonResponse({ error: '此分類網址代稱已被其他按鈕使用，請更換' }, 400);
+        }
+
         const cleanItem: NavButtonItem = {
           id: item.id || `btn_${Date.now()}`,
           title: item.title.trim(),
@@ -382,6 +408,7 @@ export async function handleApiRequest(
           isExternal: Boolean(item.isExternal),
           enabled: item.enabled ?? true,
           sortOrder: Number(item.sortOrder) || 0,
+          categorySlug: cleanCatSlug || undefined,
         };
         const idx = db.navButtons.findIndex((b) => b.id === cleanItem.id);
         if (idx >= 0) db.navButtons[idx] = cleanItem;
@@ -458,6 +485,16 @@ export async function handleApiRequest(
           db.navButtonActivities = [];
         }
 
+        const isDuplicateSlug = db.navButtonActivities.some(
+          (a) =>
+            a.id !== item.id &&
+            a.navButtonId === item.navButtonId.trim() &&
+            a.slug.toLowerCase() === cleanSlug
+        );
+        if (isDuplicateSlug) {
+          return jsonResponse({ error: '同一個分類底下已有相同代稱（slug）的活動，請更換' }, 400);
+        }
+
         const cleanItem: NavButtonActivity = {
           id: item.id || `act_${Date.now()}`,
           navButtonId: item.navButtonId.trim(),
@@ -467,6 +504,16 @@ export async function handleApiRequest(
           externalUrl: item.externalUrl.trim(),
           sortOrder: Number(item.sortOrder) || 0,
           enabled: item.enabled ?? true,
+          content: (item.content || '').trim() || undefined,
+          coverImage: (item.coverImage || '').trim() || undefined,
+          gallery: Array.isArray(item.gallery) ? item.gallery.map((g) => String(g).trim()).filter(Boolean) : undefined,
+          youtubeUrl: (item.youtubeUrl || '').trim() || undefined,
+          showYoutube: item.showYoutube ?? undefined,
+          showExternalUrl: item.showExternalUrl ?? undefined,
+          seoTitle: (item.seoTitle || '').trim() || undefined,
+          metaDescription: (item.metaDescription || '').trim() || undefined,
+          ogImage: (item.ogImage || '').trim() || undefined,
+          updatedAt: new Date().toISOString().split('T')[0],
         };
 
         const idx = db.navButtonActivities.findIndex((a) => a.id === cleanItem.id);

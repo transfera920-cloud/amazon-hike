@@ -18,6 +18,7 @@ import type {
   NavButtonEntry,
   NavButtonActivity,
 } from './src/types.js';
+import { RESERVED_SLUGS, getCategorySlug } from './src/utils/activitySeo.js';
 
 const app = express();
 const PORT = 3000;
@@ -411,6 +412,30 @@ apiRouter.post('/admin/save-nav-button', requireAdmin, (req: Request, res: Respo
       return res.status(400).json({ error: '按鈕名稱為必填欄位' });
     }
 
+    const cleanCatSlug = (item.categorySlug || '').trim().toLowerCase();
+    if (cleanCatSlug) {
+      if (RESERVED_SLUGS.has(cleanCatSlug) || /^chapter(0[1-9]|1[0-5])$/i.test(cleanCatSlug)) {
+        return res.status(400).json({ error: '此代稱與系統既有路徑衝突，請更換' });
+      }
+    }
+
+    if (!Array.isArray(db.navButtons)) {
+      db.navButtons = [];
+    }
+
+    const effectiveCatSlug = getCategorySlug({
+      id: item.id || 'new',
+      title: item.title.trim(),
+      categorySlug: cleanCatSlug || undefined,
+    });
+
+    const isDuplicateCat = db.navButtons.some(
+      (b) => b.id !== item.id && getCategorySlug(b) === effectiveCatSlug
+    );
+    if (isDuplicateCat) {
+      return res.status(400).json({ error: '此分類網址代稱已被其他按鈕使用，請更換' });
+    }
+
     const cleanItem: NavButtonItem = {
       id: item.id || `btn_${Date.now()}`,
       title: item.title.trim(),
@@ -418,11 +443,8 @@ apiRouter.post('/admin/save-nav-button', requireAdmin, (req: Request, res: Respo
       isExternal: Boolean(item.isExternal),
       enabled: item.enabled ?? true,
       sortOrder: Number(item.sortOrder) || 0,
+      categorySlug: cleanCatSlug || undefined,
     };
-
-    if (!Array.isArray(db.navButtons)) {
-      db.navButtons = [];
-    }
 
     const existingIndex = db.navButtons.findIndex((b) => b.id === cleanItem.id);
     if (existingIndex >= 0) {
@@ -503,6 +525,20 @@ apiRouter.post('/admin/save-nav-button-activity', requireAdmin, (req: Request, r
     const rawSlug = item.slug.trim().toLowerCase().replace(/^\/+|\/+$/g, '');
     const cleanSlug = rawSlug.replace(/[^a-z0-9-_]/g, '') || `activity_${Date.now()}`;
 
+    if (!Array.isArray(db.navButtonActivities)) {
+      db.navButtonActivities = [];
+    }
+
+    const isDuplicateSlug = db.navButtonActivities.some(
+      (a) =>
+        a.id !== item.id &&
+        a.navButtonId === item.navButtonId.trim() &&
+        a.slug.toLowerCase() === cleanSlug
+    );
+    if (isDuplicateSlug) {
+      return res.status(400).json({ error: '同一個分類底下已有相同代稱（slug）的活動，請更換' });
+    }
+
     const cleanItem: NavButtonActivity = {
       id: item.id || `act_${Date.now()}`,
       navButtonId: item.navButtonId.trim(),
@@ -512,11 +548,17 @@ apiRouter.post('/admin/save-nav-button-activity', requireAdmin, (req: Request, r
       externalUrl: item.externalUrl.trim(),
       sortOrder: Number(item.sortOrder) || 0,
       enabled: item.enabled ?? true,
+      content: (item.content || '').trim() || undefined,
+      coverImage: (item.coverImage || '').trim() || undefined,
+      gallery: Array.isArray(item.gallery) ? item.gallery.map((g) => String(g).trim()).filter(Boolean) : undefined,
+      youtubeUrl: (item.youtubeUrl || '').trim() || undefined,
+      showYoutube: item.showYoutube ?? undefined,
+      showExternalUrl: item.showExternalUrl ?? undefined,
+      seoTitle: (item.seoTitle || '').trim() || undefined,
+      metaDescription: (item.metaDescription || '').trim() || undefined,
+      ogImage: (item.ogImage || '').trim() || undefined,
+      updatedAt: new Date().toISOString().split('T')[0],
     };
-
-    if (!Array.isArray(db.navButtonActivities)) {
-      db.navButtonActivities = [];
-    }
 
     const existingIndex = db.navButtonActivities.findIndex((a) => a.id === cleanItem.id);
     if (existingIndex >= 0) {
@@ -710,14 +752,17 @@ app.get('/sitemap.xml', (req: Request, res: Response) => {
     .filter((a) => a.enabled)
     .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
   const activityUrls = enabledActivities
-    .map(
-      (act) => `  <url>
-    <loc>https://amazon-hike.com/route/${act.slug}</loc>
-    <lastmod>${now}</lastmod>
+    .map((act) => {
+      const parentBtn = (db.navButtons || []).find((b) => b.id === act.navButtonId);
+      const catSlug = parentBtn ? getCategorySlug(parentBtn) : 'activity';
+      const lastmod = act.updatedAt || now;
+      return `  <url>
+    <loc>https://amazon-hike.com/${catSlug}/${act.slug}/</loc>
+    <lastmod>${lastmod}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
-  </url>`
-    )
+  </url>`;
+    })
     .join('\n');
 
   const navButtonsWithActivities = (db.navButtons || []).filter(

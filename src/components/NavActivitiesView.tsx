@@ -1,12 +1,13 @@
 import React from 'react';
-import { ArrowLeft, Compass, ExternalLink, ArrowRight } from 'lucide-react';
+import { ArrowLeft, Compass, ExternalLink } from 'lucide-react';
+import { normalizeUrl } from '../utils/url.js';
 import type { NavButtonItem, NavButtonActivity } from '../types.js';
 
 interface NavActivitiesViewProps {
   button: NavButtonItem;
   activities: NavButtonActivity[];
   onBack: () => void;
-  onSelectActivity: (slug: string) => void;
+  onSelectActivity?: (slug: string) => void;
 }
 
 export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
@@ -58,11 +59,19 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
             >
               <div className="space-y-2 flex-1">
                 <div className="flex items-center gap-2.5 flex-wrap">
-                  <span className="text-xs px-2 py-0.5 rounded font-mono bg-emerald-950/80 text-emerald-400 border border-emerald-800/60">
-                    {`/route/${activity.slug}`}
-                  </span>
                   <h2 className="text-lg sm:text-xl font-bold text-neutral-100">
-                    {activity.title}
+                    {onSelectActivity ? (
+                      <button
+                        type="button"
+                        onClick={() => onSelectActivity(activity.slug)}
+                        className="hover:text-emerald-400 transition-colors text-left"
+                        title="查看活動詳細資訊"
+                      >
+                        {activity.title}
+                      </button>
+                    ) : (
+                      activity.title
+                    )}
                   </h2>
                 </div>
 
@@ -74,23 +83,14 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
               </div>
 
               <div className="flex items-center gap-2.5 shrink-0 pt-2 sm:pt-0">
-                <button
-                  type="button"
-                  onClick={() => onSelectActivity(activity.slug)}
+                <a
+                  href={normalizeUrl(activity.externalUrl)}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-semibold transition-colors shadow-sm"
                 >
                   <span>查看活動說明</span>
-                  <ArrowRight size={14} />
-                </button>
-
-                <a
-                  href={activity.externalUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-200 hover:text-white text-xs sm:text-sm font-medium transition-colors border border-neutral-700"
-                >
-                  <span>完整行程／報名</span>
-                  <ExternalLink size={13} className="text-neutral-400" />
+                  <ExternalLink size={14} className="text-emerald-200" />
                 </a>
               </div>
             </article>

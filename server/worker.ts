@@ -1,6 +1,7 @@
 import { loadDatabaseWorker } from './db-kv.js';
 import { handleApiRequest } from './api-handler.js';
 import type { WorkerEnv } from './db-kv.js';
+import { getCategorySlug, resolveActivitySeo } from '../src/utils/activitySeo.js';
 
 declare const HTMLRewriter: any;
 
@@ -305,14 +306,17 @@ Sitemap: https://amazon-hike.com/sitemap.xml
         .filter((a) => a.enabled)
         .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
       const activityUrls = enabledActivities
-        .map(
-          (act) => `  <url>
-    <loc>https://amazon-hike.com/route/${act.slug}</loc>
-    <lastmod>${now}</lastmod>
+        .map((act) => {
+          const parentBtn = (db.navButtons || []).find((b) => b.id === act.navButtonId);
+          const catSlug = parentBtn ? getCategorySlug(parentBtn) : 'activity';
+          const lastmod = act.updatedAt || now;
+          return `  <url>
+    <loc>https://amazon-hike.com/${catSlug}/${act.slug}/</loc>
+    <lastmod>${lastmod}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
-  </url>`
-        )
+  </url>`;
+        })
         .join('\n');
 
       const navButtonsWithActivities = (db.navButtons || []).filter(
@@ -393,17 +397,45 @@ ${activityUrls}
       if (chapterMatch) {
         return Response.redirect(`https://amazon-hike.com/${chapterMatch[1]}/`, 301);
       }
+
+      // Two-level route without trailing slash -> 301 redirect to /{catSlug}/{actSlug}/
+      const segs = trimmed.slice(1).split('/');
+      if (
+        segs.length === 2 &&
+        !pathname.startsWith('/intro/') &&
+        !pathname.startsWith('/nav/') &&
+        !pathname.startsWith('/route/') &&
+        !pathname.startsWith('/admin') &&
+        !pathname.startsWith('/api/')
+      ) {
+        return Response.redirect(`https://amazon-hike.com/${segs[0]}/${segs[1]}/`, 301);
+      }
     }
 
-    // 2-2. 已知路由若帶有結尾斜線（例如 /intro/、/tools/、/highlights/、/policies/、/surveys/、/admin/、/nav/、/route/），301 重定向到無斜線版本
+    // 2-2. Legacy /route/:slug -> 301 Redirect to canonical /{categorySlug}/{activitySlug}/
+    const routeMatch = trimmed.match(/^\/route\/([a-z0-9-_]+)$/);
+    if (routeMatch) {
+      try {
+        const db = await loadDatabaseWorker(env);
+        const act = (db.navButtonActivities || []).find((a) => a.slug.toLowerCase() === routeMatch[1] && a.enabled);
+        if (act) {
+          const parentBtn = (db.navButtons || []).find((b) => b.id === act.navButtonId);
+          const catSlug = parentBtn ? getCategorySlug(parentBtn) : 'activity';
+          return Response.redirect(`https://amazon-hike.com/${catSlug}/${act.slug}/`, 301);
+        }
+      } catch (err) {
+        // Fallback to route handler
+      }
+    }
+
+    // 2-3. 已知路由若帶有結尾斜線（例如 /intro/、/tools/、/highlights/、/policies/、/surveys/、/admin/、/nav/），301 重定向到無斜線版本
     if (pathname.length > 1 && pathname.endsWith('/')) {
       const withoutTrailing = pathname.replace(/\/+$/, '');
       if (
         withoutTrailing in ROUTE_META_MAP ||
         withoutTrailing === '/admin' ||
         withoutTrailing.startsWith('/intro/') ||
-        withoutTrailing.startsWith('/nav/') ||
-        withoutTrailing.startsWith('/route/')
+        withoutTrailing.startsWith('/nav/')
       ) {
         return Response.redirect(`https://amazon-hike.com${withoutTrailing}`, 301);
       }
@@ -510,6 +542,52 @@ ${activityUrls}
         }
       }
 
+      // Dynamic two-segment category & activity route matching: /:categorySlug/:activitySlug
+      let isCategoryActivityNotFound = false;
+      const pathSegments = normalizedPath.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
+      if (
+        !routeMeta &&
+        pathSegments.length === 2 &&
+        !normalizedPath.startsWith('/intro/') &&
+        !normalizedPath.startsWith('/nav/') &&
+        !normalizedPath.startsWith('/route/') &&
+        !normalizedPath.startsWith('/admin')
+      ) {
+        const [catSlug, actSlug] = [pathSegments[0].toLowerCase(), pathSegments[1].toLowerCase()];
+        try {
+          const db = await loadDatabaseWorker(env);
+          const parentBtn = (db.navButtons || []).find(
+            (b) => b.enabled && getCategorySlug(b) === catSlug
+          );
+          if (parentBtn) {
+            const act = (db.navButtonActivities || []).find(
+              (a) => a.navButtonId === parentBtn.id && a.slug.toLowerCase() === actSlug && a.enabled
+            );
+            if (act) {
+              const seo = resolveActivitySeo(act, parentBtn);
+              routeMeta = {
+                title: seo.title,
+                description: seo.description,
+              };
+            } else {
+              isCategoryActivityNotFound = true;
+              routeMeta = {
+                title: '找不到此活動 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+                description: '很抱歉，您所尋找的活動行程不存在或已下架。',
+              };
+            }
+          } else {
+            isCategoryActivityNotFound = true;
+            routeMeta = {
+              title: '找不到此活動分類 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+              description: '很抱歉，您所尋找的活動行程分類不存在或已下架。',
+            };
+          }
+        } catch (err) {
+          console.error('Error resolving dynamic category activity metadata:', err);
+        }
+      }
+
       // 3-1. 首頁 (/) 或 /index.html：套用首頁專屬 SEO Meta
       if (isRoot && routeMeta) {
         const indexRequest = new Request(new URL('/', request.url), request);
@@ -537,7 +615,12 @@ ${activityUrls}
       const indexResponse = await env.ASSETS.fetch(spaRequest);
 
       if (routeMeta && indexResponse.ok) {
-        const canonicalUrl = `https://amazon-hike.com${normalizedPath}`;
+        const isTrailingSlashRoute =
+          CHAPTER_SLUG_RE.test(normalizedPath.slice(1).toLowerCase()) ||
+          (pathSegments.length === 2 && !isCategoryActivityNotFound);
+        const canonicalUrl = isTrailingSlashRoute
+          ? `https://amazon-hike.com${normalizedPath}/`
+          : `https://amazon-hike.com${normalizedPath}`;
         // /intro 維持只注入章節連結、不含 <h1
         let rootHtml: string | undefined;
         if (normalizedPath === '/intro') {
@@ -549,6 +632,22 @@ ${activityUrls}
             const act = (db.navButtonActivities || []).find((a) => a.slug.toLowerCase() === slug && a.enabled);
             if (act) {
               rootHtml = `<main><h1>${escapeHtml(act.title)}</h1><p>${escapeHtml(act.description || '')}</p><p><a href="${escapeHtml(act.externalUrl)}" target="_blank" rel="noopener noreferrer">完整行程／報名</a></p><p>主站內部網址：https://amazon-hike.com${normalizedPath}</p>${buildSiteNavHtml()}</main>`;
+            } else {
+              rootHtml = buildSectionShellHtml(routeMeta.title, routeMeta.description);
+            }
+          } catch (e) {
+            rootHtml = buildSectionShellHtml(routeMeta.title, routeMeta.description);
+          }
+        } else if (pathSegments.length === 2 && !isCategoryActivityNotFound) {
+          const [catSlug, actSlug] = [pathSegments[0].toLowerCase(), pathSegments[1].toLowerCase()];
+          try {
+            const db = await loadDatabaseWorker(env);
+            const parentBtn = (db.navButtons || []).find((b) => b.enabled && getCategorySlug(b) === catSlug);
+            const act = parentBtn
+              ? (db.navButtonActivities || []).find((a) => a.navButtonId === parentBtn.id && a.slug.toLowerCase() === actSlug && a.enabled)
+              : null;
+            if (act && parentBtn) {
+              rootHtml = `<main><h1>${escapeHtml(act.title)}</h1><p>${escapeHtml(act.description || '')}</p><p><a href="${escapeHtml(act.externalUrl)}" target="_blank" rel="noopener noreferrer">查看活動說明</a></p><p>主站內部網址：https://amazon-hike.com/${catSlug}/${act.slug}/</p>${buildSiteNavHtml()}</main>`;
             } else {
               rootHtml = buildSectionShellHtml(routeMeta.title, routeMeta.description);
             }
@@ -570,7 +669,8 @@ ${activityUrls}
             const acts = btn
               ? (db.navButtonActivities || []).filter((a) => a.navButtonId === btn.id && a.enabled)
               : [];
-            const listHtml = acts.map((a) => `<li><a href="/route/${a.slug}">${escapeHtml(a.title)}</a></li>`).join('');
+            const catSlug = btn ? getCategorySlug(btn) : buttonId;
+            const listHtml = acts.map((a) => `<li><a href="/${catSlug}/${a.slug}/">${escapeHtml(a.title)}</a></li>`).join('');
             rootHtml = `<main><h1>${escapeHtml(btn ? btn.title : '活動列表')}</h1><ul>${listHtml}</ul>${buildSiteNavHtml()}</main>`;
           } catch (e) {
             rootHtml = buildSectionShellHtml(routeMeta.title, routeMeta.description);
@@ -579,7 +679,7 @@ ${activityUrls}
           rootHtml = buildSectionShellHtml(routeMeta.title, routeMeta.description);
         }
 
-        const isNotFound = isChapterNotFound || isNavNotFound || isRouteNotFound;
+        const isNotFound = isChapterNotFound || isNavNotFound || isRouteNotFound || isCategoryActivityNotFound;
         return applyRouteMeta(
           indexResponse,
           routeMeta,

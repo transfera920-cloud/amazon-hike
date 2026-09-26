@@ -60,6 +60,7 @@ export interface NavButtonItem {
   isExternal: boolean;
   enabled: boolean;
   sortOrder: number;
+  categorySlug?: string; // 新增：作為 /分類/活動/ 網址中的分類代稱，留空則由系統自動推導
 }
 
 export interface NavButtonEntry {
@@ -74,12 +75,22 @@ export interface NavButtonEntry {
 export interface NavButtonActivity {
   id: string;
   navButtonId: string;   // 父按鈕 id，代表父子關係
-  slug: string;          // 全站唯一的內部路徑代稱，例如 "biyang-trail"
+  slug: string;          // 在同一個 navButtonId 底下唯一
   title: string;         // 行程／活動名稱
   description: string;   // 說明
   externalUrl: string;   // 完整行程／報名的外部網址
   sortOrder: number;
   enabled: boolean;      // true = 前台顯示，false = 後台保留、前台不顯示
+  content?: string;      // 完整圖文活動介紹
+  coverImage?: string;   // 封面圖片網址
+  gallery?: string[];    // 多張活動相簿照片
+  youtubeUrl?: string;   // YouTube 介紹影片
+  showYoutube?: boolean; // 是否顯示 YouTube
+  showExternalUrl?: boolean; // 是否顯示報名外連按鈕
+  seoTitle?: string;     // 自訂 SEO 標題
+  metaDescription?: string; // 自訂 SEO 描述
+  ogImage?: string;      // 自訂社群分享圖
+  updatedAt?: string;    // 最後更新日期
 }
 
 export interface AssociationDatabase {

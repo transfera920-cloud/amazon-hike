@@ -35,6 +35,7 @@ import type {
   NavButtonActivity,
   AssociationDatabase
 } from '../types.js';
+import { slugify, RESERVED_SLUGS, getCategorySlug } from '../utils/activitySeo.js';
 
 interface AdminPageProps {
   onBack: () => void;
@@ -69,9 +70,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
   const [editingSurvey, setEditingSurvey] = useState<Partial<SurveyItem> | null>(null);
   const [editingPolicy, setEditingPolicy] = useState<Partial<PolicyItem> | null>(null);
   const [editingNavButton, setEditingNavButton] = useState<Partial<NavButtonItem> | null>(null);
+  const [categorySlugManuallyEdited, setCategorySlugManuallyEdited] = useState(false);
   const [editingNavEntry, setEditingNavEntry] = useState<Partial<NavButtonEntry> | null>(null);
   const [expandedButtonIds, setExpandedButtonIds] = useState<Record<string, boolean>>({});
   const [editingNavButtonActivity, setEditingNavButtonActivity] = useState<Partial<NavButtonActivity> | null>(null);
+  const [activitySlugManuallyEdited, setActivitySlugManuallyEdited] = useState(false);
   const [expandedActivityButtonId, setExpandedActivityButtonId] = useState<string | null>(null);
 
   // In-app deletion modal
@@ -353,6 +356,33 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
     e.preventDefault();
     if (!editingNavButton || !editingNavButton.title) return;
 
+    const trimmedCatSlug = (editingNavButton.categorySlug || '').trim().toLowerCase();
+    if (trimmedCatSlug) {
+      if (RESERVED_SLUGS.has(trimmedCatSlug) || /^chapter(0[1-9]|1[0-5])$/i.test(trimmedCatSlug)) {
+        showFeedback('此代稱與系統既有路徑衝突，請更換', true);
+        return;
+      }
+    }
+
+    const effectiveSlug = getCategorySlug({
+      id: editingNavButton.id || 'new',
+      title: editingNavButton.title,
+      categorySlug: trimmedCatSlug,
+    });
+
+    const isDuplicate = (adminData?.navButtons || []).some(
+      (b) => b.id !== editingNavButton.id && getCategorySlug(b) === effectiveSlug
+    );
+    if (isDuplicate) {
+      showFeedback('此網址代稱已被其他分類使用，請更換', true);
+      return;
+    }
+
+    const payload = {
+      ...editingNavButton,
+      categorySlug: trimmedCatSlug || undefined,
+    };
+
     try {
       const res = await fetch('/api/admin/save-nav-button', {
         method: 'POST',
@@ -360,7 +390,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(editingNavButton),
+        body: JSON.stringify(payload),
       });
 
       const json = await res.json();
@@ -431,6 +461,23 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
     )
       return;
 
+    const targetSlug = editingNavButtonActivity.slug.trim().toLowerCase();
+    const isDuplicateSlug = (adminData?.navButtonActivities || []).some(
+      (a) =>
+        a.id !== editingNavButtonActivity.id &&
+        a.navButtonId === editingNavButtonActivity.navButtonId &&
+        a.slug.toLowerCase() === targetSlug
+    );
+    if (isDuplicateSlug) {
+      showFeedback('同一個分類底下已有相同代稱（slug）的活動，請更換', true);
+      return;
+    }
+
+    const payload = {
+      ...editingNavButtonActivity,
+      slug: targetSlug,
+    };
+
     try {
       const res = await fetch('/api/admin/save-nav-button-activity', {
         method: 'POST',
@@ -438,7 +485,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(editingNavButtonActivity),
+        body: JSON.stringify(payload),
       });
 
       const json = await res.json();
@@ -2174,16 +2221,18 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
               </button>
               <button
                 type="button"
-                onClick={() =>
+                onClick={() => {
+                  setCategorySlugManuallyEdited(false);
                   setEditingNavButton({
                     id: '',
                     title: '',
                     url: '',
+                    categorySlug: '',
                     isExternal: false,
                     enabled: true,
                     sortOrder: ((adminData.navButtons || []).length || 0) + 1,
-                  })
-                }
+                  });
+                }}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold bg-emerald-800 hover:bg-emerald-700 text-white transition-colors"
               >
                 <Plus size={14} />
@@ -2207,15 +2256,51 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                     type="text"
                     required
                     value={editingNavButton.title || ''}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const newTitle = e.target.value;
+                      let newCatSlug = editingNavButton.categorySlug || '';
+                      if (!categorySlugManuallyEdited) {
+                        const auto = slugify(newTitle);
+                        if (auto) {
+                          newCatSlug = auto;
+                        }
+                      }
                       setEditingNavButton({
                         ...editingNavButton,
-                        title: e.target.value,
-                      })
-                    }
+                        title: newTitle,
+                        categorySlug: newCatSlug,
+                      });
+                    }}
                     placeholder="例如：活動行事曆、近期活動、入山須知"
                     className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 font-bold"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-neutral-300 font-medium mb-1">
+                    分類網址代稱 categorySlug（選填）
+                  </label>
+                  <input
+                    type="text"
+                    value={editingNavButton.categorySlug || ''}
+                    onChange={(e) => {
+                      setCategorySlugManuallyEdited(true);
+                      setEditingNavButton({
+                        ...editingNavButton,
+                        categorySlug: e.target.value.toLowerCase().trim(),
+                      });
+                    }}
+                    placeholder="例如：baiyue-beginner"
+                    className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 font-mono"
+                  />
+                  <p className="text-[11px] text-neutral-400 mt-1">
+                    此欄位用於組成行程活動網址的第一段（例如 /baiyue-beginner/活動代稱/），若此分類底下沒有建立任何活動，可以留空不影響現有功能。
+                  </p>
+                  {!categorySlugManuallyEdited && editingNavButton.title && !slugify(editingNavButton.title) && (
+                    <p className="text-[11px] text-amber-400 mt-1">
+                      無法由中文名稱自動產生網址代稱，若此分類底下會建立活動行程，請務必手動輸入英文/數字代稱，例如 baiyue-beginner，否則系統會退回使用內部編號當作網址（不美觀但仍可運作）。
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -2399,7 +2484,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                         </button>
                         <button
                           type="button"
-                          onClick={() => setEditingNavButton(item)}
+                          onClick={() => {
+                            setCategorySlugManuallyEdited(Boolean(item.categorySlug));
+                            setEditingNavButton(item);
+                          }}
                           className="p-1.5 rounded text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors"
                           title="編輯按鈕"
                         >
@@ -2618,7 +2706,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                           </div>
                           <button
                             type="button"
-                            onClick={() =>
+                            onClick={() => {
+                              setActivitySlugManuallyEdited(false);
                               setEditingNavButtonActivity({
                                 id: '',
                                 navButtonId: item.id,
@@ -2628,8 +2717,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                                 externalUrl: '',
                                 sortOrder: buttonActivities.length + 1,
                                 enabled: true,
-                              })
-                            }
+                              });
+                            }}
                             className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium bg-emerald-900/80 hover:bg-emerald-800 text-emerald-200 border border-emerald-700/60 transition-colors"
                           >
                             <Plus size={13} />
@@ -2654,12 +2743,19 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                                     type="text"
                                     required
                                     value={editingNavButtonActivity.title || ''}
-                                    onChange={(e) =>
+                                    onChange={(e) => {
+                                      const newTitle = e.target.value;
+                                      let newSlug = editingNavButtonActivity.slug || '';
+                                      if (!activitySlugManuallyEdited) {
+                                        const auto = slugify(newTitle);
+                                        if (auto) newSlug = auto;
+                                      }
                                       setEditingNavButtonActivity((prev) => ({
                                         ...prev,
-                                        title: e.target.value,
-                                      }))
-                                    }
+                                        title: newTitle,
+                                        slug: newSlug,
+                                      }));
+                                    }}
                                     placeholder="例如：畢羊縱走、合歡群峰"
                                     className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500"
                                   />
@@ -2669,22 +2765,20 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                                   <label className="block text-neutral-400 mb-1">
                                     主站內部路徑代稱 slug <span className="text-rose-500">*</span>
                                   </label>
-                                  <div className="flex items-center gap-1">
-                                    <span className="text-neutral-500 font-mono text-[11px]">/route/</span>
-                                    <input
-                                      type="text"
-                                      required
-                                      value={editingNavButtonActivity.slug || ''}
-                                      onChange={(e) =>
-                                        setEditingNavButtonActivity((prev) => ({
-                                          ...prev,
-                                          slug: e.target.value,
-                                        }))
-                                      }
-                                      placeholder="例如：biyang"
-                                      className="flex-1 px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 font-mono text-[11px] focus:outline-none focus:border-emerald-500"
-                                    />
-                                  </div>
+                                  <input
+                                    type="text"
+                                    required
+                                    value={editingNavButtonActivity.slug || ''}
+                                    onChange={(e) => {
+                                      setActivitySlugManuallyEdited(true);
+                                      setEditingNavButtonActivity((prev) => ({
+                                        ...prev,
+                                        slug: e.target.value,
+                                      }));
+                                    }}
+                                    placeholder="例如：biyang"
+                                    className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 font-mono text-xs focus:outline-none focus:border-emerald-500"
+                                  />
                                 </div>
                               </div>
 
@@ -2708,9 +2802,9 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                               </div>
 
                               <div>
-                                <label className="block text-neutral-400 mb-1">活動說明</label>
+                                <label className="block text-neutral-400 mb-1">活動簡短說明</label>
                                 <textarea
-                                  rows={3}
+                                  rows={2}
                                   value={editingNavButtonActivity.description || ''}
                                   onChange={(e) =>
                                     setEditingNavButtonActivity((prev) => ({
@@ -2718,9 +2812,75 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                                       description: e.target.value,
                                     }))
                                   }
-                                  placeholder="填寫活動簡介或行程說明..."
+                                  placeholder="填寫活動簡介或摘要說明..."
                                   className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 resize-y"
                                 />
+                              </div>
+
+                              <div>
+                                <label className="block text-neutral-400 mb-1">封面圖片網址（選填）</label>
+                                <input
+                                  type="url"
+                                  value={editingNavButtonActivity.coverImage || ''}
+                                  onChange={(e) =>
+                                    setEditingNavButtonActivity((prev) => ({
+                                      ...prev,
+                                      coverImage: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="https://images.unsplash.com/... 或相片網址"
+                                  className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 font-mono text-[11px]"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-neutral-400 mb-1">完整活動詳細介紹（選填，支援分段）</label>
+                                <textarea
+                                  rows={4}
+                                  value={editingNavButtonActivity.content || ''}
+                                  onChange={(e) =>
+                                    setEditingNavButtonActivity((prev) => ({
+                                      ...prev,
+                                      content: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="填寫每日行程、路線難度、裝備建議與注意事項..."
+                                  className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 resize-y"
+                                />
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                  <label className="block text-neutral-400 mb-1">YouTube 介紹影片網址（選填）</label>
+                                  <input
+                                    type="url"
+                                    value={editingNavButtonActivity.youtubeUrl || ''}
+                                    onChange={(e) =>
+                                      setEditingNavButtonActivity((prev) => ({
+                                        ...prev,
+                                        youtubeUrl: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="https://www.youtube.com/watch?v=..."
+                                    className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 font-mono text-[11px]"
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className="block text-neutral-400 mb-1">自訂 SEO 標題（選填）</label>
+                                  <input
+                                    type="text"
+                                    value={editingNavButtonActivity.seoTitle || ''}
+                                    onChange={(e) =>
+                                      setEditingNavButtonActivity((prev) => ({
+                                        ...prev,
+                                        seoTitle: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="留空則自動套用活動標題"
+                                    className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 text-xs"
+                                  />
+                                </div>
                               </div>
 
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
@@ -2739,7 +2899,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                                   />
                                 </div>
 
-                                <div className="pt-4 flex items-center gap-2">
+                                <div className="pt-4 flex flex-wrap items-center gap-4">
                                   <label className="inline-flex items-center gap-2 cursor-pointer text-neutral-300">
                                     <input
                                       type="checkbox"
@@ -2792,7 +2952,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                                     </span>
                                     <span className="font-bold text-neutral-200">{act.title}</span>
                                     <span className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-neutral-800 text-emerald-400 border border-neutral-700">
-                                      /route/{act.slug}
+                                      /{getCategorySlug(item)}/{act.slug}/
                                     </span>
                                     {act.enabled ? (
                                       <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-300 border border-emerald-800">
@@ -2818,7 +2978,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                                 <div className="flex items-center gap-1.5 shrink-0">
                                   <button
                                     type="button"
-                                    onClick={() => setEditingNavButtonActivity(act)}
+                                    onClick={() => {
+                                      setActivitySlugManuallyEdited(Boolean(act.slug));
+                                      setEditingNavButtonActivity(act);
+                                    }}
                                     className="p-1 rounded text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors"
                                     title="編輯活動"
                                   >

@@ -536,6 +536,211 @@ async function runTests() {
     const afterDelEntryJson: any = await afterDelEntryRes.json();
     const entryStillThere = afterDelEntryJson.data.navButtonEntries.find((e: any) => e.id === 'entry_test_verify');
     assert(!entryStillThere, 'Verified test navButtonEntry was cleanly deleted');
+
+    // 11. Category Slug, Scoped Activity Slugs, Two-Level Routing & Sitemap Tests
+    {
+      const testBtnId1 = 'btn_test_cat1';
+      const testBtnId2 = 'btn_test_cat2';
+      const testActId1 = 'act_test_yushan';
+      const testActId2 = 'act_test_yushan2';
+
+      // 11-1. Reserved categorySlug rejected with 400
+      const resReservedCat = await worker.fetch(
+        new Request('http://localhost/api/admin/save-nav-button', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            id: testBtnId1,
+            title: '百岳入門',
+            categorySlug: 'intro', // reserved!
+            url: '',
+            sortOrder: 1,
+            enabled: true,
+          }),
+        }),
+        env,
+        {}
+      );
+      assert(resReservedCat.status === 400, 'Reserved categorySlug returns HTTP 400');
+
+      // 11-2. Valid categorySlug saved successfully
+      const resSaveCat1 = await worker.fetch(
+        new Request('http://localhost/api/admin/save-nav-button', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            id: testBtnId1,
+            title: '百岳初階',
+            categorySlug: 'baiyue-beginner',
+            url: '',
+            sortOrder: 1,
+            enabled: true,
+          }),
+        }),
+        env,
+        {}
+      );
+      const jsonSaveCat1: any = await resSaveCat1.json();
+      assert(resSaveCat1.status === 200 && jsonSaveCat1.item.categorySlug === 'baiyue-beginner', 'Valid categorySlug saved');
+
+      // 11-3. Duplicate categorySlug rejected with 400
+      const resDupCat = await worker.fetch(
+        new Request('http://localhost/api/admin/save-nav-button', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            id: testBtnId2,
+            title: '另一個百岳',
+            categorySlug: 'baiyue-beginner', // duplicate!
+            url: '',
+            sortOrder: 2,
+            enabled: true,
+          }),
+        }),
+        env,
+        {}
+      );
+      assert(resDupCat.status === 400, 'Duplicate categorySlug returns HTTP 400');
+
+      // Save category 2 with unique slug
+      await worker.fetch(
+        new Request('http://localhost/api/admin/save-nav-button', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            id: testBtnId2,
+            title: '中級山行程',
+            categorySlug: 'mid-mountains',
+            url: '',
+            sortOrder: 2,
+            enabled: true,
+          }),
+        }),
+        env,
+        {}
+      );
+
+      // 11-4. Save activity under category 1
+      const resSaveAct1 = await worker.fetch(
+        new Request('http://localhost/api/admin/save-nav-button-activity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            id: testActId1,
+            navButtonId: testBtnId1,
+            slug: 'yushan-main-peak',
+            title: '玉山主峰單攻',
+            description: '台灣最高峰登頂健行體驗',
+            externalUrl: 'https://example.com/yushan-register',
+            sortOrder: 1,
+            enabled: true,
+          }),
+        }),
+        env,
+        {}
+      );
+      assert(resSaveAct1.status === 200, 'Activity under category 1 saved successfully');
+
+      // 11-5. Duplicate slug under same category rejected with 400
+      const resDupActSameCat = await worker.fetch(
+        new Request('http://localhost/api/admin/save-nav-button-activity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            id: 'act_test_yushan_dup',
+            navButtonId: testBtnId1, // same parent
+            slug: 'yushan-main-peak', // duplicate!
+            title: '玉山主峰兩天一夜',
+            description: '另一團',
+            externalUrl: 'https://example.com/yushan-register2',
+            sortOrder: 2,
+            enabled: true,
+          }),
+        }),
+        env,
+        {}
+      );
+      assert(resDupActSameCat.status === 400, 'Duplicate activity slug under same category returns HTTP 400');
+
+      // 11-6. Same slug under DIFFERENT category is allowed (scoped uniqueness)
+      const resSameActDiffCat = await worker.fetch(
+        new Request('http://localhost/api/admin/save-nav-button-activity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            id: testActId2,
+            navButtonId: testBtnId2, // different category!
+            slug: 'yushan-main-peak', // same slug
+            title: '中級山特訓：玉山前置訓練',
+            description: '前哨站訓練',
+            externalUrl: 'https://example.com/yushan-training',
+            sortOrder: 1,
+            enabled: true,
+          }),
+        }),
+        env,
+        {}
+      );
+      assert(resSameActDiffCat.status === 200, 'Same activity slug across different categories is permitted');
+
+      // 11-7. Sitemap contains two-level activity URL
+      const resSitemap2 = await worker.fetch(new Request('http://localhost/sitemap.xml'), env, {});
+      const textSitemap2 = await resSitemap2.text();
+      assert(textSitemap2.includes('<loc>https://amazon-hike.com/baiyue-beginner/yushan-main-peak/</loc>'), 'Sitemap includes two-level activity URL');
+      assert(!textSitemap2.includes('/route/yushan-main-peak'), 'Sitemap does not include /route/ for activities');
+
+      // 11-8. GET /baiyue-beginner/yushan-main-peak/ (Two-Level SSR Route)
+      const resTwoLevel = await worker.fetch(new Request('http://localhost/baiyue-beginner/yushan-main-peak/'), env, {});
+      const htmlTwoLevel = await resTwoLevel.text();
+      assert(resTwoLevel.status === 200, 'Two-level activity route returns HTTP 200');
+      assert(htmlTwoLevel.includes('玉山主峰單攻'), 'Two-level activity route includes activity title');
+      assert(htmlTwoLevel.includes('https://example.com/yushan-register'), 'Two-level activity route includes external link');
+      assert(htmlTwoLevel.includes('href="https://amazon-hike.com/baiyue-beginner/yushan-main-peak/"'), 'Canonical points to two-level URL');
+
+      // 11-9. GET /baiyue-beginner/yushan-main-peak (no trailing slash) -> 301 Redirect
+      const resNoSlash = await worker.fetch(
+        new Request('http://localhost/baiyue-beginner/yushan-main-peak', { redirect: 'manual' }),
+        env,
+        {}
+      );
+      assert(resNoSlash.status === 301, 'Activity route without trailing slash returns 301');
+      assert(resNoSlash.headers.get('location') === 'https://amazon-hike.com/baiyue-beginner/yushan-main-peak/', 'Redirects to trailing slash version');
+
+      // 11-10. GET /route/yushan-main-peak -> 301 Redirect to canonical two-level route
+      const resLegacyRoute = await worker.fetch(
+        new Request('http://localhost/route/yushan-main-peak', { redirect: 'manual' }),
+        env,
+        {}
+      );
+      assert(resLegacyRoute.status === 301, 'Legacy /route/:slug returns 301 redirect');
+      assert(resLegacyRoute.headers.get('location') === 'https://amazon-hike.com/baiyue-beginner/yushan-main-peak/', 'Legacy /route/:slug redirects to canonical two-level route');
+
+      // 11-11. Non-existent activity under valid category -> 404
+      const res404Act = await worker.fetch(new Request('http://localhost/baiyue-beginner/non-existent-peak/'), env, {});
+      assert(res404Act.status === 404, 'Non-existent activity returns HTTP 404');
+
+      // Clean up test items
+      await worker.fetch(new Request('http://localhost/api/admin/delete-item', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ type: 'navButtonActivity', id: testActId1 }),
+      }), env, {});
+      await worker.fetch(new Request('http://localhost/api/admin/delete-item', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ type: 'navButtonActivity', id: testActId2 }),
+      }), env, {});
+      await worker.fetch(new Request('http://localhost/api/admin/delete-item', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ type: 'navButton', id: testBtnId1 }),
+      }), env, {});
+      await worker.fetch(new Request('http://localhost/api/admin/delete-item', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ type: 'navButton', id: testBtnId2 }),
+      }), env, {});
+    }
   }
 
   console.log(`\n=== TEST SUITE COMPLETE: ${allPassed ? 'ALL TESTS PASSED' : 'SOME TESTS FAILED'} ===`);

@@ -11,6 +11,7 @@ import { SurveysView } from './components/SurveysView.js';
 import { AdminPage } from './components/AdminPage.js';
 import { NavActivitiesView } from './components/NavActivitiesView.js';
 import { RouteActivityView } from './components/RouteActivityView.js';
+import { getCategorySlug, resolveActivitySeo } from './utils/activitySeo.js';
 import type { AssociationDatabase, CalendarActivity } from './types.js';
 
 const KNOWN_PATHS = new Set(['/', '/intro', '/tools', '/highlights', '/policies', '/surveys', '/admin']);
@@ -192,7 +193,64 @@ export default function App() {
       .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
   }, [publicData.navButtonActivities, currentNavButton]);
 
-  // Dynamic route slug if route matches /route/:slug
+  // Dynamic two-segment category and activity route: /{categorySlug}/{activitySlug}/
+  const currentCategoryActivitySegments = useMemo<[string, string] | null>(() => {
+    if (
+      KNOWN_PATHS.has(currentPath) ||
+      CHAPTER_PATH_RE.test(currentPath) ||
+      currentPath.startsWith('/intro/') ||
+      currentPath.startsWith('/nav/') ||
+      currentPath.startsWith('/route/') ||
+      currentPath.startsWith('/admin')
+    ) {
+      return null;
+    }
+    const segs = currentPath.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
+    if (segs.length !== 2) return null;
+    if (!segs[0].trim() || !segs[1].trim()) return null;
+    return [segs[0].toLowerCase(), segs[1].toLowerCase()];
+  }, [currentPath]);
+
+  // Current category button matching first segment
+  const currentCategoryButton = useMemo(() => {
+    if (!currentCategoryActivitySegments) return null;
+    const [catSlug] = currentCategoryActivitySegments;
+    return (
+      (publicData.navButtons || []).find(
+        (btn) => btn.enabled && getCategorySlug(btn) === catSlug
+      ) || null
+    );
+  }, [currentCategoryActivitySegments, publicData.navButtons]);
+
+  // Current category activity matching second segment under currentCategoryButton
+  const currentCategoryActivity = useMemo(() => {
+    if (!currentCategoryButton || !currentCategoryActivitySegments) return null;
+    const [, actSlug] = currentCategoryActivitySegments;
+    return (
+      (publicData.navButtonActivities || []).find(
+        (a) =>
+          a.navButtonId === currentCategoryButton.id &&
+          a.slug.toLowerCase() === actSlug &&
+          a.enabled
+      ) || null
+    );
+  }, [currentCategoryButton, currentCategoryActivitySegments, publicData.navButtonActivities]);
+
+  // Sibling activities under the same category
+  const currentCategorySiblingActivities = useMemo(() => {
+    if (!currentCategoryButton || !currentCategoryActivity) return [];
+    return (publicData.navButtonActivities || [])
+      .filter(
+        (a) =>
+          a.navButtonId === currentCategoryButton.id &&
+          a.enabled &&
+          a.id !== currentCategoryActivity.id
+      )
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+      .slice(0, 4);
+  }, [currentCategoryButton, currentCategoryActivity, publicData.navButtonActivities]);
+
+  // Dynamic route slug if route matches /route/:slug (legacy fallback)
   const currentRouteSlug = useMemo(() => {
     if (currentPath.startsWith('/route/')) {
       return currentPath.replace(/^\/route\//, '').replace(/\/+$/, '').toLowerCase();
@@ -200,7 +258,7 @@ export default function App() {
     return null;
   }, [currentPath]);
 
-  // Current route activity
+  // Current route activity (legacy fallback)
   const currentRouteActivity = useMemo(() => {
     if (!currentRouteSlug) return null;
     return (
@@ -228,14 +286,27 @@ export default function App() {
       if (!publicDataLoaded) return false;
       return !currentRouteActivity;
     }
+    if (currentCategoryActivitySegments) {
+      if (!publicDataLoaded) return false;
+      return !currentCategoryButton || !currentCategoryActivity;
+    }
     return true;
-  }, [currentPath, publicDataLoaded, currentNavButton, currentRouteActivity]);
+  }, [
+    currentPath,
+    publicDataLoaded,
+    currentNavButton,
+    currentRouteActivity,
+    currentCategoryActivitySegments,
+    currentCategoryButton,
+    currentCategoryActivity,
+  ]);
 
   // SEO: Update page title, meta description, canonical, og:url, twitter:title, twitter:description, and robots
   useEffect(() => {
     if (currentChapterSlug && !currentChapter && !publicDataLoaded) return;
     if (currentNavButtonId && !currentNavButton && !publicDataLoaded) return;
     if (currentRouteSlug && !currentRouteActivity && !publicDataLoaded) return;
+    if (currentCategoryActivitySegments && !currentCategoryActivity && !publicDataLoaded) return;
 
     const seoMap: Record<string, { title: string; description: string }> = {
       '/': {
@@ -268,14 +339,31 @@ export default function App() {
       },
     };
 
-    let currentMeta = seoMap[currentPath];
+    let currentMeta: { title: string; description: string; ogImage?: string } | undefined = seoMap[currentPath];
     let is404 = false;
+    let customCanonicalUrl: string | undefined;
 
     if (isUnknownPath) {
       is404 = true;
+      if (currentCategoryActivitySegments) {
+        currentMeta = {
+          title: '找不到此活動 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+          description: '找不到該行程活動，可能已下架、網址錯誤或分類已異動。',
+        };
+      } else {
+        currentMeta = {
+          title: '找不到此頁面 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+          description: '很抱歉，您所尋找的頁面不存在或已被移除。請返回首頁或瀏覽其他專題專區。',
+        };
+      }
+    } else if (!currentMeta && currentCategoryActivity && currentCategoryButton) {
+      const catSlug = getCategorySlug(currentCategoryButton);
+      customCanonicalUrl = `https://amazon-hike.com/${catSlug}/${currentCategoryActivity.slug}/`;
+      const resolved = resolveActivitySeo(currentCategoryActivity, currentCategoryButton);
       currentMeta = {
-        title: '找不到此頁面 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
-        description: '很抱歉，您所尋找的頁面不存在或已被移除。請返回首頁或瀏覽其他專題專區。',
+        title: resolved.title,
+        description: resolved.description,
+        ogImage: resolved.image,
       };
     } else if (!currentMeta && currentRouteActivity) {
       currentMeta = {
@@ -328,13 +416,24 @@ export default function App() {
     // Update canonical link: 未知路徑 404 canonical 指向首頁
     const canonicalUrl = isUnknownPath || currentPath === '/'
       ? 'https://amazon-hike.com/'
-      : `https://amazon-hike.com${currentPath}`;
+      : (customCanonicalUrl || `https://amazon-hike.com${currentPath}`);
     const canonicalLink = document.querySelector('link[rel="canonical"]');
     if (canonicalLink) canonicalLink.setAttribute('href', canonicalUrl);
 
     // Update og:url
     const ogUrl = document.querySelector('meta[property="og:url"]');
     if (ogUrl) ogUrl.setAttribute('content', canonicalUrl);
+
+    // Update og:image if provided
+    let ogImageEl = document.querySelector('meta[property="og:image"]');
+    if (currentMeta.ogImage) {
+      if (!ogImageEl) {
+        ogImageEl = document.createElement('meta');
+        ogImageEl.setAttribute('property', 'og:image');
+        document.head.appendChild(ogImageEl);
+      }
+      ogImageEl.setAttribute('content', currentMeta.ogImage);
+    }
 
     // Update robots meta tag: 404 時設為 noindex, follow
     let robotsMeta = document.querySelector('meta[name="robots"]');
@@ -348,7 +447,16 @@ export default function App() {
     } else {
       robotsMeta.setAttribute('content', 'index, follow');
     }
-  }, [currentPath, currentChapter, currentChapterSlug, isUnknownPath, publicDataLoaded]);
+  }, [
+    currentPath,
+    currentChapter,
+    currentChapterSlug,
+    isUnknownPath,
+    publicDataLoaded,
+    currentCategoryActivitySegments,
+    currentCategoryButton,
+    currentCategoryActivity,
+  ]);
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col font-sans selection:bg-emerald-800 selection:text-white">
@@ -442,11 +550,39 @@ export default function App() {
             button={currentNavButton}
             activities={currentNavActivities}
             onBack={() => navigate('/')}
-            onSelectActivity={(slug) => navigate(`/route/${slug}`)}
+            onSelectActivity={(slug) => navigate(`/${getCategorySlug(currentNavButton)}/${slug}/`)}
           />
         )}
 
-        {/* 單一活動內部頁面 /route/:slug */}
+        {/* 兩層式行程活動內部頁面 /:categorySlug/:activitySlug/ */}
+        {!isUnknownPath && currentCategoryButton && currentCategoryActivity && (
+          <RouteActivityView
+            activity={currentCategoryActivity}
+            parentButton={currentCategoryButton}
+            siblingActivities={currentCategorySiblingActivities}
+            onBack={() => navigate(`/nav/${currentCategoryButton.id}`)}
+            onNavigateHome={() => navigate('/')}
+          />
+        )}
+
+        {/* 找不到行程活動 404 狀態 */}
+        {isUnknownPath && currentCategoryActivitySegments && (
+          <main className="max-w-4xl mx-auto px-4 py-16 text-center">
+            <h1 className="text-2xl font-bold text-neutral-200 mb-2">找不到該行程活動</h1>
+            <p className="text-sm text-neutral-400 mb-6">
+              找不到該行程活動，可能已下架、網址錯誤或分類已異動。
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate('/')}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-sm font-medium transition-colors"
+            >
+              返回協會首頁
+            </button>
+          </main>
+        )}
+
+        {/* 單一活動內部頁面 /route/:slug（舊版相容） */}
         {!isUnknownPath && currentRouteSlug && currentRouteActivity && (
           <RouteActivityView
             activity={currentRouteActivity}

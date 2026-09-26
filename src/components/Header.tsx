@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronDown, Mail, Phone, ExternalLink, ShieldCheck, Menu, X } from 'lucide-react';
 import { normalizeUrl } from '../utils/url.js';
+import { getCategorySlug } from '../utils/activitySeo.js';
 import type { NavButtonItem, NavButtonActivity } from '../types.js';
 
 interface HeaderProps {
@@ -9,6 +10,42 @@ interface HeaderProps {
   surveyUrl?: string;
   navButtons?: NavButtonItem[];
   navButtonActivities?: NavButtonActivity[];
+}
+
+function checkButtonActive(
+  btn: NavButtonItem,
+  currentPath: string,
+  buttonNavPath: string,
+  hasEnabledActivities: boolean,
+  navButtonActivities?: NavButtonActivity[]
+): boolean {
+  if (!hasEnabledActivities) {
+    return Boolean(btn.url) && currentPath === btn.url;
+  }
+  if (currentPath.startsWith(`/nav/${btn.id}`) || currentPath === buttonNavPath) {
+    return true;
+  }
+  // Check two-segment path /{categorySlug}/{activitySlug}/
+  const segs = currentPath.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
+  if (segs.length === 2) {
+    const catSegment = segs[0].toLowerCase();
+    const actSegment = segs[1].toLowerCase();
+    if (catSegment === getCategorySlug(btn)) {
+      const hasMatch = (navButtonActivities || []).some(
+        (a) => a.navButtonId === btn.id && a.slug.toLowerCase() === actSegment && a.enabled
+      );
+      if (hasMatch) return true;
+    }
+  }
+  // Legacy /route/:slug fallback
+  if (currentPath.startsWith('/route/')) {
+    const routeSlug = currentPath.replace(/^\/route\//, '').replace(/\/+$/, '').toLowerCase();
+    const isRouteActive = (navButtonActivities || []).some(
+      (a) => a.navButtonId === btn.id && a.slug.toLowerCase() === routeSlug && a.enabled
+    );
+    if (isRouteActive) return true;
+  }
+  return false;
 }
 
 export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyUrl, navButtons, navButtonActivities }) => {
@@ -236,21 +273,9 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyU
                 );
               }
 
-              let isRouteActive = false;
-              if (hasEnabledActivities && currentPath.startsWith('/route/')) {
-                const routeSlug = currentPath.replace(/^\/route\//, '').replace(/\/+$/, '').toLowerCase();
-                isRouteActive = Boolean(
-                  (navButtonActivities || []).some(
-                    (a) => a.navButtonId === btn.id && a.slug.toLowerCase() === routeSlug
-                  )
-                );
-              }
-
               const buttonNavPath = btn.url && btn.url.startsWith('/nav/') ? btn.url : `/nav/${btn.id}`;
               const targetUrl = hasEnabledActivities ? buttonNavPath : (btn.url || buttonNavPath);
-              const isActive = hasEnabledActivities
-                ? (currentPath.startsWith(`/nav/${btn.id}`) || currentPath === buttonNavPath || isRouteActive)
-                : (Boolean(btn.url) && currentPath === btn.url);
+              const isActive = checkButtonActive(btn, currentPath, buttonNavPath, hasEnabledActivities, navButtonActivities);
 
               return (
                 <a
@@ -301,21 +326,9 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyU
                   );
                 }
 
-                let isRouteActive = false;
-                if (hasEnabledActivities && currentPath.startsWith('/route/')) {
-                  const routeSlug = currentPath.replace(/^\/route\//, '').replace(/\/+$/, '').toLowerCase();
-                  isRouteActive = Boolean(
-                    (navButtonActivities || []).some(
-                      (a) => a.navButtonId === btn.id && a.slug.toLowerCase() === routeSlug
-                    )
-                  );
-                }
-
                 const buttonNavPath = btn.url && btn.url.startsWith('/nav/') ? btn.url : `/nav/${btn.id}`;
                 const targetUrl = hasEnabledActivities ? buttonNavPath : (btn.url || buttonNavPath);
-                const isActive = hasEnabledActivities
-                  ? (currentPath.startsWith(`/nav/${btn.id}`) || currentPath === buttonNavPath || isRouteActive)
-                  : (Boolean(btn.url) && currentPath === btn.url);
+                const isActive = checkButtonActive(btn, currentPath, buttonNavPath, hasEnabledActivities, navButtonActivities);
 
                 return (
                   <a

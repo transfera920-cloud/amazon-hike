@@ -589,6 +589,7 @@ export async function handleApiRequest(
       }
     }
 
+
     // DELETE or POST item deletion
     const isDeleteRoute =
       (method === 'DELETE' && path.startsWith('/api/admin/item/')) ||

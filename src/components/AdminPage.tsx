@@ -21,7 +21,8 @@ import {
   ChevronDown,
   ChevronRight,
   CornerDownRight,
-  Compass
+  Compass,
+  Calendar
 } from 'lucide-react';
 import type {
   IntroItem,
@@ -33,6 +34,7 @@ import type {
   NavButtonItem,
   NavButtonEntry,
   NavButtonActivity,
+  CalendarActivity,
   AssociationDatabase
 } from '../types.js';
 import { slugify, RESERVED_SLUGS, getCategorySlug } from '../utils/activitySeo.js';
@@ -42,7 +44,7 @@ interface AdminPageProps {
   onDataUpdated: () => void;
 }
 
-type AdminTab = 'chapters' | 'intro' | 'tools' | 'highlights' | 'survey' | 'policies' | 'buttons';
+type AdminTab = 'chapters' | 'intro' | 'tools' | 'highlights' | 'survey' | 'policies' | 'buttons' | 'calendar';
 
 export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) => {
   // Auth state
@@ -76,6 +78,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
   const [editingNavButtonActivity, setEditingNavButtonActivity] = useState<Partial<NavButtonActivity> | null>(null);
   const [activitySlugManuallyEdited, setActivitySlugManuallyEdited] = useState(false);
   const [expandedActivityButtonId, setExpandedActivityButtonId] = useState<string | null>(null);
+  const [editingCalendarActivity, setEditingCalendarActivity] = useState<Partial<CalendarActivity> | null>(null);
 
   // In-app deletion modal
   const [deleteTarget, setDeleteTarget] = useState<{
@@ -252,6 +255,48 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
       if (json.success) {
         showFeedback('登山工具已成功寫入永久資料庫');
         setEditingTool(null);
+        await fetchAdminData(token);
+        onDataUpdated();
+      } else {
+        showFeedback(json.error || '儲存失敗', true);
+      }
+    } catch (err: any) {
+      showFeedback(err.message || '連線儲存失敗', true);
+    }
+  };
+
+  // ---------------------------------------------------------
+  // Calendar Activity CRUD
+  // ---------------------------------------------------------
+  const handleSaveCalendarActivity = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCalendarActivity || !editingCalendarActivity.title || !editingCalendarActivity.startDate || !editingCalendarActivity.url) return;
+
+    const startDate = editingCalendarActivity.startDate.trim();
+    const endDate = (editingCalendarActivity.endDate && editingCalendarActivity.endDate.trim())
+      ? editingCalendarActivity.endDate.trim()
+      : startDate;
+
+    const payload = {
+      ...editingCalendarActivity,
+      startDate,
+      endDate,
+    };
+
+    try {
+      const res = await fetch('/api/admin/save-calendar-activity', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        showFeedback('活動行事曆行程已成功儲存至資料庫');
+        setEditingCalendarActivity(null);
         await fetchAdminData(token);
         onDataUpdated();
       } else {
@@ -637,6 +682,12 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
             targetType === 'navbuttonactivities'
           ) {
             next.navButtonActivities = (next.navButtonActivities || []).filter((a) => String(a.id) !== targetId);
+          } else if (
+            targetType === 'calendaractivity' ||
+            targetType === 'calendar_activity' ||
+            targetType === 'calendaractivities'
+          ) {
+            next.calendarActivities = (next.calendarActivities || []).filter((a) => String(a.id) !== targetId);
           }
           return next;
         });
@@ -650,6 +701,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
         if (editingNavButton?.id === deleteTarget.id) setEditingNavButton(null);
         if (editingNavEntry?.id === deleteTarget.id) setEditingNavEntry(null);
         if (editingNavButtonActivity?.id === deleteTarget.id) setEditingNavButtonActivity(null);
+        if (editingCalendarActivity?.id === deleteTarget.id) setEditingCalendarActivity(null);
 
         setDeleteTarget(null);
         await fetchAdminData(token);
@@ -885,6 +937,19 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
         >
           <LayoutGrid size={14} />
           <span>前台按鈕管理</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('calendar')}
+          className={`px-3.5 py-2 border-b-2 transition-colors whitespace-nowrap flex items-center gap-1.5 ${
+            activeTab === 'calendar'
+              ? 'border-emerald-500 text-emerald-400 font-semibold'
+              : 'border-transparent text-neutral-400 hover:text-neutral-200'
+          }`}
+        >
+          <Calendar size={14} />
+          <span>活動行事曆管理</span>
         </button>
       </div>
 
@@ -3017,6 +3082,256 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================
+          TAB 7: 活動行事曆管理 (calendarActivities)
+          Fields: title, startDate, endDate, url, enabled, sortOrder
+          ========================================================= */}
+      {activeTab === 'calendar' && adminData && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-bold text-neutral-200">
+                活動行事曆清單 ({(adminData.calendarActivities || []).length})
+              </h2>
+              <p className="text-xs text-neutral-400 mt-0.5">
+                在此建立與維護協會活動行事曆行程，前台首頁月曆與列表將即時顯示。
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                setEditingCalendarActivity({
+                  id: '',
+                  title: '',
+                  startDate: new Date().toISOString().split('T')[0],
+                  endDate: '',
+                  url: '',
+                  enabled: true,
+                  sortOrder: ((adminData.calendarActivities || []).length || 0) + 1,
+                })
+              }
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold bg-emerald-800 hover:bg-emerald-700 text-white transition-colors"
+            >
+              <Plus size={14} />
+              <span>新增活動行程</span>
+            </button>
+          </div>
+
+          {/* Edit Calendar Activity Form */}
+          {editingCalendarActivity && (
+            <div className="border border-emerald-700/80 rounded bg-neutral-900 p-5 space-y-4">
+              <h3 className="text-sm font-bold text-emerald-400">
+                {editingCalendarActivity.id ? '編輯活動行程' : '新增活動行程'}
+              </h3>
+              <form onSubmit={handleSaveCalendarActivity} className="space-y-3 text-xs">
+                <div>
+                  <label className="block text-neutral-300 font-medium mb-1">
+                    活動行程名稱 *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editingCalendarActivity.title || ''}
+                    onChange={(e) =>
+                      setEditingCalendarActivity({
+                        ...editingCalendarActivity,
+                        title: e.target.value,
+                      })
+                    }
+                    placeholder="例如：玉山主峰單攻、雪山主東峰兩日行"
+                    className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-neutral-300 font-medium mb-1">
+                      開始日期 *
+                    </label>
+                    <input
+                      type="date"
+                      required
+                      value={editingCalendarActivity.startDate || ''}
+                      onChange={(e) =>
+                        setEditingCalendarActivity({
+                          ...editingCalendarActivity,
+                          startDate: e.target.value,
+                        })
+                      }
+                      className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 focus:outline-none focus:border-emerald-500 font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-neutral-300 font-medium mb-1">
+                      結束日期 (留空則預設等於開始日期)
+                    </label>
+                    <input
+                      type="date"
+                      value={editingCalendarActivity.endDate || ''}
+                      onChange={(e) =>
+                        setEditingCalendarActivity({
+                          ...editingCalendarActivity,
+                          endDate: e.target.value,
+                        })
+                      }
+                      className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 focus:outline-none focus:border-emerald-500 font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-neutral-300 font-medium mb-1">
+                    活動超連結 * (點擊時直接導向外部報名或活動說明)
+                  </label>
+                  <input
+                    type="url"
+                    required
+                    value={editingCalendarActivity.url || ''}
+                    onChange={(e) =>
+                      setEditingCalendarActivity({
+                        ...editingCalendarActivity,
+                        url: e.target.value,
+                      })
+                    }
+                    placeholder="https://..."
+                    className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 focus:outline-none focus:border-emerald-500 font-mono"
+                  />
+                </div>
+
+                <div className="flex items-center gap-6 pt-1">
+                  <div>
+                    <label className="block text-neutral-300 font-medium mb-1">
+                      排序序號
+                    </label>
+                    <input
+                      type="number"
+                      value={editingCalendarActivity.sortOrder ?? 0}
+                      onChange={(e) =>
+                        setEditingCalendarActivity({
+                          ...editingCalendarActivity,
+                          sortOrder: parseInt(e.target.value) || 0,
+                        })
+                      }
+                      className="w-24 px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2 mt-5">
+                    <input
+                      type="checkbox"
+                      id="calendar-activity-enabled"
+                      checked={editingCalendarActivity.enabled ?? true}
+                      onChange={(e) =>
+                        setEditingCalendarActivity({
+                          ...editingCalendarActivity,
+                          enabled: e.target.checked,
+                        })
+                      }
+                      className="rounded border-neutral-700 text-emerald-600 focus:ring-0"
+                    />
+                    <label
+                      htmlFor="calendar-activity-enabled"
+                      className="text-neutral-300 font-medium cursor-pointer"
+                    >
+                      啟用顯示 (前台可見)
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-3">
+                  <button
+                    type="submit"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-semibold transition-colors"
+                  >
+                    <Save size={14} />
+                    <span>儲存活動行程</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingCalendarActivity(null)}
+                    className="px-3 py-2 rounded bg-neutral-800 text-neutral-300 hover:text-white transition-colors"
+                  >
+                    取消
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {/* Calendar Activities Table */}
+          <div className="border border-neutral-800 rounded bg-neutral-900/40 overflow-hidden">
+            {((adminData.calendarActivities || [])
+              .slice()
+              .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))).length > 0 ? (
+              <div className="divide-y divide-neutral-800">
+                {((adminData.calendarActivities || [])
+                  .slice()
+                  .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))).map((item) => {
+                  const isMultiDay = item.endDate && item.endDate !== item.startDate;
+                  return (
+                    <div
+                      key={item.id}
+                      className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 font-mono">
+                            #{item.sortOrder}
+                          </span>
+                          <span className="font-bold text-neutral-100 text-sm">
+                            {item.title}
+                          </span>
+                          <span className="text-xs px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-mono">
+                            {item.startDate}{isMultiDay ? ` ~ ${item.endDate}` : ''}
+                          </span>
+                          {!item.enabled && (
+                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-rose-950 text-rose-300 border border-rose-800">
+                              已停用
+                            </span>
+                          )}
+                        </div>
+                        {item.url && (
+                          <div className="flex items-center gap-1 text-[11px] text-neutral-400 font-mono break-all">
+                            <ExternalLink size={12} className="text-neutral-500 shrink-0" />
+                            <span>{item.url}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setEditingCalendarActivity(item)}
+                          className="p-1.5 rounded text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors"
+                          title="編輯"
+                        >
+                          <Edit2 size={15} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleDeleteItem('calendarActivity', item.id, item.title)
+                          }
+                          className="p-1.5 rounded text-rose-400 hover:text-rose-300 hover:bg-neutral-800 transition-colors"
+                          title="刪除"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="p-8 text-center text-xs text-neutral-500">
+                目前沒有任何活動行程，請點擊右上角「新增活動行程」建立。
+              </div>
+            )}
           </div>
         </div>
       )}

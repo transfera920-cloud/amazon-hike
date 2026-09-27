@@ -17,6 +17,7 @@ import type {
   NavButtonItem,
   NavButtonEntry,
   NavButtonActivity,
+  CalendarActivity,
 } from './src/types.js';
 import { RESERVED_SLUGS, getCategorySlug } from './src/utils/activitySeo.js';
 
@@ -88,54 +89,16 @@ const handlePublicContent = (req: Request, res: Response) => {
 apiRouter.get('/public-data', handlePublicContent);
 apiRouter.get('/content', handlePublicContent);
 
-// Calendar activities proxy from official system (supports /calendar-activities and /activities)
-let cachedActivities: any[] | null = null;
-let cacheTime = 0;
-const CACHE_DURATION_MS = 60 * 1000; // 1 minute cache
-
-const handleCalendarActivities = async (req: Request, res: Response) => {
-  const now = Date.now();
-  if (cachedActivities && now - cacheTime < CACHE_DURATION_MS) {
-    return res.json({ success: true, source: 'cache', activities: cachedActivities });
-  }
-
+// Calendar activities from database (supports /calendar-activities and /activities)
+const handleCalendarActivities = (req: Request, res: Response) => {
   try {
-    const response = await fetch('https://amazon-trail.ai.studio/api/activities', {
-      headers: { 'Accept': 'application/json' },
-    });
-
-    if (!response.ok) {
-      throw new Error(`External API responded with status ${response.status}`);
-    }
-
-    const json = await response.json();
-    const rawList = Array.isArray(json.activities) ? json.activities : [];
-
-    // Filter only activities that have valid start date
-    const formatted = rawList
-      .filter((a: any) => a && a.startDate && a.startDate.trim() !== '')
-      .map((a: any) => ({
-        id: String(a.id || Math.random()),
-        title: String(a.title || '登山行程').trim(),
-        startDate: String(a.startDate).trim(),
-        endDate: String(a.endDate || a.startDate).trim(),
-        url: a.url || a.link || 'https://amazon-trail.ai.studio/activity/',
-      }));
-
-    cachedActivities = formatted;
-    cacheTime = now;
-
-    res.json({ success: true, source: 'live', activities: formatted });
+    const db = loadDatabase();
+    const list = (db.calendarActivities || [])
+      .filter((a) => a.enabled)
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+    res.json({ success: true, source: 'db', activities: list });
   } catch (err: any) {
-    if (cachedActivities) {
-      return res.json({ success: true, source: 'stale-cache', activities: cachedActivities });
-    }
-    // As instructed: if API truly fails, report genuine error, no fake mock data!
-    res.status(502).json({
-      success: false,
-      error: `無法自活動中心取得最新行程資料：${err.message}`,
-      activities: [],
-    });
+    res.status(500).json({ success: false, error: err.message, activities: [] });
   }
 };
 apiRouter.get('/calendar-activities', handleCalendarActivities);
@@ -618,6 +581,63 @@ apiRouter.post('/admin/save-policy', requireAdmin, (req: Request, res: Response)
   }
 });
 
+// Save Calendar Activity (Add / Edit)
+apiRouter.post('/admin/save-calendar-activity', requireAdmin, (req: Request, res: Response) => {
+  try {
+    const db = loadDatabase();
+    const item: CalendarActivity = req.body;
+
+    if (!item.title || !item.title.trim()) {
+      return res.status(400).json({ error: '活動名稱為必填欄位' });
+    }
+    if (!item.startDate || !item.startDate.trim()) {
+      return res.status(400).json({ error: '開始日期為必填欄位' });
+    }
+    if (!item.url || !item.url.trim()) {
+      return res.status(400).json({ error: '活動超連結為必填欄位' });
+    }
+
+    const startDate = item.startDate.trim();
+    const endDate = (item.endDate && item.endDate.trim()) ? item.endDate.trim() : startDate;
+
+    let days = item.days;
+    if (!days && startDate && endDate) {
+      const d1 = new Date(startDate).getTime();
+      const d2 = new Date(endDate).getTime();
+      if (!isNaN(d1) && !isNaN(d2)) {
+        days = Math.max(1, Math.round((d2 - d1) / (1000 * 60 * 60 * 24)) + 1);
+      }
+    }
+
+    const cleanItem: CalendarActivity = {
+      id: item.id || `cal_${Date.now()}`,
+      title: item.title.trim(),
+      startDate,
+      endDate,
+      url: item.url.trim(),
+      days: days || 1,
+      enabled: item.enabled ?? true,
+      sortOrder: Number(item.sortOrder) || 0,
+    };
+
+    if (!Array.isArray(db.calendarActivities)) {
+      db.calendarActivities = [];
+    }
+
+    const existingIndex = db.calendarActivities.findIndex((a) => a.id === cleanItem.id);
+    if (existingIndex >= 0) {
+      db.calendarActivities[existingIndex] = cleanItem;
+    } else {
+      db.calendarActivities.push(cleanItem);
+    }
+
+    saveDatabase(db);
+    res.json({ success: true, item: cleanItem });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Reusable delete logic
 function executeDeleteItem(type: string, id: string): { success: boolean; error?: string } {
   const db = loadDatabase();
@@ -653,6 +673,12 @@ function executeDeleteItem(type: string, id: string): { success: boolean; error?
     normalizedType === 'navbuttonactivities'
   ) {
     db.navButtonActivities = (db.navButtonActivities || []).filter((a) => String(a.id) !== targetId);
+  } else if (
+    normalizedType === 'calendaractivity' ||
+    normalizedType === 'calendar_activity' ||
+    normalizedType === 'calendaractivities'
+  ) {
+    db.calendarActivities = (db.calendarActivities || []).filter((a) => String(a.id) !== targetId);
   } else {
     return { success: false, error: `未知的資料類別: ${type}` };
   }

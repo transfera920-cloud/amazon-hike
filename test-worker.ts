@@ -741,6 +741,97 @@ async function runTests() {
         body: JSON.stringify({ type: 'navButton', id: testBtnId2 }),
       }), env, {});
     }
+
+    // 12. Manual Calendar Activities CRUD & Endpoint Tests
+    {
+      const testCalId = 'cal_test_event_1';
+
+      // 12-1. Required fields validation
+      const resMissingTitle = await worker.fetch(
+        new Request('http://localhost/api/admin/save-calendar-activity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            startDate: '2026-10-01',
+            url: 'https://example.com/event',
+          }),
+        }),
+        env,
+        {}
+      );
+      assert(resMissingTitle.status === 400, 'save-calendar-activity requires title');
+
+      const resMissingDate = await worker.fetch(
+        new Request('http://localhost/api/admin/save-calendar-activity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            title: '合歡山主東峰',
+            url: 'https://example.com/event',
+          }),
+        }),
+        env,
+        {}
+      );
+      assert(resMissingDate.status === 400, 'save-calendar-activity requires startDate');
+
+      // 12-2. Valid save-calendar-activity (endDate defaults to startDate if omitted)
+      const resSaveCal = await worker.fetch(
+        new Request('http://localhost/api/admin/save-calendar-activity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            id: testCalId,
+            title: '合歡山秋季賞景健行',
+            startDate: '2026-10-15',
+            endDate: '', // empty -> should default to startDate
+            url: 'https://example.com/hehuan-autumn',
+            enabled: true,
+            sortOrder: 1,
+          }),
+        }),
+        env,
+        {}
+      );
+      const jsonSaveCal: any = await resSaveCal.json();
+      assert(resSaveCal.status === 200, 'save-calendar-activity succeeded');
+      assert(jsonSaveCal.item.endDate === '2026-10-15', 'endDate defaulted to startDate');
+
+      // 12-3. GET /api/calendar-activities returns source: 'db' and contains our saved item
+      const resCalList = await worker.fetch(new Request('http://localhost/api/calendar-activities'), env, {});
+      const jsonCalList: any = await resCalList.json();
+      assert(resCalList.status === 200, 'GET /api/calendar-activities status 200');
+      assert(jsonCalList.source === 'db', 'GET /api/calendar-activities source is "db"');
+      const foundCal = jsonCalList.activities.find((a: any) => a.id === testCalId);
+      assert(Boolean(foundCal), 'Saved calendar activity is present in /api/calendar-activities');
+      assert(foundCal.title === '合歡山秋季賞景健行', 'Calendar activity title matches');
+
+      // 12-4. GET /api/activities also returns the same db-sourced list
+      const resActList = await worker.fetch(new Request('http://localhost/api/activities'), env, {});
+      const jsonActList: any = await resActList.json();
+      assert(resActList.status === 200 && jsonActList.source === 'db', 'GET /api/activities also returns db source');
+
+      // 12-5. Delete item with type 'calendarActivity'
+      const resDelCal = await worker.fetch(
+        new Request('http://localhost/api/admin/delete-item', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            type: 'calendarActivity',
+            id: testCalId,
+          }),
+        }),
+        env,
+        {}
+      );
+      assert(resDelCal.status === 200, 'delete-item with calendarActivity succeeded');
+
+      // Re-verify deletion
+      const resCalAfterDel = await worker.fetch(new Request('http://localhost/api/calendar-activities'), env, {});
+      const jsonCalAfterDel: any = await resCalAfterDel.json();
+      const stillThere = jsonCalAfterDel.activities.find((a: any) => a.id === testCalId);
+      assert(!stillThere, 'Deleted calendar activity is cleanly removed from /api/calendar-activities');
+    }
   }
 
   console.log(`\n=== TEST SUITE COMPLETE: ${allPassed ? 'ALL TESTS PASSED' : 'SOME TESTS FAILED'} ===`);

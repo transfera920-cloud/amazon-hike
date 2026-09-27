@@ -20,6 +20,7 @@ import type {
   CalendarActivity,
 } from './src/types.js';
 import { RESERVED_SLUGS, getCategorySlug } from './src/utils/activitySeo.js';
+import { cleanTripItinerary } from './src/utils/itineraryHelper.js';
 
 const app = express();
 const PORT = 3000;
@@ -521,6 +522,7 @@ apiRouter.post('/admin/save-nav-button-activity', requireAdmin, (req: Request, r
       metaDescription: (item.metaDescription || '').trim() || undefined,
       ogImage: (item.ogImage || '').trim() || undefined,
       updatedAt: new Date().toISOString().split('T')[0],
+      itinerary: item.itinerary ? cleanTripItinerary(item.itinerary) : undefined,
     };
 
     const existingIndex = db.navButtonActivities.findIndex((a) => a.id === cleanItem.id);

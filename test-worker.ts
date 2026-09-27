@@ -832,6 +832,184 @@ async function runTests() {
       const stillThere = jsonCalAfterDel.activities.find((a: any) => a.id === testCalId);
       assert(!stillThere, 'Deleted calendar activity is cleanly removed from /api/calendar-activities');
     }
+
+    // 13. Embedded Hiking Itinerary Tests (TripItinerary in NavButtonActivity)
+    {
+      const testActIdWithItin = 'act_itin_test_01';
+      const resSaveItin = await worker.fetch(
+        new Request('http://localhost/api/admin/save-nav-button-activity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            id: testActIdWithItin,
+            navButtonId: 'btn_test_cat1',
+            title: '合歡主東峰兩日經典健行',
+            slug: 'hehuan-2days-test',
+            description: '合歡山主峰、東峰經典健行行程',
+            externalUrl: 'https://example.com/signup/hehuan',
+            sortOrder: 1,
+            enabled: true,
+            itinerary: {
+              enabled: true,
+              subtitle: '高山百岳初體驗・群峰雲海之美',
+              startDate: '2026-10-10',
+              endDate: '2026-10-11',
+              totalDistanceKm: 14.5,
+              maxElevationM: 3422,
+              elevationGainM: 850,
+              elevationLossM: 820,
+              difficulty: '入門',
+              requiredGear: '雙肩背包\n登山鞋\n保暖外套與雨具',
+              safetyNotes: '高海拔地區注意保暖防風與高山反應\n午後常有濃霧或雷陣雨',
+              days: [
+                {
+                  id: 'day_custom_1',
+                  dayNumber: 99, // Should be overridden to 1 by backend
+                  sortOrder: 99, // Should be overridden to 1 by backend
+                  estimatedHours: 4.5,
+                  timePoints: [
+                    {
+                      id: 'tp_1',
+                      time: '08:30',
+                      location: '松雪樓出發',
+                      description: '整理裝備出發',
+                      sortOrder: 0,
+                      link: {
+                        name: '松雪樓',
+                        type: 'hut',
+                        url: 'https://example.com/songxuelou',
+                        showOnFrontend: true,
+                      },
+                    },
+                    {
+                      id: 'tp_invalid',
+                      time: '09:30',
+                      location: '', // Missing location should be filtered out!
+                      sortOrder: 1,
+                    },
+                    {
+                      id: 'tp_2',
+                      time: '11:00',
+                      location: '合歡東峰三角點',
+                      description: '展望奇萊連峰',
+                      sortOrder: 2,
+                      link: {
+                        name: '合歡東峰',
+                        type: 'invalid_type_should_fallback_to_other',
+                        url: 'https://example.com/dongfeng',
+                        showOnFrontend: true,
+                      },
+                    },
+                  ],
+                },
+                {
+                  id: 'day_custom_2',
+                  dayNumber: 88, // Should be overridden to 2
+                  sortOrder: 88, // Should be overridden to 2
+                  estimatedHours: 3.5,
+                  timePoints: [
+                    {
+                      id: 'tp_3',
+                      time: '07:00',
+                      location: '合歡主峰登山口',
+                      sortOrder: 0,
+                      link: {
+                        name: '主峰登山口',
+                        type: 'trailhead',
+                        url: '/intro',
+                        showOnFrontend: true,
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          }),
+        }),
+        env,
+        {}
+      );
+
+      const jsonSaveItin: any = await resSaveItin.json();
+      assert(resSaveItin.status === 200, 'save-nav-button-activity with itinerary responded 200');
+      assert(jsonSaveItin.success === true, 'save-nav-button-activity success is true');
+      const savedItin = jsonSaveItin.item.itinerary;
+      assert(Boolean(savedItin), 'Saved activity includes itinerary');
+      assert(savedItin.enabled === true, 'Itinerary enabled is true');
+      assert(savedItin.subtitle === '高山百岳初體驗・群峰雲海之美', 'Itinerary subtitle matches');
+      assert(savedItin.totalDistanceKm === 14.5, 'totalDistanceKm matches');
+      assert(savedItin.maxElevationM === 3422, 'maxElevationM matches');
+      assert(savedItin.difficulty === '入門', 'difficulty matches');
+      assert(Array.isArray(savedItin.days) && savedItin.days.length === 2, 'Itinerary has 2 days');
+      
+      // Verify day numbering was re-indexed safely
+      assert(savedItin.days[0].dayNumber === 1 && savedItin.days[0].sortOrder === 1, 'Day 1 indexed to 1');
+      assert(savedItin.days[1].dayNumber === 2 && savedItin.days[1].sortOrder === 2, 'Day 2 indexed to 2');
+      assert(savedItin.days[0].estimatedHours === 4.5, 'Day 1 estimatedHours is 4.5');
+      assert(savedItin.days[1].estimatedHours === 3.5, 'Day 2 estimatedHours is 3.5');
+
+      // Verify timepoint validation
+      const d1TimePoints = savedItin.days[0].timePoints;
+      assert(d1TimePoints.length === 2, 'Invalid timepoint without location was filtered out');
+      assert(d1TimePoints[0].location === '松雪樓出發', 'First timepoint location matches');
+      assert(d1TimePoints[0].link?.type === 'hut', 'Valid link type hut preserved');
+      assert(d1TimePoints[1].link?.type === 'other', 'Invalid link type fell back to other');
+
+      // Verify NO independent total hours field exists in DB
+      assert(!('totalEstimatedHours' in savedItin), 'No independent totalEstimatedHours field stored in DB');
+      assert(!('estimatedTotalHours' in savedItin), 'No independent estimatedTotalHours field stored in DB');
+
+      // Verify public-data serves the itinerary
+      const resPubData = await worker.fetch(new Request('http://localhost/api/public-data'), env, {});
+      const jsonPubData: any = await resPubData.json();
+      const pubAct = jsonPubData.data.navButtonActivities.find((a: any) => a.id === testActIdWithItin);
+      assert(Boolean(pubAct && pubAct.itinerary), 'Public data serves activity with itinerary');
+      assert(pubAct.itinerary.days.length === 2, 'Public data itinerary days count is 2');
+
+      // Verify backwards compatibility for activity without itinerary
+      const testActNoItin = 'act_no_itin_test';
+      const resSaveNoItin = await worker.fetch(
+        new Request('http://localhost/api/admin/save-nav-button-activity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            id: testActNoItin,
+            navButtonId: 'btn_test_cat1',
+            title: '活動無行程測試',
+            slug: 'no-itin-test',
+            description: '一般活動',
+            externalUrl: 'https://example.com/signup',
+            sortOrder: 2,
+            enabled: true,
+          }),
+        }),
+        env,
+        {}
+      );
+      const jsonSaveNoItin: any = await resSaveNoItin.json();
+      assert(resSaveNoItin.status === 200, 'Activity without itinerary saved successfully');
+      assert(jsonSaveNoItin.item.itinerary === undefined, 'Activity without itinerary has undefined itinerary');
+
+      // Clean up test activities
+      await worker.fetch(
+        new Request('http://localhost/api/admin/delete-item', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ type: 'navButtonActivity', id: testActIdWithItin }),
+        }),
+        env,
+        {}
+      );
+      await worker.fetch(
+        new Request('http://localhost/api/admin/delete-item', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ type: 'navButtonActivity', id: testActNoItin }),
+        }),
+        env,
+        {}
+      );
+    }
   }
 
   console.log(`\n=== TEST SUITE COMPLETE: ${allPassed ? 'ALL TESTS PASSED' : 'SOME TESTS FAILED'} ===`);

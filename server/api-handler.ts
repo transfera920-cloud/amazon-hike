@@ -17,6 +17,7 @@ import type {
   CalendarActivity
 } from '../src/types.js';
 import { RESERVED_SLUGS, getCategorySlug } from '../src/utils/activitySeo.js';
+import { cleanTripItinerary } from '../src/utils/itineraryHelper.js';
 
 const ADMIN_SECRET_TOKEN = 'amazon-alpine-secure-token-2026';
 const ADMIN_PASSWORD = 'yy661003';
@@ -525,6 +526,7 @@ export async function handleApiRequest(
           metaDescription: (item.metaDescription || '').trim() || undefined,
           ogImage: (item.ogImage || '').trim() || undefined,
           updatedAt: new Date().toISOString().split('T')[0],
+          itinerary: item.itinerary ? cleanTripItinerary(item.itinerary) : undefined,
         };
 
         const idx = db.navButtonActivities.findIndex((a) => a.id === cleanItem.id);

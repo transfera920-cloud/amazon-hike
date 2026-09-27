@@ -174,6 +174,7 @@ export interface CalendarActivity {
   days?: number;
   enabled: boolean;
   sortOrder: number;
+  sourceActivityId?: string; // 標記此筆是否由行程活動的內嵌式行程自動同步產生
 }
 
 export interface PublicDataResponse {

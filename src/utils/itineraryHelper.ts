@@ -4,7 +4,12 @@ import type {
   ItineraryLinkType,
   ItineraryTimePoint,
   TripItinerary,
+  CalendarActivity,
+  NavButtonActivity,
+  NavButtonItem,
+  AssociationDatabase,
 } from '../types.js';
+import { getCategorySlug } from './activitySeo.js';
 
 export const ITINERARY_LINK_TYPES: { type: ItineraryLinkType; label: string }[] = [
   { type: 'mountain', label: '山岳' },
@@ -178,4 +183,176 @@ export function cleanTripItinerary(raw: any): TripItinerary | undefined {
     safetyNotes,
     days,
   };
+}
+
+/**
+ * Builds or syncs a CalendarActivity from a NavButtonActivity's embedded TripItinerary.
+ * Returns null if itinerary is not enabled or has no startDate.
+ */
+export function buildCalendarActivityFromItinerary(
+  activity: NavButtonActivity,
+  parentNavButton?: NavButtonItem,
+  existing?: CalendarActivity
+): CalendarActivity | null {
+  if (!activity.itinerary?.enabled || !activity.itinerary.startDate) {
+    return null;
+  }
+
+  const itin = activity.itinerary;
+  const sDate = itin.startDate.trim();
+  if (!sDate) return null;
+
+  const eDate = itin.endDate && itin.endDate.trim() ? itin.endDate.trim() : sDate;
+  const categorySlug = parentNavButton ? getCategorySlug(parentNavButton) : 'activity';
+  const internalUrl = `/${categorySlug}/${activity.slug}/`;
+  const totalDays = getDisplayDaysCount(itin);
+
+  const title = itin.subtitle
+    ? `${activity.title}（${itin.subtitle}）`
+    : activity.title;
+
+  return {
+    id: existing?.id || `itin_${activity.id}`,
+    title,
+    startDate: sDate,
+    endDate: eDate,
+    url: internalUrl,
+    days: totalDays,
+    enabled: Boolean(activity.enabled && itin.enabled),
+    sortOrder: existing?.sortOrder ?? 0,
+    sourceActivityId: activity.id,
+  };
+}
+
+/**
+ * Syncs a NavButtonActivity's embedded itinerary with the database's calendarActivities.
+ * If itinerary is enabled with a valid startDate, creates or updates the CalendarActivity.
+ * If disabled, missing startDate, or not present, removes any existing synced CalendarActivity.
+ */
+export function syncCalendarActivityWithItinerary(
+  db: AssociationDatabase,
+  activity: NavButtonActivity
+): void {
+  if (!Array.isArray(db.calendarActivities)) {
+    db.calendarActivities = [];
+  }
+  const parentBtn = (db.navButtons || []).find((b) => b.id === activity.navButtonId);
+  const existingIdx = db.calendarActivities.findIndex(
+    (c) => c.sourceActivityId === activity.id
+  );
+  const existing = existingIdx >= 0 ? db.calendarActivities[existingIdx] : undefined;
+  const synced = buildCalendarActivityFromItinerary(activity, parentBtn, existing);
+
+  if (synced) {
+    if (existingIdx >= 0) {
+      db.calendarActivities[existingIdx] = synced;
+    } else {
+      db.calendarActivities.push(synced);
+    }
+  } else {
+    if (existingIdx >= 0) {
+      db.calendarActivities.splice(existingIdx, 1);
+    }
+  }
+}
+
+/**
+ * Removes any calendar activity that was synced from the specified activity ID.
+ */
+export function removeCalendarActivityForActivity(
+  db: AssociationDatabase,
+  activityId: string
+): void {
+  if (Array.isArray(db.calendarActivities)) {
+    db.calendarActivities = db.calendarActivities.filter(
+      (c) => c.sourceActivityId !== activityId
+    );
+  }
+}
+
+/**
+ * Removes any calendar activities associated with activities of a deleted nav button.
+ */
+export function removeCalendarActivitiesForNavButton(
+  db: AssociationDatabase,
+  navButtonId: string
+): void {
+  const actIds = new Set(
+    (db.navButtonActivities || [])
+      .filter((a) => a.navButtonId === navButtonId)
+      .map((a) => a.id)
+  );
+  if (Array.isArray(db.calendarActivities)) {
+    db.calendarActivities = db.calendarActivities.filter(
+      (c) => !c.sourceActivityId || !actIds.has(c.sourceActivityId)
+    );
+  }
+}
+
+/**
+ * Parses pasted raw text into an array of ItineraryTimePoint nodes.
+ * Format examples:
+ * 08:00｜11.7K 行車終點
+ * 08:00|11.7K 行車終點|說明文字
+ * 08:00 11.7K 行車終點
+ * 11.7K 行車終點
+ */
+export function parseQuickItineraryText(text: string, baseSortOrder: number = 0): ItineraryTimePoint[] {
+  if (!text || !text.trim()) return [];
+  const lines = text.split('\n');
+  const results: ItineraryTimePoint[] = [];
+  const timeRegex = /^\d{1,2}:\d{2}$/;
+
+  let orderIndex = baseSortOrder;
+  for (let i = 0; i < lines.length; i++) {
+    const rawLine = lines[i].trim();
+    if (!rawLine) continue;
+
+    let time = '';
+    let location = '';
+    let description: string | undefined = undefined;
+
+    let parts: string[] = [];
+    if (rawLine.includes('｜')) {
+      parts = rawLine.split('｜').map((p) => p.trim());
+    } else if (rawLine.includes('|')) {
+      parts = rawLine.split('|').map((p) => p.trim());
+    } else {
+      const match = rawLine.match(/^(\S+)\s+(.+)$/);
+      if (match) {
+        parts = [match[1].trim(), match[2].trim()];
+      } else {
+        parts = [rawLine];
+      }
+    }
+
+    if (parts.length >= 2) {
+      if (timeRegex.test(parts[0])) {
+        time = parts[0];
+        location = parts[1];
+        if (parts.length >= 3 && parts[2]) {
+          description = parts.slice(2).join('｜').trim() || undefined;
+        }
+      } else {
+        location = parts[0];
+        if (parts.length >= 2 && parts[1]) {
+          description = parts.slice(1).join('｜').trim() || undefined;
+        }
+      }
+    } else if (parts.length === 1) {
+      location = parts[0];
+    }
+
+    if (!location) continue;
+
+    results.push({
+      id: `tp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}_${orderIndex}`,
+      time,
+      location,
+      description,
+      sortOrder: orderIndex++,
+    });
+  }
+
+  return results;
 }

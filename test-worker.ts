@@ -835,6 +835,24 @@ async function runTests() {
 
     // 13. Embedded Hiking Itinerary Tests (TripItinerary in NavButtonActivity)
     {
+      const testBtnItin = 'btn_test_itin_cat';
+      await worker.fetch(
+        new Request('http://localhost/api/admin/save-nav-button', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            id: testBtnItin,
+            title: '健行行程專區',
+            categorySlug: 'hiking',
+            url: '',
+            sortOrder: 1,
+            enabled: true,
+          }),
+        }),
+        env,
+        {}
+      );
+
       const testActIdWithItin = 'act_itin_test_01';
       const resSaveItin = await worker.fetch(
         new Request('http://localhost/api/admin/save-nav-button-activity', {
@@ -842,7 +860,7 @@ async function runTests() {
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({
             id: testActIdWithItin,
-            navButtonId: 'btn_test_cat1',
+            navButtonId: testBtnItin,
             title: '合歡主東峰兩日經典健行',
             slug: 'hehuan-2days-test',
             description: '合歡山主峰、東峰經典健行行程',
@@ -966,6 +984,18 @@ async function runTests() {
       assert(Boolean(pubAct && pubAct.itinerary), 'Public data serves activity with itinerary');
       assert(pubAct.itinerary.days.length === 2, 'Public data itinerary days count is 2');
 
+      // Verify that itinerary dates were automatically synced to calendarActivities
+      const resCalSync = await worker.fetch(new Request('http://localhost/api/calendar-activities'), env, {});
+      const jsonCalSync: any = await resCalSync.json();
+      assert(jsonCalSync.success === true, 'GET /api/calendar-activities returns 200');
+      const syncedCalItem = jsonCalSync.activities.find((c: any) => c.sourceActivityId === testActIdWithItin);
+      assert(Boolean(syncedCalItem), 'CalendarActivity was automatically synced from itinerary');
+      assert(syncedCalItem.startDate === '2026-10-10', 'Synced calendar startDate matches');
+      assert(syncedCalItem.endDate === '2026-10-11', 'Synced calendar endDate matches');
+      assert(syncedCalItem.days === 2, 'Synced calendar days matches display count');
+      assert(syncedCalItem.title.includes('高山百岳初體驗'), 'Synced calendar title includes subtitle');
+      assert(syncedCalItem.url === '/hiking/hehuan-2days-test/', 'Synced calendar url matches category slug and activity slug');
+
       // Verify backwards compatibility for activity without itinerary
       const testActNoItin = 'act_no_itin_test';
       const resSaveNoItin = await worker.fetch(
@@ -974,7 +1004,7 @@ async function runTests() {
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({
             id: testActNoItin,
-            navButtonId: 'btn_test_cat1',
+            navButtonId: testBtnItin,
             title: '活動無行程測試',
             slug: 'no-itin-test',
             description: '一般活動',
@@ -1000,11 +1030,27 @@ async function runTests() {
         env,
         {}
       );
+      // Verify calendar activity was cleanly removed on activity deletion
+      const resCalAfterDelete = await worker.fetch(new Request('http://localhost/api/calendar-activities'), env, {});
+      const jsonCalAfterDelete: any = await resCalAfterDelete.json();
+      const syncedDeleted = (jsonCalAfterDelete.activities || []).find((c: any) => c.sourceActivityId === testActIdWithItin);
+      assert(!syncedDeleted, 'Synced calendar activity was removed when parent activity was deleted');
+
       await worker.fetch(
         new Request('http://localhost/api/admin/delete-item', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ type: 'navButtonActivity', id: testActNoItin }),
+        }),
+        env,
+        {}
+      );
+
+      await worker.fetch(
+        new Request('http://localhost/api/admin/delete-item', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ type: 'navButton', id: testBtnItin }),
         }),
         env,
         {}

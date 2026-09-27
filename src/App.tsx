@@ -193,6 +193,14 @@ export default function App() {
       .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
   }, [publicData.navButtonActivities, currentNavButton]);
 
+  // Entries for current nav button
+  const currentNavEntries = useMemo(() => {
+    if (!currentNavButton) return [];
+    return (publicData.navButtonEntries || [])
+      .filter((e) => e.navButtonId === currentNavButton.id)
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  }, [publicData.navButtonEntries, currentNavButton]);
+
   // Dynamic two-segment category and activity route: /{categorySlug}/{activitySlug}/
   const currentCategoryActivitySegments = useMemo<[string, string] | null>(() => {
     if (
@@ -549,8 +557,10 @@ export default function App() {
           <NavActivitiesView
             button={currentNavButton}
             activities={currentNavActivities}
+            entries={currentNavEntries}
             onBack={() => navigate('/')}
             onSelectActivity={(slug) => navigate(`/${getCategorySlug(currentNavButton)}/${slug}/`)}
+            onNavigateEntry={(url) => navigate(url)}
           />
         )}
 

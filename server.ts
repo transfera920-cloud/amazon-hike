@@ -20,7 +20,13 @@ import type {
   CalendarActivity,
 } from './src/types.js';
 import { RESERVED_SLUGS, getCategorySlug } from './src/utils/activitySeo.js';
-import { cleanTripItinerary } from './src/utils/itineraryHelper.js';
+import {
+  cleanTripItinerary,
+  buildCalendarActivityFromItinerary,
+  syncCalendarActivityWithItinerary,
+  removeCalendarActivityForActivity,
+  removeCalendarActivitiesForNavButton,
+} from './src/utils/itineraryHelper.js';
 
 const app = express();
 const PORT = 3000;
@@ -532,6 +538,8 @@ apiRouter.post('/admin/save-nav-button-activity', requireAdmin, (req: Request, r
       db.navButtonActivities.push(cleanItem);
     }
 
+    syncCalendarActivityWithItinerary(db, cleanItem);
+
     saveDatabase(db);
     res.json({ success: true, item: cleanItem });
   } catch (err: any) {
@@ -661,6 +669,7 @@ function executeDeleteItem(type: string, id: string): { success: boolean; error?
     const firstEnabled = db.surveys.find((s) => s.enabled);
     db.surveyUrl = firstEnabled ? firstEnabled.url : '';
   } else if (normalizedType === 'navbutton' || normalizedType === 'nav_button') {
+    removeCalendarActivitiesForNavButton(db, targetId);
     db.navButtons = (db.navButtons || []).filter((b) => String(b.id) !== targetId);
     db.navButtonActivities = (db.navButtonActivities || []).filter((a) => String(a.navButtonId) !== targetId);
   } else if (
@@ -674,6 +683,7 @@ function executeDeleteItem(type: string, id: string): { success: boolean; error?
     normalizedType === 'nav_button_activity' ||
     normalizedType === 'navbuttonactivities'
   ) {
+    removeCalendarActivityForActivity(db, targetId);
     db.navButtonActivities = (db.navButtonActivities || []).filter((a) => String(a.id) !== targetId);
   } else if (
     normalizedType === 'calendaractivity' ||

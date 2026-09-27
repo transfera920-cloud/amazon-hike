@@ -17,7 +17,13 @@ import type {
   CalendarActivity
 } from '../src/types.js';
 import { RESERVED_SLUGS, getCategorySlug } from '../src/utils/activitySeo.js';
-import { cleanTripItinerary } from '../src/utils/itineraryHelper.js';
+import {
+  cleanTripItinerary,
+  buildCalendarActivityFromItinerary,
+  syncCalendarActivityWithItinerary,
+  removeCalendarActivityForActivity,
+  removeCalendarActivitiesForNavButton,
+} from '../src/utils/itineraryHelper.js';
 
 const ADMIN_SECRET_TOKEN = 'amazon-alpine-secure-token-2026';
 const ADMIN_PASSWORD = 'yy661003';
@@ -139,14 +145,8 @@ export async function handleApiRequest(
       try {
         const db = await loadDatabaseWorker(env);
         const item: ChapterItem = await request.json();
-        if (!item.title || !item.title.trim()) {
-          return jsonResponse({ error: '章節標題為必填欄位' }, 400);
-        }
-        if (!item.slug || !item.slug.trim()) {
-          return jsonResponse({ error: '網址代稱 (slug) 為必填欄位' }, 400);
-        }
 
-        const rawSlug = item.slug.trim().toLowerCase().replace(/^\/+|\/+$/g, '');
+        const rawSlug = (item.slug || '').trim().toLowerCase().replace(/^\/+|\/+$/g, '');
         const cleanSlug = rawSlug.replace(/[^a-z0-9-_]/g, '') || `chapter_${Date.now()}`;
         const todayStr = new Date().toISOString().split('T')[0];
 
@@ -154,7 +154,7 @@ export async function handleApiRequest(
           db.chapters = [];
         }
 
-        const cleanTitle = item.title.trim();
+        const cleanTitle = (item.title || '').trim();
         const cleanDescription = (item.description || '').trim();
         const cleanContent = (item.content || '').trim();
         const cleanCoverImage = (item.coverImage || '').trim() || undefined;
@@ -213,12 +213,9 @@ export async function handleApiRequest(
       try {
         const db = await loadDatabaseWorker(env);
         const item: IntroItem = await request.json();
-        if (!item.title || !item.title.trim()) {
-          return jsonResponse({ error: '標題名稱為必填欄位' }, 400);
-        }
         const cleanItem: IntroItem = {
           id: item.id || `intro_${Date.now()}`,
-          title: item.title.trim(),
+          title: (item.title || '').trim(),
           description: (item.description || '').trim(),
           content: (item.content || '').trim(),
           url: (item.url || '').trim(),
@@ -241,12 +238,9 @@ export async function handleApiRequest(
       try {
         const db = await loadDatabaseWorker(env);
         const item: ToolItem = await request.json();
-        if (!item.title || !item.title.trim()) {
-          return jsonResponse({ error: '工具名稱為必填欄位' }, 400);
-        }
         const cleanItem: ToolItem = {
           id: item.id || `tool_${Date.now()}`,
-          title: item.title.trim(),
+          title: (item.title || '').trim(),
           description: (item.description || '').trim(),
           url: (item.url || '').trim(),
           enabled: item.enabled ?? true,
@@ -268,14 +262,19 @@ export async function handleApiRequest(
       try {
         const db = await loadDatabaseWorker(env);
         const item: CalendarActivity = await request.json();
+
         if (!item.title || !item.title.trim()) {
           return jsonResponse({ error: '活動名稱為必填欄位' }, 400);
         }
         if (!item.startDate || !item.startDate.trim()) {
           return jsonResponse({ error: '開始日期為必填欄位' }, 400);
         }
+        if (!item.url || !item.url.trim()) {
+          return jsonResponse({ error: '活動超連結為必填欄位' }, 400);
+        }
+
         const sDate = item.startDate.trim();
-        const eDate = (item.endDate || '').trim() || sDate;
+        const eDate = (item.endDate && item.endDate.trim()) ? item.endDate.trim() : sDate;
 
         let days = item.days;
         if (!days && sDate && eDate) {
@@ -288,13 +287,14 @@ export async function handleApiRequest(
 
         const cleanItem: CalendarActivity = {
           id: item.id || `cal_${Date.now()}`,
-          title: item.title.trim(),
+          title: (item.title || '').trim(),
           startDate: sDate,
           endDate: eDate,
           url: (item.url || '').trim(),
           days: days || 1,
           enabled: item.enabled ?? true,
           sortOrder: Number(item.sortOrder) || 0,
+          sourceActivityId: item.sourceActivityId || undefined,
         };
 
         if (!Array.isArray(db.calendarActivities)) {
@@ -533,6 +533,8 @@ export async function handleApiRequest(
         if (idx >= 0) db.navButtonActivities[idx] = cleanItem;
         else db.navButtonActivities.push(cleanItem);
 
+        syncCalendarActivityWithItinerary(db, cleanItem);
+
         await saveDatabaseWorker(db, env);
         return jsonResponse({ success: true, item: cleanItem });
       } catch (err: any) {
@@ -634,6 +636,7 @@ export async function handleApiRequest(
           const first = db.surveys.find((s) => s.enabled);
           db.surveyUrl = first ? first.url : '';
         } else if (normType === 'navbutton' || normType === 'nav_button') {
+          removeCalendarActivitiesForNavButton(db, targetId);
           db.navButtons = (db.navButtons || []).filter((b) => String(b.id) !== targetId);
           db.navButtonActivities = (db.navButtonActivities || []).filter((a) => String(a.navButtonId) !== targetId);
         } else if (
@@ -647,6 +650,7 @@ export async function handleApiRequest(
           normType === 'nav_button_activity' ||
           normType === 'navbuttonactivities'
         ) {
+          removeCalendarActivityForActivity(db, targetId);
           db.navButtonActivities = (db.navButtonActivities || []).filter((a) => String(a.id) !== targetId);
         } else if (
           normType === 'calendaractivity' ||

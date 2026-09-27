@@ -1,20 +1,24 @@
 import React from 'react';
-import { ArrowLeft, Compass, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Compass, ExternalLink, Link2 } from 'lucide-react';
 import { normalizeUrl } from '../utils/url.js';
-import type { NavButtonItem, NavButtonActivity } from '../types.js';
+import type { NavButtonItem, NavButtonActivity, NavButtonEntry } from '../types.js';
 
 interface NavActivitiesViewProps {
   button: NavButtonItem;
   activities: NavButtonActivity[];
+  entries?: NavButtonEntry[];
   onBack: () => void;
   onSelectActivity?: (slug: string) => void;
+  onNavigateEntry?: (url: string) => void;
 }
 
 export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
   button,
   activities,
+  entries,
   onBack,
   onSelectActivity,
+  onNavigateEntry,
 }) => {
   return (
     <main className="max-w-4xl mx-auto px-4 sm:px-6 py-8" aria-label={`${button.title}活動清單`}>
@@ -49,6 +53,74 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
         </p>
       </header>
 
+      {/* 相關連結專區 (NavButtonEntries) */}
+      {entries && entries.length > 0 && (
+        <section className="mb-8 space-y-3">
+          <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400">
+            <Link2 size={15} />
+            <span>相關連結與資訊</span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {entries.map((entry) => {
+              const rawUrl = (entry.url || '').trim();
+              const isExternal = /^https?:\/\//i.test(rawUrl);
+              const url = rawUrl || '#';
+
+              if (isExternal) {
+                return (
+                  <a
+                    key={entry.id}
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-4 rounded-lg border border-neutral-800 bg-neutral-900/60 hover:border-emerald-700/60 hover:bg-neutral-900 transition-all flex items-start justify-between gap-3 group"
+                  >
+                    <div className="space-y-1">
+                      <div className="font-bold text-sm text-neutral-100 group-hover:text-emerald-400 transition-colors">
+                        {entry.title || '相關外部連結'}
+                      </div>
+                      {entry.description && (
+                        <div className="text-xs text-neutral-400 leading-relaxed">
+                          {entry.description}
+                        </div>
+                      )}
+                    </div>
+                    <ExternalLink size={14} className="text-neutral-500 group-hover:text-emerald-400 shrink-0 mt-0.5" />
+                  </a>
+                );
+              }
+
+              return (
+                <a
+                  key={entry.id}
+                  href={url}
+                  onClick={(e) => {
+                    if (onNavigateEntry && url !== '#') {
+                      e.preventDefault();
+                      onNavigateEntry(url);
+                    }
+                  }}
+                  className="p-4 rounded-lg border border-neutral-800 bg-neutral-900/60 hover:border-emerald-700/60 hover:bg-neutral-900 transition-all flex items-start justify-between gap-3 group"
+                >
+                  <div className="space-y-1">
+                    <div className="font-bold text-sm text-neutral-100 group-hover:text-emerald-400 transition-colors">
+                      {entry.title || '站內專區項目'}
+                    </div>
+                    {entry.description && (
+                      <div className="text-xs text-neutral-400 leading-relaxed">
+                        {entry.description}
+                      </div>
+                    )}
+                  </div>
+                  <Compass size={14} className="text-neutral-500 group-hover:text-emerald-400 shrink-0 mt-0.5" />
+                </a>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       {/* Activity list */}
       {activities.length > 0 ? (
         <div className="space-y-4">
@@ -82,17 +154,19 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
                 )}
               </div>
 
-              <div className="flex items-center gap-2.5 shrink-0 pt-2 sm:pt-0">
-                <a
-                  href={normalizeUrl(activity.externalUrl)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-semibold transition-colors shadow-sm"
-                >
-                  <span>查看活動說明</span>
-                  <ExternalLink size={14} className="text-emerald-200" />
-                </a>
-              </div>
+              {activity.externalUrl && (
+                <div className="flex items-center gap-2.5 shrink-0 pt-2 sm:pt-0">
+                  <a
+                    href={normalizeUrl(activity.externalUrl)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-semibold transition-colors shadow-sm"
+                  >
+                    <span>查看活動說明</span>
+                    <ExternalLink size={14} className="text-emerald-200" />
+                  </a>
+                </div>
+              )}
             </article>
           ))}
         </div>

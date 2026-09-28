@@ -123,15 +123,15 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
 
       {/* Activity list */}
       {activities.length > 0 ? (
-        <div className="space-y-4">
+        <div className="space-y-2.5 sm:space-y-3">
           {activities.map((activity) => (
             <article
               key={activity.id}
-              className="p-5 sm:p-6 rounded-lg border border-neutral-800 bg-neutral-900/60 hover:border-neutral-700 hover:bg-neutral-900 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-5"
+              className="p-3 sm:p-4 rounded-lg border border-neutral-800 bg-neutral-900/60 hover:border-neutral-700 hover:bg-neutral-900 transition-all flex flex-row items-center justify-between gap-3"
             >
-              <div className="space-y-2 flex-1">
+              <div className="space-y-1 flex-1 min-w-0">
                 <div className="flex items-center gap-2.5 flex-wrap">
-                  <h2 className="text-lg sm:text-xl font-bold text-neutral-100">
+                  <h2 className="text-base sm:text-xl font-bold text-neutral-100">
                     {onSelectActivity ? (
                       <button
                         type="button"
@@ -155,14 +155,14 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
               </div>
 
               {activity.externalUrl && (
-                <div className="flex items-center gap-2.5 shrink-0 pt-2 sm:pt-0">
+                <div className="flex items-center gap-2.5 shrink-0">
                   <a
                     href={normalizeUrl(activity.externalUrl)}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-semibold transition-colors shadow-sm"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-semibold transition-colors shadow-sm whitespace-nowrap"
                   >
-                    <span>查看活動說明</span>
+                    <span>查看行程</span>
                     <ExternalLink size={14} className="text-emerald-200" />
                   </a>
                 </div>

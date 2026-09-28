@@ -5,20 +5,11 @@ import {
   ExternalLink,
   Youtube,
   Images,
-  Calendar,
-  MapPin,
-  Mountain,
-  TrendingUp,
   Backpack,
   AlertTriangle,
-  ShieldAlert,
 } from 'lucide-react';
 import type { NavButtonItem, NavButtonActivity } from '../types.js';
-import { getCategorySlug } from '../utils/activitySeo.js';
 import { getYouTubeVideoId, normalizeUrl } from '../utils/url.js';
-import {
-  getDisplayDaysCount,
-} from '../utils/itineraryHelper.js';
 
 interface RouteActivityViewProps {
   activity: NavButtonActivity;
@@ -31,7 +22,6 @@ interface RouteActivityViewProps {
 export const RouteActivityView: React.FC<RouteActivityViewProps> = ({
   activity,
   parentButton,
-  siblingActivities,
   onBack,
   onNavigateHome,
 }) => {
@@ -169,98 +159,27 @@ export const RouteActivityView: React.FC<RouteActivityViewProps> = ({
 
         {/* Embedded Hiking Itinerary Section */}
         {activity.itinerary &&
-          activity.itinerary.enabled && (() => {
+          activity.itinerary.enabled &&
+          Boolean(activity.itinerary.requiredGear || activity.itinerary.safetyNotes) && (() => {
             const itinerary = activity.itinerary;
-            const totalDays = getDisplayDaysCount(itinerary);
-
-            let dateRangeText = '';
-            if (itinerary.startDate) {
-              if (itinerary.endDate && itinerary.endDate !== itinerary.startDate) {
-                dateRangeText = `${itinerary.startDate} ~ ${itinerary.endDate} (共 ${totalDays} 天)`;
-              } else {
-                dateRangeText = `${itinerary.startDate} (共 ${totalDays} 天)`;
-              }
-            } else if (totalDays > 0) {
-              dateRangeText = `共 ${totalDays} 天`;
-            }
-
-            const hasSummary = Boolean(
-              dateRangeText ||
-              itinerary.totalDistanceKm !== undefined ||
-              itinerary.maxElevationM !== undefined ||
-              itinerary.elevationGainM !== undefined ||
-              itinerary.elevationLossM !== undefined ||
-              itinerary.difficulty
-            );
-
             const hasGear = Boolean(itinerary.requiredGear && itinerary.requiredGear.trim());
             const hasSafety = Boolean(itinerary.safetyNotes && itinerary.safetyNotes.trim());
 
-            if (!hasSummary && !hasGear && !hasSafety) {
+            if (!hasGear && !hasSafety) {
               return null;
             }
 
             return (
               <section className="my-8 pt-6 border-t border-neutral-800 space-y-6">
-                <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400">
-                  <Compass size={16} />
-                  <span>登山行程規劃</span>
-                </div>
-
-                {/* 1. 行程摘要 */}
-                {hasSummary && (
-                  <div className="rounded-lg bg-neutral-950/70 border border-neutral-800/80 p-4 sm:p-5">
-                    <div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-xs sm:text-sm text-neutral-300">
-                      {dateRangeText && (
-                        <div className="flex items-center gap-1.5">
-                          <Calendar size={15} className="text-emerald-400 shrink-0" />
-                          <span className="font-medium text-neutral-200">{dateRangeText}</span>
-                        </div>
-                      )}
-                      {itinerary.totalDistanceKm !== undefined && (
-                        <div className="flex items-center gap-1.5">
-                          <MapPin size={15} className="text-emerald-400 shrink-0" />
-                          <span>預計里程：<strong className="text-neutral-100">{itinerary.totalDistanceKm}</strong> 公里</span>
-                        </div>
-                      )}
-                      {itinerary.maxElevationM !== undefined && (
-                        <div className="flex items-center gap-1.5">
-                          <Mountain size={15} className="text-emerald-400 shrink-0" />
-                          <span>最高海拔：<strong className="text-neutral-100">{itinerary.maxElevationM}</strong> 公尺</span>
-                        </div>
-                      )}
-                      {(itinerary.elevationGainM !== undefined || itinerary.elevationLossM !== undefined) && (
-                        <div className="flex items-center gap-1.5">
-                          <TrendingUp size={15} className="text-emerald-400 shrink-0" />
-                          <span>
-                            爬升/下降：
-                            <strong className="text-neutral-100">
-                              {itinerary.elevationGainM !== undefined ? `+${itinerary.elevationGainM}m` : ''}
-                              {itinerary.elevationGainM !== undefined && itinerary.elevationLossM !== undefined ? ' / ' : ''}
-                              {itinerary.elevationLossM !== undefined ? `-${itinerary.elevationLossM}m` : ''}
-                            </strong>
-                          </span>
-                        </div>
-                      )}
-                      {itinerary.difficulty && (
-                        <div className="flex items-center gap-1.5">
-                          <ShieldAlert size={15} className="text-emerald-400 shrink-0" />
-                          <span>路線難度：<strong className="text-neutral-100">{itinerary.difficulty}</strong></span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
                 {/* 4. 行前必備裝備 */}
-                {itinerary.requiredGear && (
-                  <div className={`space-y-3 ${hasSummary ? 'pt-6 border-t border-neutral-800' : ''}`}>
+                {hasGear && (
+                  <div className="space-y-3">
                     <h4 className="text-sm sm:text-base font-bold text-emerald-400 flex items-center gap-2">
                       <Backpack size={16} />
                       <span>行前必備裝備</span>
                     </h4>
                     <div className="space-y-3 text-sm sm:text-base text-neutral-300 leading-relaxed">
-                      {itinerary.requiredGear.split(/\n\s*\n/).map((para, idx) => (
+                      {itinerary.requiredGear!.split(/\n\s*\n/).map((para, idx) => (
                         <p key={idx} className="whitespace-pre-line break-words">
                           {para.trim()}
                         </p>
@@ -270,14 +189,14 @@ export const RouteActivityView: React.FC<RouteActivityViewProps> = ({
                 )}
 
                 {/* 5. 安全須知 */}
-                {itinerary.safetyNotes && (
-                  <div className={`space-y-3 ${hasSummary || itinerary.requiredGear ? 'pt-6 border-t border-neutral-800' : ''}`}>
+                {hasSafety && (
+                  <div className={`space-y-3 ${hasGear ? 'pt-6 border-t border-neutral-800' : ''}`}>
                     <h4 className="text-sm sm:text-base font-bold text-rose-400 flex items-center gap-2">
                       <AlertTriangle size={16} />
                       <span>安全須知與風險提示</span>
                     </h4>
                     <div className="space-y-3 text-sm sm:text-base text-neutral-300 leading-relaxed">
-                      {itinerary.safetyNotes.split(/\n\s*\n/).map((para, idx) => (
+                      {itinerary.safetyNotes!.split(/\n\s*\n/).map((para, idx) => (
                         <p key={idx} className="whitespace-pre-line break-words">
                           {para.trim()}
                         </p>
@@ -351,34 +270,6 @@ export const RouteActivityView: React.FC<RouteActivityViewProps> = ({
               <ExternalLink size={16} />
             </a>
           </div>
-        )}
-
-        {/* Sibling Activities in Same Category */}
-        {siblingActivities && siblingActivities.length > 0 && parentButton && (
-          <section className="mt-8 pt-6 border-t border-neutral-800">
-            <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400 mb-4">
-              <Compass size={15} />
-              <span>同分類其他行程</span>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {siblingActivities.map((sibling) => (
-                <a
-                  key={sibling.id}
-                  href={`/${getCategorySlug(parentButton)}/${sibling.slug}/`}
-                  className="p-3.5 rounded-lg border border-neutral-800 bg-neutral-900/60 hover:border-emerald-700/60 hover:bg-neutral-900 transition-colors block group"
-                >
-                  <div className="text-sm font-bold text-neutral-100 group-hover:text-emerald-400 transition-colors">
-                    {sibling.title}
-                  </div>
-                  {sibling.description && (
-                    <p className="text-xs text-neutral-400 line-clamp-2 mt-1 leading-relaxed">
-                      {sibling.description}
-                    </p>
-                  )}
-                </a>
-              ))}
-            </div>
-          </section>
         )}
       </article>
     </main>

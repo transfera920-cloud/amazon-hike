@@ -48,7 +48,8 @@ import { slugify, RESERVED_SLUGS, getCategorySlug } from '../utils/activitySeo.j
 import {
   ITINERARY_LINK_TYPES,
   calculateDaysFromDates,
-  calculateTotalEstimatedHours
+  calculateTotalEstimatedHours,
+  parseQuickItineraryText
 } from '../utils/itineraryHelper.js';
 
 interface AdminPageProps {
@@ -92,6 +93,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
   const [expandedActivityButtonId, setExpandedActivityButtonId] = useState<string | null>(null);
   const [editingCalendarActivity, setEditingCalendarActivity] = useState<Partial<CalendarActivity> | null>(null);
   const [expandedLinkTpIds, setExpandedLinkTpIds] = useState<Record<string, boolean>>({});
+  const [quickPasteText, setQuickPasteText] = useState<Record<string, string>>({});
+  const [expandedQuickPasteIds, setExpandedQuickPasteIds] = useState<Record<string, boolean>>({});
 
   // In-app deletion modal
   const [deleteTarget, setDeleteTarget] = useState<{
@@ -700,6 +703,32 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
         },
       };
     });
+  };
+
+  const handleApplyQuickPaste = (dayIndex: number, dayId: string) => {
+    const text = quickPasteText[dayId] || '';
+    if (!text.trim()) return;
+    setEditingNavButtonActivity((prev) => {
+      if (!prev || !prev.itinerary || !prev.itinerary.days) return prev;
+      const newDays = [...prev.itinerary.days];
+      const targetDay = newDays[dayIndex];
+      if (!targetDay) return prev;
+      const baseOrder = targetDay.timePoints?.length || 0;
+      const parsedPoints = parseQuickItineraryText(text, baseOrder);
+      if (parsedPoints.length === 0) return prev;
+      newDays[dayIndex] = {
+        ...targetDay,
+        timePoints: [...(targetDay.timePoints || []), ...parsedPoints],
+      };
+      return {
+        ...prev,
+        itinerary: {
+          ...prev.itinerary,
+          days: newDays,
+        },
+      };
+    });
+    setQuickPasteText((prev) => ({ ...prev, [dayId]: '' }));
   };
 
   const handleMoveTimePoint = (dayIndex: number, tpIndex: number, direction: 'up' | 'down') => {
@@ -3497,6 +3526,42 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                                                   className="w-28 px-2 py-1 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 font-mono text-xs"
                                                 />
                                                 <span className="text-[11px] text-neutral-500">小時（將自動計入總預估步程）</span>
+                                              </div>
+
+                                              {/* Quick Paste Section */}
+                                              <div className="pt-1">
+                                                <button
+                                                  type="button"
+                                                  onClick={() =>
+                                                    setExpandedQuickPasteIds((prev) => ({ ...prev, [day.id]: !prev[day.id] }))
+                                                  }
+                                                  className="inline-flex items-center gap-1 text-[11px] text-neutral-400 hover:text-emerald-400 transition-colors"
+                                                >
+                                                  {expandedQuickPasteIds[day.id] ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                                                  <span>貼上文字快速新增節點</span>
+                                                </button>
+
+                                                {expandedQuickPasteIds[day.id] && (
+                                                  <div className="mt-2 p-2.5 rounded bg-neutral-900 border border-neutral-800 space-y-2">
+                                                    <textarea
+                                                      rows={4}
+                                                      value={quickPasteText[day.id] || ''}
+                                                      onChange={(e) =>
+                                                        setQuickPasteText((prev) => ({ ...prev, [day.id]: e.target.value }))
+                                                      }
+                                                      placeholder={'每行一筆，支援以下格式：\n08:00｜11.7K 行車終點\n08:00|11.7K 行車終點|說明文字\n08:00 11.7K 行車終點\n11.7K 行車終點'}
+                                                      className="w-full px-2 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 text-xs resize-y focus:outline-none focus:border-emerald-500 font-mono"
+                                                    />
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => handleApplyQuickPaste(dayIdx, day.id)}
+                                                      className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs bg-emerald-800 hover:bg-emerald-700 text-white transition-colors"
+                                                    >
+                                                      <Plus size={11} />
+                                                      <span>解析並加入節點</span>
+                                                    </button>
+                                                  </div>
+                                                )}
                                               </div>
 
                                               {/* Time Points List */}

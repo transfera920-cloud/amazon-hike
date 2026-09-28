@@ -366,7 +366,7 @@ export default function App() {
       }
     } else if (!currentMeta && currentCategoryActivity && currentCategoryButton) {
       const catSlug = getCategorySlug(currentCategoryButton);
-      customCanonicalUrl = `https://amazon-hike.com/${catSlug}/${currentCategoryActivity.slug}/`;
+      customCanonicalUrl = `https://amazon-data.ai.studio/${catSlug}/${currentCategoryActivity.slug}/`;
       const resolved = resolveActivitySeo(currentCategoryActivity, currentCategoryButton);
       currentMeta = {
         title: resolved.title,
@@ -374,6 +374,7 @@ export default function App() {
         ogImage: resolved.image,
       };
     } else if (!currentMeta && currentRouteActivity) {
+      customCanonicalUrl = `https://amazon-data.ai.studio/route/${currentRouteActivity.slug}`;
       currentMeta = {
         title: `${currentRouteActivity.title} | 亞馬遜國家山岳協會 | Amazon Alpine Association`,
         description:
@@ -381,11 +382,13 @@ export default function App() {
           `${currentRouteActivity.title} - 亞馬遜國家山岳協會登山行程活動說明與完整報名資訊。`,
       };
     } else if (!currentMeta && currentNavButton) {
+      customCanonicalUrl = `https://amazon-data.ai.studio/nav/${currentNavButton.id}`;
       currentMeta = {
         title: `${currentNavButton.title} - 活動列表 | 亞馬遜國家山岳協會 | Amazon Alpine Association`,
         description: `亞馬遜國家山岳協會 ${currentNavButton.title} 活動與行程清單。`,
       };
     } else if (!currentMeta && currentChapter) {
+      customCanonicalUrl = `https://amazon-data.ai.studio/${currentChapter.slug}/`;
       currentMeta = {
         title: `${currentChapter.title} | 亞馬遜國家山岳協會 | Amazon Alpine Association`,
         description: currentChapter.description || `${currentChapter.title} - 亞馬遜國家山岳協會登山入門教學專文。`,
@@ -421,10 +424,15 @@ export default function App() {
     const twitterDesc = document.querySelector('meta[name="twitter:description"]');
     if (twitterDesc) twitterDesc.setAttribute('content', currentMeta.description);
 
-    // Update canonical link: 未知路徑 404 canonical 指向首頁
-    const canonicalUrl = isUnknownPath || currentPath === '/'
-      ? 'https://amazon-hike.com/'
-      : (customCanonicalUrl || `https://amazon-hike.com${currentPath}`);
+    // Update canonical link: 各頁面指向自己的網址，路線頁指向 https://amazon-data.ai.studio/routes
+    let canonicalUrl: string;
+    if (customCanonicalUrl) {
+      canonicalUrl = customCanonicalUrl;
+    } else if (currentPath === '/' || currentPath === '/routes') {
+      canonicalUrl = 'https://amazon-data.ai.studio/routes';
+    } else {
+      canonicalUrl = `https://amazon-data.ai.studio${currentPath}`;
+    }
     const canonicalLink = document.querySelector('link[rel="canonical"]');
     if (canonicalLink) canonicalLink.setAttribute('href', canonicalUrl);
 

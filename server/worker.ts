@@ -663,7 +663,10 @@ ${activityUrls}
       if (routeMeta && indexResponse.ok) {
         const isTrailingSlashRoute =
           CHAPTER_SLUG_RE.test(normalizedPath.slice(1).toLowerCase()) ||
-          (pathSegments.length === 2 && !isCategoryActivityNotFound);
+          (pathSegments.length === 2 &&
+            !isCategoryActivityNotFound &&
+            !normalizedPath.startsWith('/nav/') &&
+            !normalizedPath.startsWith('/intro/'));
         const canonicalUrl = isTrailingSlashRoute
           ? `https://amazon-hike.com${normalizedPath}/`
           : `https://amazon-hike.com${normalizedPath}`;
@@ -677,22 +680,6 @@ ${activityUrls}
             const db = await loadDatabaseWorker(env);
             const act = (db.navButtonActivities || []).find((a) => a.slug.toLowerCase() === slug && a.enabled);
             if (act) {
-              rootHtml = buildActivityShellHtml(act);
-            } else {
-              rootHtml = buildSectionShellHtml(routeMeta.title, routeMeta.description);
-            }
-          } catch (e) {
-            rootHtml = buildSectionShellHtml(routeMeta.title, routeMeta.description);
-          }
-        } else if (pathSegments.length === 2 && !isCategoryActivityNotFound) {
-          const [catSlug, actSlug] = [pathSegments[0].toLowerCase(), pathSegments[1].toLowerCase()];
-          try {
-            const db = await loadDatabaseWorker(env);
-            const parentBtn = (db.navButtons || []).find((b) => b.enabled && getCategorySlug(b) === catSlug);
-            const act = parentBtn
-              ? (db.navButtonActivities || []).find((a) => a.navButtonId === parentBtn.id && a.slug.toLowerCase() === actSlug && a.enabled)
-              : null;
-            if (act && parentBtn) {
               rootHtml = buildActivityShellHtml(act);
             } else {
               rootHtml = buildSectionShellHtml(routeMeta.title, routeMeta.description);
@@ -718,6 +705,27 @@ ${activityUrls}
             const catSlug = btn ? getCategorySlug(btn) : buttonId;
             const listHtml = acts.map((a) => `<li><a href="/${catSlug}/${a.slug}/">${escapeHtml(a.title)}</a></li>`).join('');
             rootHtml = `<main><h1>${escapeHtml(btn ? btn.title : '活動列表')}</h1><ul>${listHtml}</ul>${buildSiteNavHtml()}</main>`;
+          } catch (e) {
+            rootHtml = buildSectionShellHtml(routeMeta.title, routeMeta.description);
+          }
+        } else if (
+          pathSegments.length === 2 &&
+          !isCategoryActivityNotFound &&
+          !normalizedPath.startsWith('/nav/') &&
+          !normalizedPath.startsWith('/intro/')
+        ) {
+          const [catSlug, actSlug] = [pathSegments[0].toLowerCase(), pathSegments[1].toLowerCase()];
+          try {
+            const db = await loadDatabaseWorker(env);
+            const parentBtn = (db.navButtons || []).find((b) => b.enabled && getCategorySlug(b) === catSlug);
+            const act = parentBtn
+              ? (db.navButtonActivities || []).find((a) => a.navButtonId === parentBtn.id && a.slug.toLowerCase() === actSlug && a.enabled)
+              : null;
+            if (act && parentBtn) {
+              rootHtml = buildActivityShellHtml(act);
+            } else {
+              rootHtml = buildSectionShellHtml(routeMeta.title, routeMeta.description);
+            }
           } catch (e) {
             rootHtml = buildSectionShellHtml(routeMeta.title, routeMeta.description);
           }

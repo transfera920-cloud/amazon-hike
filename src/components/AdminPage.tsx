@@ -2951,23 +2951,23 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                                 />
                               </div>
 
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div>
-                                  <label className="block text-neutral-400 mb-1">YouTube 介紹影片網址（選填）</label>
-                                  <input
-                                    type="url"
-                                    value={editingNavButtonActivity.youtubeUrl || ''}
-                                    onChange={(e) =>
-                                      setEditingNavButtonActivity((prev) => ({
-                                        ...prev,
-                                        youtubeUrl: e.target.value,
-                                      }))
-                                    }
-                                    placeholder="https://www.youtube.com/watch?v=..."
-                                    className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 font-mono text-[11px]"
-                                  />
-                                </div>
+                              <div>
+                                <label className="block text-neutral-400 mb-1">YouTube 介紹影片網址（選填）</label>
+                                <input
+                                  type="url"
+                                  value={editingNavButtonActivity.youtubeUrl || ''}
+                                  onChange={(e) =>
+                                    setEditingNavButtonActivity((prev) => ({
+                                      ...prev,
+                                      youtubeUrl: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="https://www.youtube.com/watch?v=..."
+                                  className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 font-mono text-[11px]"
+                                />
+                              </div>
 
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div>
                                   <label className="block text-neutral-400 mb-1">自訂 SEO 標題（選填）</label>
                                   <input
@@ -2982,6 +2982,33 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                                     placeholder="留空則自動套用活動標題"
                                     className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 text-xs"
                                   />
+                                </div>
+
+                                <div>
+                                  <label className="block text-neutral-400 mb-1">自訂 SEO 描述（選填）</label>
+                                  <textarea
+                                    rows={3}
+                                    value={editingNavButtonActivity.metaDescription || ''}
+                                    onChange={(e) =>
+                                      setEditingNavButtonActivity((prev) => ({
+                                        ...prev,
+                                        metaDescription: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="建議 80～120 字；留空則使用活動簡短說明"
+                                    className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 text-xs resize-y"
+                                  />
+                                  <div className="flex justify-end mt-1">
+                                    <span
+                                      className={`text-[11px] ${
+                                        (editingNavButtonActivity.metaDescription || '').length > 160
+                                          ? 'text-amber-400 font-medium'
+                                          : 'text-neutral-500'
+                                      }`}
+                                    >
+                                      已輸入 {(editingNavButtonActivity.metaDescription || '').length} 字
+                                    </span>
+                                  </div>
                                 </div>
                               </div>
 

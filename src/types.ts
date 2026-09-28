@@ -147,7 +147,7 @@ export interface TripItinerary {
   difficulty?: string;            // 難度等級（自由文字，例如：入門／中級／中高／高難度）
   requiredGear?: string;          // 行前必備裝備（可多行，換行分段）
   safetyNotes?: string;           // 安全須知（可多行，換行分段）
-  days: ItineraryDay[];           // Day 1 ~ Day N
+  days: ItineraryDay[];           // 保留相容性
 }
 
 export interface AssociationDatabase {

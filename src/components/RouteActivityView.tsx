@@ -3,14 +3,12 @@ import {
   ArrowLeft,
   Compass,
   ExternalLink,
-  Link2,
   Youtube,
   Images,
   Calendar,
   MapPin,
   Mountain,
   TrendingUp,
-  Clock,
   Backpack,
   AlertTriangle,
   ShieldAlert,
@@ -19,7 +17,6 @@ import type { NavButtonItem, NavButtonActivity } from '../types.js';
 import { getCategorySlug } from '../utils/activitySeo.js';
 import { getYouTubeVideoId, normalizeUrl } from '../utils/url.js';
 import {
-  calculateTotalEstimatedHours,
   getDisplayDaysCount,
 } from '../utils/itineraryHelper.js';
 
@@ -38,9 +35,6 @@ export const RouteActivityView: React.FC<RouteActivityViewProps> = ({
   onBack,
   onNavigateHome,
 }) => {
-  const categorySlug = parentButton ? getCategorySlug(parentButton) : 'activity';
-  const internalUrl = `https://amazon-hike.com/${categorySlug}/${activity.slug}/`;
-
   // Update document title and meta description on client side for SPA navigation
   useEffect(() => {
     const pageTitle =
@@ -137,12 +131,6 @@ export const RouteActivityView: React.FC<RouteActivityViewProps> = ({
               {activity.itinerary.subtitle}
             </p>
           )}
-
-          {/* Internal Canonical / Permalink display for SEO */}
-          <div className="flex items-center gap-2 text-xs text-neutral-500 font-mono mt-3 pt-3 border-t border-neutral-800/40">
-            <Link2 size={13} className="text-neutral-600 shrink-0" />
-            <span className="break-all">主站內部網址：{internalUrl}</span>
-          </div>
         </header>
 
         {/* Cover Image if present */}
@@ -181,12 +169,9 @@ export const RouteActivityView: React.FC<RouteActivityViewProps> = ({
 
         {/* Embedded Hiking Itinerary Section */}
         {activity.itinerary &&
-          activity.itinerary.enabled &&
-          activity.itinerary.days &&
-          activity.itinerary.days.length > 0 && (() => {
+          activity.itinerary.enabled && (() => {
             const itinerary = activity.itinerary;
             const totalDays = getDisplayDaysCount(itinerary);
-            const totalHours = calculateTotalEstimatedHours(itinerary.days);
 
             let dateRangeText = '';
             if (itinerary.startDate) {
@@ -199,6 +184,22 @@ export const RouteActivityView: React.FC<RouteActivityViewProps> = ({
               dateRangeText = `共 ${totalDays} 天`;
             }
 
+            const hasSummary = Boolean(
+              dateRangeText ||
+              itinerary.totalDistanceKm !== undefined ||
+              itinerary.maxElevationM !== undefined ||
+              itinerary.elevationGainM !== undefined ||
+              itinerary.elevationLossM !== undefined ||
+              itinerary.difficulty
+            );
+
+            const hasGear = Boolean(itinerary.requiredGear && itinerary.requiredGear.trim());
+            const hasSafety = Boolean(itinerary.safetyNotes && itinerary.safetyNotes.trim());
+
+            if (!hasSummary && !hasGear && !hasSafety) {
+              return null;
+            }
+
             return (
               <section className="my-8 pt-6 border-t border-neutral-800 space-y-6">
                 <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400">
@@ -207,116 +208,53 @@ export const RouteActivityView: React.FC<RouteActivityViewProps> = ({
                 </div>
 
                 {/* 1. 行程摘要 */}
-                <div className="rounded-lg bg-neutral-950/70 border border-neutral-800/80 p-4 sm:p-5">
-                  <div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-xs sm:text-sm text-neutral-300">
-                    {dateRangeText && (
-                      <div className="flex items-center gap-1.5">
-                        <Calendar size={15} className="text-emerald-400 shrink-0" />
-                        <span className="font-medium text-neutral-200">{dateRangeText}</span>
-                      </div>
-                    )}
-                    {itinerary.totalDistanceKm !== undefined && (
-                      <div className="flex items-center gap-1.5">
-                        <MapPin size={15} className="text-emerald-400 shrink-0" />
-                        <span>預計里程：<strong className="text-neutral-100">{itinerary.totalDistanceKm}</strong> 公里</span>
-                      </div>
-                    )}
-                    {itinerary.maxElevationM !== undefined && (
-                      <div className="flex items-center gap-1.5">
-                        <Mountain size={15} className="text-emerald-400 shrink-0" />
-                        <span>最高海拔：<strong className="text-neutral-100">{itinerary.maxElevationM}</strong> 公尺</span>
-                      </div>
-                    )}
-                    {(itinerary.elevationGainM !== undefined || itinerary.elevationLossM !== undefined) && (
-                      <div className="flex items-center gap-1.5">
-                        <TrendingUp size={15} className="text-emerald-400 shrink-0" />
-                        <span>
-                          爬升/下降：
-                          <strong className="text-neutral-100">
-                            {itinerary.elevationGainM !== undefined ? `+${itinerary.elevationGainM}m` : ''}
-                            {itinerary.elevationGainM !== undefined && itinerary.elevationLossM !== undefined ? ' / ' : ''}
-                            {itinerary.elevationLossM !== undefined ? `-${itinerary.elevationLossM}m` : ''}
-                          </strong>
-                        </span>
-                      </div>
-                    )}
-                    {itinerary.difficulty && (
-                      <div className="flex items-center gap-1.5">
-                        <ShieldAlert size={15} className="text-emerald-400 shrink-0" />
-                        <span>路線難度：<strong className="text-neutral-100">{itinerary.difficulty}</strong></span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* 2. 每日行程 (Day 1 ~ Day N) */}
-                <div className="space-y-6 pt-2">
-                  {itinerary.days.map((day, dIdx) => (
-                    <div key={day.id || dIdx} className="space-y-3">
-                      <h3 className="text-base sm:text-lg font-bold text-neutral-100 flex items-center gap-2 border-b border-neutral-800 pb-2">
-                        <span className="text-emerald-400">第 {dIdx + 1} 天</span>
-                      </h3>
-
-                      {/* 時間地點節點列表 */}
-                      <div className="space-y-3 pl-1 sm:pl-3">
-                        {day.timePoints && day.timePoints.map((tp, tpIdx) => {
-                          const isLinkActive = Boolean(tp.link && tp.link.showOnFrontend && tp.link.url);
-                          const isExternal = Boolean(tp.link?.url && /^https?:\/\//i.test(tp.link.url));
-
-                          return (
-                            <div key={tp.id || tpIdx} className="text-sm sm:text-base leading-relaxed break-words">
-                              <div className="text-neutral-200 flex flex-wrap items-baseline gap-x-2">
-                                {tp.time && (
-                                  <span className="font-mono text-emerald-400 font-semibold shrink-0">
-                                    {tp.time}
-                                  </span>
-                                )}
-                                {tp.time && <span className="text-neutral-600 select-none">｜</span>}
-                                {isLinkActive ? (
-                                  <a
-                                    href={tp.link!.url}
-                                    target={isExternal ? '_blank' : undefined}
-                                    rel={isExternal ? 'noopener noreferrer' : undefined}
-                                    title={tp.link!.description || tp.link!.name}
-                                    className="text-emerald-400 hover:text-emerald-300 underline underline-offset-4 font-semibold transition-colors"
-                                  >
-                                    {tp.location}
-                                  </a>
-                                ) : (
-                                  <span className="font-medium text-neutral-100">{tp.location}</span>
-                                )}
-                              </div>
-                              {tp.description && (
-                                <div className="text-xs sm:text-sm text-neutral-400 pl-3 sm:pl-4 mt-1 whitespace-pre-line border-l border-neutral-800">
-                                  {tp.description}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      {/* 當日預估步程 */}
-                      {day.estimatedHours !== undefined && day.estimatedHours > 0 && (
-                        <div className="text-xs sm:text-sm text-neutral-400 pt-1 font-mono">
-                          當日預估步程：{day.estimatedHours} 小時
+                {hasSummary && (
+                  <div className="rounded-lg bg-neutral-950/70 border border-neutral-800/80 p-4 sm:p-5">
+                    <div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-xs sm:text-sm text-neutral-300">
+                      {dateRangeText && (
+                        <div className="flex items-center gap-1.5">
+                          <Calendar size={15} className="text-emerald-400 shrink-0" />
+                          <span className="font-medium text-neutral-200">{dateRangeText}</span>
+                        </div>
+                      )}
+                      {itinerary.totalDistanceKm !== undefined && (
+                        <div className="flex items-center gap-1.5">
+                          <MapPin size={15} className="text-emerald-400 shrink-0" />
+                          <span>預計里程：<strong className="text-neutral-100">{itinerary.totalDistanceKm}</strong> 公里</span>
+                        </div>
+                      )}
+                      {itinerary.maxElevationM !== undefined && (
+                        <div className="flex items-center gap-1.5">
+                          <Mountain size={15} className="text-emerald-400 shrink-0" />
+                          <span>最高海拔：<strong className="text-neutral-100">{itinerary.maxElevationM}</strong> 公尺</span>
+                        </div>
+                      )}
+                      {(itinerary.elevationGainM !== undefined || itinerary.elevationLossM !== undefined) && (
+                        <div className="flex items-center gap-1.5">
+                          <TrendingUp size={15} className="text-emerald-400 shrink-0" />
+                          <span>
+                            爬升/下降：
+                            <strong className="text-neutral-100">
+                              {itinerary.elevationGainM !== undefined ? `+${itinerary.elevationGainM}m` : ''}
+                              {itinerary.elevationGainM !== undefined && itinerary.elevationLossM !== undefined ? ' / ' : ''}
+                              {itinerary.elevationLossM !== undefined ? `-${itinerary.elevationLossM}m` : ''}
+                            </strong>
+                          </span>
+                        </div>
+                      )}
+                      {itinerary.difficulty && (
+                        <div className="flex items-center gap-1.5">
+                          <ShieldAlert size={15} className="text-emerald-400 shrink-0" />
+                          <span>路線難度：<strong className="text-neutral-100">{itinerary.difficulty}</strong></span>
                         </div>
                       )}
                     </div>
-                  ))}
-                </div>
-
-                {/* 3. 總預估步程 (即時計算，不使用獨立欄位) */}
-                {totalHours > 0 && (
-                  <div className="pt-4 border-t border-neutral-800 text-sm sm:text-base font-bold text-neutral-200 flex items-center gap-2 font-mono">
-                    <Clock size={16} className="text-emerald-400 shrink-0" />
-                    <span>總預估步程：{totalHours} 小時</span>
                   </div>
                 )}
 
                 {/* 4. 行前必備裝備 */}
                 {itinerary.requiredGear && (
-                  <div className="pt-6 border-t border-neutral-800 space-y-3">
+                  <div className={`space-y-3 ${hasSummary ? 'pt-6 border-t border-neutral-800' : ''}`}>
                     <h4 className="text-sm sm:text-base font-bold text-emerald-400 flex items-center gap-2">
                       <Backpack size={16} />
                       <span>行前必備裝備</span>
@@ -333,7 +271,7 @@ export const RouteActivityView: React.FC<RouteActivityViewProps> = ({
 
                 {/* 5. 安全須知 */}
                 {itinerary.safetyNotes && (
-                  <div className="pt-6 border-t border-neutral-800 space-y-3">
+                  <div className={`space-y-3 ${hasSummary || itinerary.requiredGear ? 'pt-6 border-t border-neutral-800' : ''}`}>
                     <h4 className="text-sm sm:text-base font-bold text-rose-400 flex items-center gap-2">
                       <AlertTriangle size={16} />
                       <span>安全須知與風險提示</span>

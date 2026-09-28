@@ -22,10 +22,7 @@ import {
   ChevronRight,
   CornerDownRight,
   Compass,
-  Calendar,
-  ArrowUp,
-  ArrowDown,
-  Link2
+  Calendar
 } from 'lucide-react';
 import type {
   IntroItem,
@@ -39,17 +36,11 @@ import type {
   NavButtonActivity,
   CalendarActivity,
   AssociationDatabase,
-  TripItinerary,
-  ItineraryDay,
-  ItineraryTimePoint,
-  ItineraryLink
+  TripItinerary
 } from '../types.js';
 import { slugify, RESERVED_SLUGS, getCategorySlug } from '../utils/activitySeo.js';
 import {
-  ITINERARY_LINK_TYPES,
-  calculateDaysFromDates,
-  calculateTotalEstimatedHours,
-  parseQuickItineraryText
+  calculateDaysFromDates
 } from '../utils/itineraryHelper.js';
 
 interface AdminPageProps {
@@ -92,9 +83,6 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
   const [activitySlugManuallyEdited, setActivitySlugManuallyEdited] = useState(false);
   const [expandedActivityButtonId, setExpandedActivityButtonId] = useState<string | null>(null);
   const [editingCalendarActivity, setEditingCalendarActivity] = useState<Partial<CalendarActivity> | null>(null);
-  const [expandedLinkTpIds, setExpandedLinkTpIds] = useState<Record<string, boolean>>({});
-  const [quickPasteText, setQuickPasteText] = useState<Record<string, string>>({});
-  const [expandedQuickPasteIds, setExpandedQuickPasteIds] = useState<Record<string, boolean>>({});
 
   // In-app deletion modal
   const [deleteTarget, setDeleteTarget] = useState<{
@@ -563,13 +551,6 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
     }
   };
 
-  const toggleLinkExpand = (tpId: string) => {
-    setExpandedLinkTpIds((prev) => ({
-      ...prev,
-      [tpId]: !prev[tpId],
-    }));
-  };
-
   const handleUpdateItineraryField = (field: keyof TripItinerary, value: any) => {
     setEditingNavButtonActivity((prev) => {
       if (!prev) return prev;
@@ -584,273 +565,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
     });
   };
 
-  const handleAddItineraryDay = () => {
-    setEditingNavButtonActivity((prev) => {
-      if (!prev) return prev;
-      const currentItinerary = prev.itinerary || { enabled: true, days: [] };
-      const currentDays = currentItinerary.days || [];
-      const newDayNumber = currentDays.length + 1;
-      const newDay: ItineraryDay = {
-        id: `day_${Date.now()}_${currentDays.length}`,
-        dayNumber: newDayNumber,
-        sortOrder: newDayNumber,
-        estimatedHours: undefined,
-        timePoints: [
-          {
-            id: `tp_${Date.now()}_0`,
-            time: '',
-            location: '',
-            sortOrder: 0,
-          },
-        ],
-      };
-      return {
-        ...prev,
-        itinerary: {
-          ...currentItinerary,
-          enabled: currentItinerary.enabled ?? true,
-          days: [...currentDays, newDay],
-        },
-      };
-    });
-  };
 
-  const handleMoveDay = (dayIndex: number, direction: 'up' | 'down') => {
-    setEditingNavButtonActivity((prev) => {
-      if (!prev || !prev.itinerary || !prev.itinerary.days) return prev;
-      const targetIndex = direction === 'up' ? dayIndex - 1 : dayIndex + 1;
-      if (targetIndex < 0 || targetIndex >= prev.itinerary.days.length) return prev;
-      const newDays = [...prev.itinerary.days];
-      const temp = newDays[dayIndex];
-      newDays[dayIndex] = newDays[targetIndex];
-      newDays[targetIndex] = temp;
-      const reorderedDays = newDays.map((d, idx) => ({
-        ...d,
-        dayNumber: idx + 1,
-        sortOrder: idx + 1,
-      }));
-      return {
-        ...prev,
-        itinerary: {
-          ...prev.itinerary,
-          days: reorderedDays,
-        },
-      };
-    });
-  };
-
-  const handleDeleteDay = (dayIndex: number) => {
-    setEditingNavButtonActivity((prev) => {
-      if (!prev || !prev.itinerary || !prev.itinerary.days) return prev;
-      const newDays = prev.itinerary.days.filter((_, idx) => idx !== dayIndex);
-      const reorderedDays = newDays.map((d, idx) => ({
-        ...d,
-        dayNumber: idx + 1,
-        sortOrder: idx + 1,
-      }));
-      return {
-        ...prev,
-        itinerary: {
-          ...prev.itinerary,
-          days: reorderedDays,
-        },
-      };
-    });
-  };
-
-  const handleUpdateDayEstimatedHours = (dayIndex: number, value: string) => {
-    setEditingNavButtonActivity((prev) => {
-      if (!prev || !prev.itinerary || !prev.itinerary.days) return prev;
-      const newDays = [...prev.itinerary.days];
-      const targetDay = newDays[dayIndex];
-      if (!targetDay) return prev;
-      const parsed = value === '' ? undefined : parseFloat(value);
-      newDays[dayIndex] = {
-        ...targetDay,
-        estimatedHours: parsed !== undefined && !isNaN(parsed) ? parsed : undefined,
-      };
-      return {
-        ...prev,
-        itinerary: {
-          ...prev.itinerary,
-          days: newDays,
-        },
-      };
-    });
-  };
-
-  const handleAddTimePoint = (dayIndex: number) => {
-    setEditingNavButtonActivity((prev) => {
-      if (!prev || !prev.itinerary || !prev.itinerary.days) return prev;
-      const newDays = [...prev.itinerary.days];
-      const targetDay = newDays[dayIndex];
-      if (!targetDay) return prev;
-      const newTp: ItineraryTimePoint = {
-        id: `tp_${Date.now()}_${targetDay.timePoints?.length || 0}`,
-        time: '',
-        location: '',
-        sortOrder: targetDay.timePoints?.length || 0,
-      };
-      newDays[dayIndex] = {
-        ...targetDay,
-        timePoints: [...(targetDay.timePoints || []), newTp],
-      };
-      return {
-        ...prev,
-        itinerary: {
-          ...prev.itinerary,
-          days: newDays,
-        },
-      };
-    });
-  };
-
-  const handleApplyQuickPaste = (dayIndex: number, dayId: string) => {
-    const text = quickPasteText[dayId] || '';
-    if (!text.trim()) return;
-    setEditingNavButtonActivity((prev) => {
-      if (!prev || !prev.itinerary || !prev.itinerary.days) return prev;
-      const newDays = [...prev.itinerary.days];
-      const targetDay = newDays[dayIndex];
-      if (!targetDay) return prev;
-      const baseOrder = targetDay.timePoints?.length || 0;
-      const parsedPoints = parseQuickItineraryText(text, baseOrder);
-      if (parsedPoints.length === 0) return prev;
-      newDays[dayIndex] = {
-        ...targetDay,
-        timePoints: [...(targetDay.timePoints || []), ...parsedPoints],
-      };
-      return {
-        ...prev,
-        itinerary: {
-          ...prev.itinerary,
-          days: newDays,
-        },
-      };
-    });
-    setQuickPasteText((prev) => ({ ...prev, [dayId]: '' }));
-  };
-
-  const handleMoveTimePoint = (dayIndex: number, tpIndex: number, direction: 'up' | 'down') => {
-    setEditingNavButtonActivity((prev) => {
-      if (!prev || !prev.itinerary || !prev.itinerary.days) return prev;
-      const newDays = [...prev.itinerary.days];
-      const targetDay = newDays[dayIndex];
-      if (!targetDay || !targetDay.timePoints) return prev;
-      const targetTpIndex = direction === 'up' ? tpIndex - 1 : tpIndex + 1;
-      if (targetTpIndex < 0 || targetTpIndex >= targetDay.timePoints.length) return prev;
-      const newTps = [...targetDay.timePoints];
-      const temp = newTps[tpIndex];
-      newTps[tpIndex] = newTps[targetTpIndex];
-      newTps[targetTpIndex] = temp;
-      const reorderedTps = newTps.map((tp, idx) => ({ ...tp, sortOrder: idx }));
-      newDays[dayIndex] = {
-        ...targetDay,
-        timePoints: reorderedTps,
-      };
-      return {
-        ...prev,
-        itinerary: {
-          ...prev.itinerary,
-          days: newDays,
-        },
-      };
-    });
-  };
-
-  const handleDeleteTimePoint = (dayIndex: number, tpIndex: number) => {
-    setEditingNavButtonActivity((prev) => {
-      if (!prev || !prev.itinerary || !prev.itinerary.days) return prev;
-      const newDays = [...prev.itinerary.days];
-      const targetDay = newDays[dayIndex];
-      if (!targetDay || !targetDay.timePoints) return prev;
-      const newTps = targetDay.timePoints.filter((_, idx) => idx !== tpIndex).map((tp, idx) => ({ ...tp, sortOrder: idx }));
-      newDays[dayIndex] = {
-        ...targetDay,
-        timePoints: newTps,
-      };
-      return {
-        ...prev,
-        itinerary: {
-          ...prev.itinerary,
-          days: newDays,
-        },
-      };
-    });
-  };
-
-  const handleUpdateTimePoint = (
-    dayIndex: number,
-    tpIndex: number,
-    field: 'time' | 'location' | 'description',
-    value: string
-  ) => {
-    setEditingNavButtonActivity((prev) => {
-      if (!prev || !prev.itinerary || !prev.itinerary.days) return prev;
-      const newDays = [...prev.itinerary.days];
-      const targetDay = newDays[dayIndex];
-      if (!targetDay || !targetDay.timePoints) return prev;
-      const newTps = [...targetDay.timePoints];
-      const targetTp = newTps[tpIndex];
-      if (!targetTp) return prev;
-      newTps[tpIndex] = {
-        ...targetTp,
-        [field]: value,
-      };
-      newDays[dayIndex] = {
-        ...targetDay,
-        timePoints: newTps,
-      };
-      return {
-        ...prev,
-        itinerary: {
-          ...prev.itinerary,
-          days: newDays,
-        },
-      };
-    });
-  };
-
-  const handleUpdateTimePointLink = (
-    dayIndex: number,
-    tpIndex: number,
-    field: 'name' | 'url' | 'description' | 'type' | 'showOnFrontend',
-    value: any
-  ) => {
-    setEditingNavButtonActivity((prev) => {
-      if (!prev || !prev.itinerary || !prev.itinerary.days) return prev;
-      const newDays = [...prev.itinerary.days];
-      const targetDay = newDays[dayIndex];
-      if (!targetDay || !targetDay.timePoints) return prev;
-      const newTps = [...targetDay.timePoints];
-      const targetTp = newTps[tpIndex];
-      if (!targetTp) return prev;
-      const currentLink: ItineraryLink = targetTp.link || {
-        id: `link_${Date.now()}_${tpIndex}`,
-        name: '',
-        type: 'other',
-        showOnFrontend: true,
-      };
-      newTps[tpIndex] = {
-        ...targetTp,
-        link: {
-          ...currentLink,
-          [field]: value,
-        },
-      };
-      newDays[dayIndex] = {
-        ...targetDay,
-        timePoints: newTps,
-      };
-      return {
-        ...prev,
-        itinerary: {
-          ...prev.itinerary,
-          days: newDays,
-        },
-      };
-    });
-  };
 
   const handleConfirmResetNav = async () => {
     if (isResettingNav) return;
@@ -3326,40 +3041,30 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                                       </div>
                                     </div>
 
-                                    {/* 行程天數與總預估步程 */}
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                      <div>
-                                        <label className="block text-neutral-400 mb-1">
-                                          行程天數 (天)
-                                        </label>
-                                        <div className="flex items-center gap-2">
-                                          <div className="px-2.5 py-1.5 rounded bg-neutral-900/80 border border-neutral-800 text-emerald-400 font-mono text-xs font-semibold shrink-0">
-                                            自動計算: {calculateDaysFromDates(
-                                              editingNavButtonActivity.itinerary?.startDate,
-                                              editingNavButtonActivity.itinerary?.endDate,
-                                              editingNavButtonActivity.itinerary?.days?.length || 0
-                                            )} 天
-                                          </div>
-                                          <input
-                                            type="number"
-                                            min={1}
-                                            value={editingNavButtonActivity.itinerary?.daysOverride ?? ''}
-                                            onChange={(e) => {
-                                              const val = e.target.value === '' ? undefined : parseInt(e.target.value, 10);
-                                              handleUpdateItineraryField('daysOverride', val);
-                                            }}
-                                            placeholder="手動調整(留空自動)"
-                                            className="w-full px-2.5 py-1.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 text-xs"
-                                          />
+                                    {/* 行程天數 */}
+                                    <div>
+                                      <label className="block text-neutral-400 mb-1">
+                                        行程天數 (天)
+                                      </label>
+                                      <div className="flex items-center gap-2">
+                                        <div className="px-2.5 py-1.5 rounded bg-neutral-900/80 border border-neutral-800 text-emerald-400 font-mono text-xs font-semibold shrink-0">
+                                          自動計算: {calculateDaysFromDates(
+                                            editingNavButtonActivity.itinerary?.startDate,
+                                            editingNavButtonActivity.itinerary?.endDate,
+                                            editingNavButtonActivity.itinerary?.days?.length || 0
+                                          )} 天
                                         </div>
-                                      </div>
-
-                                      <div>
-                                        <label className="block text-neutral-400 mb-1">預估總步程（唯讀，自動即時計算）</label>
-                                        <div className="px-2.5 py-1.5 rounded bg-neutral-900/80 border border-neutral-800 text-emerald-300 font-mono text-xs font-semibold flex items-center justify-between">
-                                          <span>依每日步程即時加總</span>
-                                          <span>{calculateTotalEstimatedHours(editingNavButtonActivity.itinerary?.days)} 小時</span>
-                                        </div>
+                                        <input
+                                          type="number"
+                                          min={1}
+                                          value={editingNavButtonActivity.itinerary?.daysOverride ?? ''}
+                                          onChange={(e) => {
+                                            const val = e.target.value === '' ? undefined : parseInt(e.target.value, 10);
+                                            handleUpdateItineraryField('daysOverride', val);
+                                          }}
+                                          placeholder="手動調整(留空自動)"
+                                          className="w-full px-2.5 py-1.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 text-xs"
+                                        />
                                       </div>
                                     </div>
 
@@ -3444,293 +3149,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                                       />
                                     </div>
 
-                                    {/* Day 1 ~ Day N 編輯器 */}
-                                    <div className="space-y-3 pt-3 border-t border-neutral-800">
-                                      <div className="flex items-center justify-between">
-                                        <h4 className="font-bold text-neutral-200 text-xs flex items-center gap-1.5">
-                                          <Compass size={14} className="text-emerald-400" />
-                                          <span>每日行程安排 (Day 1 ~ Day N)</span>
-                                        </h4>
-                                        <button
-                                          type="button"
-                                          onClick={handleAddItineraryDay}
-                                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-semibold bg-emerald-800 hover:bg-emerald-700 text-white transition-colors"
-                                        >
-                                          <Plus size={12} />
-                                          <span>新增一天 (Day {(editingNavButtonActivity.itinerary?.days?.length || 0) + 1})</span>
-                                        </button>
-                                      </div>
 
-                                      {/* Days List */}
-                                      {(!editingNavButtonActivity.itinerary?.days || editingNavButtonActivity.itinerary.days.length === 0) ? (
-                                        <div className="p-4 text-center text-neutral-500 text-xs border border-dashed border-neutral-800 rounded bg-neutral-900/30">
-                                          尚未新增任何行程天數，請點擊上方「新增一天」開始規劃每日節點。
-                                        </div>
-                                      ) : (
-                                        <div className="space-y-3">
-                                          {editingNavButtonActivity.itinerary.days.map((day, dayIdx) => (
-                                            <div
-                                              key={day.id || `day_${dayIdx}`}
-                                              className="border border-neutral-800 rounded bg-neutral-900/80 p-3 space-y-3"
-                                            >
-                                              {/* Day Header */}
-                                              <div className="flex items-center justify-between pb-2 border-b border-neutral-800/80">
-                                                <div className="flex items-center gap-2">
-                                                  <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 text-xs font-bold font-mono">
-                                                    第 {dayIdx + 1} 天
-                                                  </span>
-                                                  <span className="text-[11px] text-neutral-400">
-                                                    （{day.timePoints?.length || 0} 個時間地點節點）
-                                                  </span>
-                                                </div>
-                                                <div className="flex items-center gap-1">
-                                                  <button
-                                                    type="button"
-                                                    disabled={dayIdx === 0}
-                                                    onClick={() => handleMoveDay(dayIdx, 'up')}
-                                                    className="p-1 rounded text-neutral-400 hover:text-white hover:bg-neutral-800 disabled:opacity-30 disabled:hover:bg-transparent"
-                                                    title="上移這一天"
-                                                  >
-                                                    <ArrowUp size={13} />
-                                                  </button>
-                                                  <button
-                                                    type="button"
-                                                    disabled={dayIdx === (editingNavButtonActivity.itinerary?.days?.length || 1) - 1}
-                                                    onClick={() => handleMoveDay(dayIdx, 'down')}
-                                                    className="p-1 rounded text-neutral-400 hover:text-white hover:bg-neutral-800 disabled:opacity-30 disabled:hover:bg-transparent"
-                                                    title="下移這一天"
-                                                  >
-                                                    <ArrowDown size={13} />
-                                                  </button>
-                                                  <button
-                                                    type="button"
-                                                    onClick={() => handleDeleteDay(dayIdx)}
-                                                    className="p-1 rounded text-rose-400 hover:text-rose-300 hover:bg-neutral-800"
-                                                    title="刪除這一天"
-                                                  >
-                                                    <Trash2 size={13} />
-                                                  </button>
-                                                </div>
-                                              </div>
-
-                                              {/* Day Estimated Hours */}
-                                              <div className="flex items-center gap-3">
-                                                <label className="text-neutral-400 text-xs shrink-0">當日預估步程 (小時):</label>
-                                                <input
-                                                  type="number"
-                                                  step="0.5"
-                                                  min="0"
-                                                  value={day.estimatedHours ?? ''}
-                                                  onChange={(e) => handleUpdateDayEstimatedHours(dayIdx, e.target.value)}
-                                                  placeholder="例如：6.5"
-                                                  className="w-28 px-2 py-1 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 font-mono text-xs"
-                                                />
-                                                <span className="text-[11px] text-neutral-500">小時（將自動計入總預估步程）</span>
-                                              </div>
-
-                                              {/* Quick Paste Section */}
-                                              <div className="pt-1">
-                                                <button
-                                                  type="button"
-                                                  onClick={() =>
-                                                    setExpandedQuickPasteIds((prev) => ({ ...prev, [day.id]: !prev[day.id] }))
-                                                  }
-                                                  className="inline-flex items-center gap-1 text-[11px] text-neutral-400 hover:text-emerald-400 transition-colors"
-                                                >
-                                                  {expandedQuickPasteIds[day.id] ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                                                  <span>貼上文字快速新增節點</span>
-                                                </button>
-
-                                                {expandedQuickPasteIds[day.id] && (
-                                                  <div className="mt-2 p-2.5 rounded bg-neutral-900 border border-neutral-800 space-y-2">
-                                                    <textarea
-                                                      rows={4}
-                                                      value={quickPasteText[day.id] || ''}
-                                                      onChange={(e) =>
-                                                        setQuickPasteText((prev) => ({ ...prev, [day.id]: e.target.value }))
-                                                      }
-                                                      placeholder={'每行一筆，支援以下格式：\n08:00｜11.7K 行車終點\n08:00|11.7K 行車終點|說明文字\n08:00 11.7K 行車終點\n11.7K 行車終點'}
-                                                      className="w-full px-2 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 text-xs resize-y focus:outline-none focus:border-emerald-500 font-mono"
-                                                    />
-                                                    <button
-                                                      type="button"
-                                                      onClick={() => handleApplyQuickPaste(dayIdx, day.id)}
-                                                      className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs bg-emerald-800 hover:bg-emerald-700 text-white transition-colors"
-                                                    >
-                                                      <Plus size={11} />
-                                                      <span>解析並加入節點</span>
-                                                    </button>
-                                                  </div>
-                                                )}
-                                              </div>
-
-                                              {/* Time Points List */}
-                                              <div className="space-y-2 pt-1">
-                                                <div className="text-[11px] font-semibold text-neutral-400">時間地點節點列表：</div>
-                                                {day.timePoints && day.timePoints.map((tp, tpIdx) => {
-                                                  const isLinkExpanded = Boolean(expandedLinkTpIds[tp.id]);
-                                                  const hasLinkConfig = Boolean(tp.link?.name || tp.link?.url);
-                                                  return (
-                                                    <div
-                                                      key={tp.id || `tp_${dayIdx}_${tpIdx}`}
-                                                      className="p-2.5 rounded bg-neutral-950 border border-neutral-800/80 space-y-2"
-                                                    >
-                                                      <div className="flex items-center gap-2">
-                                                        <input
-                                                          type="text"
-                                                          value={tp.time || ''}
-                                                          onChange={(e) => handleUpdateTimePoint(dayIdx, tpIdx, 'time', e.target.value)}
-                                                          placeholder="時間 (如 08:00)"
-                                                          className="w-24 px-2 py-1 rounded bg-neutral-900 border border-neutral-800 text-neutral-200 font-mono text-xs shrink-0 focus:outline-none focus:border-emerald-500"
-                                                        />
-                                                        <input
-                                                          type="text"
-                                                          required
-                                                          value={tp.location || ''}
-                                                          onChange={(e) => handleUpdateTimePoint(dayIdx, tpIdx, 'location', e.target.value)}
-                                                          placeholder="地點名稱 * (如 11.7K 行車終點)"
-                                                          className="flex-1 min-w-[130px] px-2 py-1 rounded bg-neutral-900 border border-neutral-800 text-neutral-200 text-xs focus:outline-none focus:border-emerald-500"
-                                                        />
-                                                        <button
-                                                          type="button"
-                                                          onClick={() => toggleLinkExpand(tp.id)}
-                                                          className={`px-2 py-1 rounded text-[11px] flex items-center gap-1 border transition-colors shrink-0 ${
-                                                            hasLinkConfig
-                                                              ? 'bg-emerald-950/80 border-emerald-700 text-emerald-300 font-medium'
-                                                              : 'bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-neutral-200'
-                                                          }`}
-                                                          title="設定內部關聯"
-                                                        >
-                                                          <Link2 size={12} />
-                                                          <span className="hidden sm:inline">關聯</span>
-                                                          {isLinkExpanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
-                                                        </button>
-                                                        <div className="flex items-center shrink-0">
-                                                          <button
-                                                            type="button"
-                                                            disabled={tpIdx === 0}
-                                                            onClick={() => handleMoveTimePoint(dayIdx, tpIdx, 'up')}
-                                                            className="p-1 rounded text-neutral-400 hover:text-white disabled:opacity-20"
-                                                            title="上移節點"
-                                                          >
-                                                            <ArrowUp size={12} />
-                                                          </button>
-                                                          <button
-                                                            type="button"
-                                                            disabled={tpIdx === (day.timePoints?.length || 1) - 1}
-                                                            onClick={() => handleMoveTimePoint(dayIdx, tpIdx, 'down')}
-                                                            className="p-1 rounded text-neutral-400 hover:text-white disabled:opacity-20"
-                                                            title="下移節點"
-                                                          >
-                                                            <ArrowDown size={12} />
-                                                          </button>
-                                                          <button
-                                                            type="button"
-                                                            onClick={() => handleDeleteTimePoint(dayIdx, tpIdx)}
-                                                            className="p-1 rounded text-rose-400 hover:text-rose-300"
-                                                            title="刪除節點"
-                                                          >
-                                                            <Trash2 size={12} />
-                                                          </button>
-                                                        </div>
-                                                      </div>
-
-                                                      {/* Description input */}
-                                                      <div>
-                                                        <input
-                                                          type="text"
-                                                          value={tp.description || ''}
-                                                          onChange={(e) => handleUpdateTimePoint(dayIdx, tpIdx, 'description', e.target.value)}
-                                                          placeholder="節點補充說明 (選填，如：輕裝前往、最後活水源、午餐休息30分)"
-                                                          className="w-full px-2 py-1 rounded bg-neutral-900 border border-neutral-800 text-neutral-300 text-xs focus:outline-none focus:border-emerald-500"
-                                                        />
-                                                      </div>
-
-                                                      {/* Collapsible Link Section */}
-                                                      {isLinkExpanded && (
-                                                        <div className="p-2.5 rounded bg-neutral-900 border border-neutral-800 space-y-2 text-xs">
-                                                          <div className="font-semibold text-emerald-400 flex items-center gap-1.5 text-[11px]">
-                                                            <Link2 size={12} />
-                                                            <span>節點關聯設定（選填，設定後前台地點可點擊連結）</span>
-                                                          </div>
-                                                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                                            <div>
-                                                              <label className="block text-neutral-400 text-[11px] mb-0.5">關聯名稱</label>
-                                                              <input
-                                                                type="text"
-                                                                value={tp.link?.name || ''}
-                                                                onChange={(e) => handleUpdateTimePointLink(dayIdx, tpIdx, 'name', e.target.value)}
-                                                                placeholder="例如：登山口或山屋介紹"
-                                                                className="w-full px-2 py-1 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 text-xs focus:outline-none focus:border-emerald-500"
-                                                              />
-                                                            </div>
-                                                            <div>
-                                                              <label className="block text-neutral-400 text-[11px] mb-0.5">關聯類型</label>
-                                                              <select
-                                                                value={tp.link?.type || 'other'}
-                                                                onChange={(e) => handleUpdateTimePointLink(dayIdx, tpIdx, 'type', e.target.value)}
-                                                                className="w-full px-2 py-1 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 text-xs focus:outline-none focus:border-emerald-500"
-                                                              >
-                                                                {ITINERARY_LINK_TYPES.map((lt) => (
-                                                                  <option key={lt.type} value={lt.type}>
-                                                                    {lt.label}
-                                                                  </option>
-                                                                ))}
-                                                              </select>
-                                                            </div>
-                                                          </div>
-
-                                                          <div>
-                                                            <label className="block text-neutral-400 text-[11px] mb-0.5">關聯網址 (選填)</label>
-                                                            <input
-                                                                type="text"
-                                                              value={tp.link?.url || ''}
-                                                              onChange={(e) => handleUpdateTimePointLink(dayIdx, tpIdx, 'url', e.target.value)}
-                                                              placeholder="https://... 或站內 /intro 等路徑"
-                                                              className="w-full px-2 py-1 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 font-mono text-[11px] focus:outline-none focus:border-emerald-500"
-                                                            />
-                                                          </div>
-
-                                                          <div>
-                                                            <label className="block text-neutral-400 text-[11px] mb-0.5">關聯說明 (選填)</label>
-                                                            <textarea
-                                                              rows={2}
-                                                              value={tp.link?.description || ''}
-                                                              onChange={(e) => handleUpdateTimePointLink(dayIdx, tpIdx, 'description', e.target.value)}
-                                                              placeholder="簡短補充說明（將作為滑鼠懸停 title 提示）..."
-                                                              className="w-full px-2 py-1 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 text-xs resize-y focus:outline-none focus:border-emerald-500"
-                                                            />
-                                                          </div>
-
-                                                          <label className="inline-flex items-center gap-1.5 cursor-pointer text-neutral-300 text-[11px]">
-                                                            <input
-                                                              type="checkbox"
-                                                              checked={tp.link?.showOnFrontend ?? true}
-                                                              onChange={(e) => handleUpdateTimePointLink(dayIdx, tpIdx, 'showOnFrontend', e.target.checked)}
-                                                              className="rounded bg-neutral-950 border-neutral-700 text-emerald-600 focus:ring-emerald-500"
-                                                            />
-                                                            <span>在前台顯示為可點擊連結</span>
-                                                          </label>
-                                                        </div>
-                                                      )}
-                                                    </div>
-                                                  );
-                                                })}
-
-                                                <button
-                                                  type="button"
-                                                  onClick={() => handleAddTimePoint(dayIdx)}
-                                                  className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white transition-colors"
-                                                >
-                                                  <Plus size={11} />
-                                                  <span>新增時間節點</span>
-                                                </button>
-                                              </div>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </div>
                                   </div>
                                 )}
                               </div>

@@ -2,6 +2,7 @@ import { loadDatabaseWorker } from './db-kv.js';
 import { handleApiRequest } from './api-handler.js';
 import type { WorkerEnv } from './db-kv.js';
 import { getCategorySlug, resolveActivitySeo } from '../src/utils/activitySeo.js';
+import type { NavButtonActivity } from '../src/types.js';
 
 declare const HTMLRewriter: any;
 
@@ -49,6 +50,51 @@ function buildSectionShellHtml(title: string, description: string): string {
   return `<main><h1>${escapeHtml(shortTitle)}</h1><p>${escapeHtml(
     description
   )}</p>${buildSiteNavHtml()}</main>`;
+}
+
+/**
+ * 將多行文字依連續空行切成段落 <p>，段落內以 <br> 換行，並對文字進行 HTML 跳脫
+ */
+function formatMultilineHtml(text: string): string {
+  const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const paragraphs = normalized
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  return paragraphs
+    .map((p) => {
+      const lines = p.split('\n').map((line) => escapeHtml(line));
+      return `<p>${lines.join('<br>')}</p>`;
+    })
+    .join('');
+}
+
+/**
+ * 產生活動詳細頁（/:categorySlug/:activitySlug/ 與舊版 /route/:slug）的靜態外殼 HTML
+ */
+function buildActivityShellHtml(act: NavButtonActivity): string {
+  let contentHtml = '';
+  if ((act.content || '').trim()) {
+    contentHtml = formatMultilineHtml(act.content!);
+  }
+
+  let itineraryExtraHtml = '';
+  if (act.itinerary?.enabled) {
+    if ((act.itinerary.requiredGear || '').trim()) {
+      itineraryExtraHtml += `<h2>行前必備裝備</h2>${formatMultilineHtml(act.itinerary.requiredGear!)}`;
+    }
+    if ((act.itinerary.safetyNotes || '').trim()) {
+      itineraryExtraHtml += `<h2>安全須知與風險提示</h2>${formatMultilineHtml(act.itinerary.safetyNotes!)}`;
+    }
+  }
+
+  const descHtml = (act.description || '').trim() ? `<p>${escapeHtml(act.description!)}</p>` : '';
+  const externalLinkHtml = act.externalUrl
+    ? `<p><a href="${escapeHtml(act.externalUrl)}" target="_blank" rel="noopener noreferrer">查看行程</a></p>`
+    : '';
+
+  return `<main><h1>${escapeHtml(act.title)}</h1>${descHtml}${contentHtml}${itineraryExtraHtml}${externalLinkHtml}${buildSiteNavHtml()}</main>`;
 }
 
 /**
@@ -631,7 +677,7 @@ ${activityUrls}
             const db = await loadDatabaseWorker(env);
             const act = (db.navButtonActivities || []).find((a) => a.slug.toLowerCase() === slug && a.enabled);
             if (act) {
-              rootHtml = `<main><h1>${escapeHtml(act.title)}</h1><p>${escapeHtml(act.description || '')}</p><p><a href="${escapeHtml(act.externalUrl)}" target="_blank" rel="noopener noreferrer">完整行程／報名</a></p><p>主站內部網址：https://amazon-hike.com${normalizedPath}</p>${buildSiteNavHtml()}</main>`;
+              rootHtml = buildActivityShellHtml(act);
             } else {
               rootHtml = buildSectionShellHtml(routeMeta.title, routeMeta.description);
             }
@@ -647,7 +693,7 @@ ${activityUrls}
               ? (db.navButtonActivities || []).find((a) => a.navButtonId === parentBtn.id && a.slug.toLowerCase() === actSlug && a.enabled)
               : null;
             if (act && parentBtn) {
-              rootHtml = `<main><h1>${escapeHtml(act.title)}</h1><p>${escapeHtml(act.description || '')}</p><p><a href="${escapeHtml(act.externalUrl)}" target="_blank" rel="noopener noreferrer">查看活動說明</a></p><p>主站內部網址：https://amazon-hike.com/${catSlug}/${act.slug}/</p>${buildSiteNavHtml()}</main>`;
+              rootHtml = buildActivityShellHtml(act);
             } else {
               rootHtml = buildSectionShellHtml(routeMeta.title, routeMeta.description);
             }

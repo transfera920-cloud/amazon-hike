@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useLayoutEffect, useCallback } from 'react';
 import {
   Lock,
   ArrowLeft,
@@ -83,6 +83,21 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
   const [activitySlugManuallyEdited, setActivitySlugManuallyEdited] = useState(false);
   const [expandedActivityButtonId, setExpandedActivityButtonId] = useState<string | null>(null);
   const [editingCalendarActivity, setEditingCalendarActivity] = useState<Partial<CalendarActivity> | null>(null);
+
+  // Activity content auto-grow textarea ref & height calculation
+  const activityContentTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const adjustActivityContentTextareaHeight = useCallback(() => {
+    if (activityContentTextareaRef.current) {
+      activityContentTextareaRef.current.style.height = 'auto';
+      activityContentTextareaRef.current.style.height = `${activityContentTextareaRef.current.scrollHeight}px`;
+    }
+  }, []);
+
+  useLayoutEffect(() => {
+    if (editingNavButtonActivity) {
+      adjustActivityContentTextareaHeight();
+    }
+  }, [editingNavButtonActivity?.id, adjustActivityContentTextareaHeight]);
 
   // In-app deletion modal
   const [deleteTarget, setDeleteTarget] = useState<{
@@ -2921,16 +2936,18 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                               <div>
                                 <label className="block text-neutral-400 mb-1">完整活動詳細介紹（選填，支援分段）</label>
                                 <textarea
-                                  rows={4}
+                                  ref={activityContentTextareaRef}
+                                  rows={14}
                                   value={editingNavButtonActivity.content || ''}
-                                  onChange={(e) =>
+                                  onChange={(e) => {
                                     setEditingNavButtonActivity((prev) => ({
                                       ...prev,
                                       content: e.target.value,
-                                    }))
-                                  }
+                                    }));
+                                    adjustActivityContentTextareaHeight();
+                                  }}
                                   placeholder="填寫每日行程、路線難度、裝備建議與注意事項..."
-                                  className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 resize-y"
+                                  className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 resize-y min-h-[320px] max-h-[70vh] text-sm leading-relaxed overflow-y-auto"
                                 />
                               </div>
 

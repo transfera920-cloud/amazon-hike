@@ -1,6 +1,7 @@
 import React from 'react';
-import { ArrowLeft, Compass, ExternalLink, Link2 } from 'lucide-react';
+import { ArrowLeft, Compass, ExternalLink, Link2, ChevronRight } from 'lucide-react';
 import { normalizeUrl } from '../utils/url.js';
+import { getCategorySlug } from '../utils/activitySeo.js';
 import type { NavButtonItem, NavButtonActivity, NavButtonEntry } from '../types.js';
 
 interface NavActivitiesViewProps {
@@ -124,51 +125,68 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
       {/* Activity list */}
       {activities.length > 0 ? (
         <div className="space-y-2.5 sm:space-y-3">
-          {activities.map((activity) => (
-            <article
-              key={activity.id}
-              className="p-3 sm:p-4 rounded-lg border border-neutral-800 bg-neutral-900/60 hover:border-neutral-700 hover:bg-neutral-900 transition-all flex flex-row items-center justify-between gap-3"
-            >
-              <div className="space-y-1 flex-1 min-w-0">
-                <div className="flex items-center gap-2.5 flex-wrap">
-                  <h2 className="text-base sm:text-xl font-bold text-neutral-100">
-                    {onSelectActivity ? (
-                      <button
-                        type="button"
-                        onClick={() => onSelectActivity(activity.slug)}
-                        className="hover:text-emerald-400 transition-colors text-left"
-                        title="查看活動詳細資訊"
-                      >
-                        {activity.title}
-                      </button>
-                    ) : (
-                      activity.title
-                    )}
-                  </h2>
+          {activities.map((activity) => {
+            const hasContent = Boolean((activity.content || '').trim());
+            return (
+              <article
+                key={activity.id}
+                className="group p-3 sm:p-4 rounded-lg border border-neutral-800 bg-neutral-900/60 hover:border-neutral-700 hover:bg-neutral-900 transition-all flex flex-row items-center justify-between gap-3"
+              >
+                <div className="space-y-1 flex-1 min-w-0">
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <h2 className="text-base sm:text-xl font-bold text-neutral-100">
+                      {onSelectActivity ? (
+                        <a
+                          href={`/${getCategorySlug(button)}/${activity.slug}/`}
+                          onClick={(e) => {
+                            if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+                            e.preventDefault();
+                            onSelectActivity(activity.slug);
+                          }}
+                          className={`inline-flex items-center gap-1 transition-colors text-left ${
+                            hasContent
+                              ? 'underline decoration-neutral-600 underline-offset-4 hover:decoration-emerald-400 hover:text-emerald-400'
+                              : 'hover:text-emerald-400'
+                          }`}
+                          title="查看活動詳細資訊"
+                        >
+                          <span>{activity.title}</span>
+                          {hasContent && (
+                            <ChevronRight
+                              size={16}
+                              className="text-neutral-500 group-hover:text-emerald-400 transition-colors shrink-0"
+                            />
+                          )}
+                        </a>
+                      ) : (
+                        activity.title
+                      )}
+                    </h2>
+                  </div>
+
+                  {activity.description && (
+                    <p className="text-sm text-neutral-300 leading-relaxed line-clamp-3">
+                      {activity.description}
+                    </p>
+                  )}
                 </div>
 
-                {activity.description && (
-                  <p className="text-sm text-neutral-300 leading-relaxed line-clamp-3">
-                    {activity.description}
-                  </p>
+                {activity.externalUrl && (
+                  <div className="flex items-center gap-2.5 shrink-0">
+                    <a
+                      href={normalizeUrl(activity.externalUrl)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-semibold transition-colors shadow-sm whitespace-nowrap"
+                    >
+                      <span>查看行程</span>
+                      <ExternalLink size={14} className="text-emerald-200" />
+                    </a>
+                  </div>
                 )}
-              </div>
-
-              {activity.externalUrl && (
-                <div className="flex items-center gap-2.5 shrink-0">
-                  <a
-                    href={normalizeUrl(activity.externalUrl)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-semibold transition-colors shadow-sm whitespace-nowrap"
-                  >
-                    <span>查看行程</span>
-                    <ExternalLink size={14} className="text-emerald-200" />
-                  </a>
-                </div>
-              )}
-            </article>
-          ))}
+              </article>
+            );
+          })}
         </div>
       ) : (
         <div className="py-16 text-center border border-dashed border-neutral-800 rounded-lg bg-neutral-900/30">

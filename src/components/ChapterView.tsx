@@ -44,10 +44,6 @@ export const ChapterView: React.FC<ChapterViewProps> = ({
           <ArrowLeft size={14} />
           <span>返回登山入門章節目錄</span>
         </button>
-
-        <span className="text-xs text-neutral-500 font-mono">
-          /{chapter.slug}
-        </span>
       </div>
 
       {/* Chapter Article Container */}

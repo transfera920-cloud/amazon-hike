@@ -34,10 +34,6 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
           <ArrowLeft size={14} />
           <span>返回協會首頁</span>
         </button>
-
-        <span className="text-xs text-neutral-500 font-mono">
-          /nav/{button.id}
-        </span>
       </div>
 
       {/* Header section */}

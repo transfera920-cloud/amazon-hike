@@ -19,7 +19,7 @@ export const ChapterView: React.FC<ChapterViewProps> = ({
 }) => {
   // Update document title and meta description on client side for SPA navigation
   useEffect(() => {
-    document.title = `${chapter.title} | 亞馬遜國家山岳協會 | Amazon Alpine Association`;
+    document.title = `${chapter.title} | 亞馬遜國家山岳協會`;
     const metaDesc = document.querySelector('meta[name="description"]');
     if (metaDesc) {
       metaDesc.setAttribute('content', chapter.description || chapter.title);

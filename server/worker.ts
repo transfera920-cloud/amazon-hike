@@ -98,6 +98,62 @@ function buildActivityShellHtml(act: NavButtonActivity): string {
 }
 
 /**
+ * 產生章節頁（/chapterNN/）的靜態外殼 HTML：把章節本文直接放進初始 HTML，
+ * 讓不執行 JS 的爬蟲（LINE、Bing、社群預覽等）也能讀到內容。
+ */
+function buildChapterShellHtml(chapter: {
+  title: string;
+  description?: string;
+  content?: string;
+}): string {
+  const descHtml = (chapter.description || '').trim()
+    ? `<p>${escapeHtml(chapter.description!)}</p>`
+    : '';
+  const contentHtml = (chapter.content || '').trim() ? formatMultilineHtml(chapter.content!) : '';
+  return `<main><article><h1>${escapeHtml(chapter.title)}</h1>${descHtml}${contentHtml}</article>${buildSiteNavHtml()}</main>`;
+}
+
+/**
+ * 章節頁的 Article + BreadcrumbList 結構化資料（每頁獨立，注入 <head>）
+ */
+function buildChapterJsonLd(
+  chapter: { title: string; description?: string; updatedAt?: string; coverImage?: string },
+  canonicalUrl: string
+): string {
+  const graph = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'Article',
+        '@id': `${canonicalUrl}#article`,
+        headline: chapter.title,
+        description: chapter.description || chapter.title,
+        inLanguage: 'zh-TW',
+        mainEntityOfPage: canonicalUrl,
+        url: canonicalUrl,
+        ...(chapter.updatedAt ? { dateModified: chapter.updatedAt } : {}),
+        ...(chapter.coverImage && /^https?:\/\//i.test(chapter.coverImage)
+          ? { image: chapter.coverImage }
+          : {}),
+        author: { '@id': 'https://amazon-hike.com/#organization' },
+        publisher: { '@id': 'https://amazon-hike.com/#organization' },
+      },
+      {
+        '@type': 'BreadcrumbList',
+        '@id': `${canonicalUrl}#breadcrumb`,
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: '首頁', item: 'https://amazon-hike.com/' },
+          { '@type': 'ListItem', position: 2, name: '登山入門指南', item: 'https://amazon-hike.com/intro' },
+          { '@type': 'ListItem', position: 3, name: chapter.title, item: canonicalUrl },
+        ],
+      },
+    ],
+  };
+  // 避免內容中的 "</script>" 提早結束標籤
+  return JSON.stringify(graph).replace(/</g, '\\u003c');
+}
+
+/**
  * 建立 /intro 頁面初始 HTML 的章節導覽清單
  * 注意：不要加入任何 <h1>、<h2> 或其他標題標籤，/intro 既有的 H1 維持由前端渲染，不要重新設計標題結構。
  */
@@ -173,7 +229,8 @@ async function applyRouteMeta(
   canonicalUrl: string,
   statusCode?: number,
   rootHtml?: string,
-  noindex?: boolean
+  noindex?: boolean,
+  jsonLd?: string
 ): Promise<Response> {
   const targetStatus = statusCode ?? response.status;
   const targetStatusText = statusCode ? (statusCode === 404 ? 'Not Found' : response.statusText) : response.statusText;
@@ -225,6 +282,14 @@ async function applyRouteMeta(
       rewriter = rewriter.on('meta[name="robots"]', {
         element(e: any) {
           e.setAttribute('content', 'noindex, follow');
+        },
+      });
+    }
+
+    if (jsonLd) {
+      rewriter = rewriter.on('head', {
+        element(e: any) {
+          e.append(`<script type="application/ld+json">${jsonLd}</script>`, { html: true });
         },
       });
     }
@@ -288,6 +353,13 @@ async function applyRouteMeta(
     );
   }
 
+  if (jsonLd) {
+    html = html.replace(
+      /<\/head>/i,
+      () => `<script type="application/ld+json">${jsonLd}</script></head>`
+    );
+  }
+
   if (rootHtml) {
     html = html.replace(/<div id="root">[\s\S]*?<\/div>/i, () => `<div id="root">${rootHtml}</div>`);
   }
@@ -315,6 +387,7 @@ export default {
         `User-agent: *
 Allow: /
 Disallow: /admin
+Disallow: /api/
 Sitemap: https://amazon-hike.com/sitemap.xml
 `,
         {
@@ -327,8 +400,16 @@ Sitemap: https://amazon-hike.com/sitemap.xml
     }
 
     if (pathname === '/sitemap.xml') {
-      const now = new Date().toISOString().split('T')[0];
       const db = await loadDatabaseWorker(env);
+      const today = new Date().toISOString().split('T')[0];
+      const latestUpdate = [
+        ...(db.chapters || []).map((c) => c.updatedAt),
+        ...(db.navButtonActivities || []).map((a) => a.updatedAt),
+      ]
+        .filter(Boolean)
+        .sort()
+        .pop();
+      const now = latestUpdate || today;
       const enabledChapters = (db.chapters || [])
         .filter((c) => c.enabled)
         .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
@@ -496,6 +577,7 @@ ${activityUrls}
 
       // Dynamic chapter route matching: /intro/:slug 以及正式章節網址 /chapterXX/
       let isChapterNotFound = false;
+      let matchedChapter: any = null;
       const isBareChapterPath = CHAPTER_SLUG_RE.test(normalizedPath.slice(1).toLowerCase());
       if (!routeMeta && (normalizedPath.startsWith('/intro/') || isBareChapterPath)) {
         const slug = (normalizedPath.startsWith('/intro/')
@@ -507,8 +589,9 @@ ${activityUrls}
             const db = await loadDatabaseWorker(env);
             const chapter = (db.chapters || []).find((c) => c.slug.toLowerCase() === slug);
             if (chapter && chapter.enabled) {
+              matchedChapter = chapter;
               routeMeta = {
-                title: `${chapter.title} | 亞馬遜國家山岳協會 | Amazon Alpine Association`,
+                title: `${chapter.title} | 亞馬遜國家山岳協會`,
                 description: chapter.description || `${chapter.title} - 亞馬遜國家山岳協會登山入門教學專文。`,
               };
             } else {
@@ -672,6 +755,7 @@ ${activityUrls}
           : `https://amazon-hike.com${normalizedPath}`;
         // /intro 維持只注入章節連結、不含 <h1
         let rootHtml: string | undefined;
+        let chapterJsonLd: string | undefined;
         if (normalizedPath === '/intro') {
           rootHtml = await buildIntroLinksHtml(env);
         } else if (normalizedPath.startsWith('/route/') && !isRouteNotFound) {
@@ -729,6 +813,9 @@ ${activityUrls}
           } catch (e) {
             rootHtml = buildSectionShellHtml(routeMeta.title, routeMeta.description);
           }
+        } else if (matchedChapter && !isChapterNotFound) {
+          rootHtml = buildChapterShellHtml(matchedChapter);
+          chapterJsonLd = buildChapterJsonLd(matchedChapter, canonicalUrl);
         } else if (!normalizedPath.startsWith('/intro/')) {
           rootHtml = buildSectionShellHtml(routeMeta.title, routeMeta.description);
         }
@@ -740,7 +827,8 @@ ${activityUrls}
           isNotFound ? 'https://amazon-hike.com/' : canonicalUrl,
           isNotFound ? 404 : undefined,
           rootHtml,
-          isNotFound
+          isNotFound,
+          chapterJsonLd
         );
       }
 

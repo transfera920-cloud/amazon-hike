@@ -390,7 +390,7 @@ export default function App() {
     } else if (!currentMeta && currentChapter) {
       customCanonicalUrl = `https://amazon-data.ai.studio/${currentChapter.slug}/`;
       currentMeta = {
-        title: `${currentChapter.title} | 亞馬遜國家山岳協會 | Amazon Alpine Association`,
+        title: `${currentChapter.title} | 亞馬遜國家山岳協會`,
         description: currentChapter.description || `${currentChapter.title} - 亞馬遜國家山岳協會登山入門教學專文。`,
       };
     } else if (!currentMeta && currentChapterSlug) {

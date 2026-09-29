@@ -9,6 +9,7 @@ declare const HTMLRewriter: any;
 export interface RouteMetadata {
   title: string;
   description: string;
+  image?: string;
 }
 
 const CHAPTER_SLUG_RE = /^chapter(0[1-9]|1[0-5])$/;
@@ -286,6 +287,49 @@ async function applyRouteMeta(
       });
     }
 
+    const isValidHttpUrl = (s?: string) => Boolean(s && /^https?:\/\//i.test(s.trim()));
+    const validImage = isValidHttpUrl(meta.image) ? meta.image!.trim() : undefined;
+
+    if (validImage) {
+      let ogImageHandled = false;
+      let twitterImageHandled = false;
+      rewriter = rewriter
+        .on('meta[property="og:image"]', {
+          element(e: any) {
+            e.setAttribute('content', validImage);
+            ogImageHandled = true;
+          },
+        })
+        .on('meta[name="twitter:image"]', {
+          element(e: any) {
+            e.setAttribute('content', validImage);
+            twitterImageHandled = true;
+          },
+        })
+        .on('head', {
+          element(e: any) {
+            if (!ogImageHandled) {
+              e.append(`<meta property="og:image" content="${escapeHtml(validImage)}" />`, { html: true });
+            }
+            if (!twitterImageHandled) {
+              e.append(`<meta name="twitter:image" content="${escapeHtml(validImage)}" />`, { html: true });
+            }
+          },
+        });
+    } else {
+      rewriter = rewriter
+        .on('meta[property="og:image"]', {
+          element(e: any) {
+            e.remove();
+          },
+        })
+        .on('meta[name="twitter:image"]', {
+          element(e: any) {
+            e.remove();
+          },
+        });
+    }
+
     if (jsonLd) {
       rewriter = rewriter.on('head', {
         element(e: any) {
@@ -353,6 +397,26 @@ async function applyRouteMeta(
     );
   }
 
+  const isValidHttpUrl = (s?: string) => Boolean(s && /^https?:\/\//i.test(s.trim()));
+  const validImage = isValidHttpUrl(meta.image) ? meta.image!.trim() : undefined;
+
+  if (validImage) {
+    const escapedImage = escapeHtml(validImage);
+    if (/<meta\s+property=["']og:image["']/i.test(html)) {
+      html = html.replace(/(<meta\s+property=["']og:image["']\s+content=["']).*?(["']\s*\/?>)/i, `$1${escapedImage}$2`);
+    } else {
+      html = html.replace(/<\/head>/i, () => `<meta property="og:image" content="${escapedImage}" /></head>`);
+    }
+    if (/<meta\s+name=["']twitter:image["']/i.test(html)) {
+      html = html.replace(/(<meta\s+name=["']twitter:image["']\s+content=["']).*?(["']\s*\/?>)/i, `$1${escapedImage}$2`);
+    } else {
+      html = html.replace(/<\/head>/i, () => `<meta name="twitter:image" content="${escapedImage}" /></head>`);
+    }
+  } else {
+    html = html.replace(/<meta\s+property=["']og:image["'].*?\/?>\s*/gi, '');
+    html = html.replace(/<meta\s+name=["']twitter:image["'].*?\/?>\s*/gi, '');
+  }
+
   if (jsonLd) {
     html = html.replace(
       /<\/head>/i,
@@ -387,7 +451,7 @@ export default {
         `User-agent: *
 Allow: /
 Disallow: /admin
-Disallow: /api/
+Disallow: /api/admin/
 Sitemap: https://amazon-hike.com/sitemap.xml
 `,
         {
@@ -401,45 +465,39 @@ Sitemap: https://amazon-hike.com/sitemap.xml
 
     if (pathname === '/sitemap.xml') {
       const db = await loadDatabaseWorker(env);
-      const today = new Date().toISOString().split('T')[0];
-      const latestUpdate = [
-        ...(db.chapters || []).map((c) => c.updatedAt),
-        ...(db.navButtonActivities || []).map((a) => a.updatedAt),
-      ]
-        .filter(Boolean)
-        .sort()
-        .pop();
-      const now = latestUpdate || today;
       const enabledChapters = (db.chapters || [])
         .filter((c) => c.enabled)
         .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
 
       const chapterUrls = enabledChapters
         .map((chap) => {
-          const lastmod = chap.updatedAt || now;
           const loc = CHAPTER_SLUG_RE.test((chap.slug || '').toLowerCase())
             ? `https://amazon-hike.com/${chap.slug.toLowerCase()}/`
             : `https://amazon-hike.com/intro/${chap.slug}`;
+          const lastmodTag = chap.updatedAt ? `\n    <lastmod>${chap.updatedAt}</lastmod>` : '';
           return `  <url>
-    <loc>${loc}</loc>
-    <lastmod>${lastmod}</lastmod>
+    <loc>${loc}</loc>${lastmodTag}
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>`;
         })
         .join('\n');
 
-      const enabledActivities = (db.navButtonActivities || [])
-        .filter((a) => a.enabled)
-        .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-      const activityUrls = enabledActivities
-        .map((act) => {
+      const validActivities = (db.navButtonActivities || [])
+        .filter((act) => {
+          if (!act.enabled || !act.slug || !act.slug.trim()) return false;
           const parentBtn = (db.navButtons || []).find((b) => b.id === act.navButtonId);
-          const catSlug = parentBtn ? getCategorySlug(parentBtn) : 'activity';
-          const lastmod = act.updatedAt || now;
+          return Boolean(parentBtn && parentBtn.enabled);
+        })
+        .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+
+      const activityUrls = validActivities
+        .map((act) => {
+          const parentBtn = (db.navButtons || []).find((b) => b.id === act.navButtonId)!;
+          const catSlug = getCategorySlug(parentBtn);
+          const lastmodTag = act.updatedAt ? `\n    <lastmod>${act.updatedAt}</lastmod>` : '';
           return `  <url>
-    <loc>https://amazon-hike.com/${catSlug}/${act.slug}/</loc>
-    <lastmod>${lastmod}</lastmod>
+    <loc>https://amazon-hike.com/${catSlug}/${act.slug}/</loc>${lastmodTag}
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>`;
@@ -447,55 +505,64 @@ Sitemap: https://amazon-hike.com/sitemap.xml
         .join('\n');
 
       const navButtonsWithActivities = (db.navButtons || []).filter(
-        (b) => b.enabled && (db.navButtonActivities || []).some((a) => a.navButtonId === b.id && a.enabled)
+        (b) => b.enabled && validActivities.some((a) => a.navButtonId === b.id)
       );
       const navUrls = navButtonsWithActivities
-        .map(
-          (btn) => `  <url>
-    <loc>https://amazon-hike.com/nav/${btn.id}</loc>
-    <lastmod>${now}</lastmod>
+        .map((btn) => {
+          const btnActivities = validActivities.filter((a) => a.navButtonId === btn.id);
+          const latestActUpdate = btnActivities
+            .map((a) => a.updatedAt)
+            .filter(Boolean)
+            .sort()
+            .pop();
+          const lastmodTag = latestActUpdate ? `\n    <lastmod>${latestActUpdate}</lastmod>` : '';
+          return `  <url>
+    <loc>https://amazon-hike.com/nav/${btn.id}</loc>${lastmodTag}
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
-  </url>`
-        )
+  </url>`;
+        })
         .join('\n');
+
+      const latestUpdate = [
+        ...enabledChapters.map((c) => c.updatedAt),
+        ...validActivities.map((a) => a.updatedAt),
+      ]
+        .filter(Boolean)
+        .sort()
+        .pop();
+      const siteLastmod = latestUpdate ? `\n    <lastmod>${latestUpdate}</lastmod>` : '';
 
       return new Response(
         `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://amazon-hike.com/</loc>
-    <lastmod>${now}</lastmod>
+    <loc>https://amazon-hike.com/</loc>${siteLastmod}
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://amazon-hike.com/intro</loc>
-    <lastmod>${now}</lastmod>
+    <loc>https://amazon-hike.com/intro</loc>${siteLastmod}
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://amazon-hike.com/tools</loc>
-    <lastmod>${now}</lastmod>
+    <loc>https://amazon-hike.com/tools</loc>${siteLastmod}
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://amazon-hike.com/highlights</loc>
-    <lastmod>${now}</lastmod>
+    <loc>https://amazon-hike.com/highlights</loc>${siteLastmod}
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://amazon-hike.com/policies</loc>
-    <lastmod>${now}</lastmod>
+    <loc>https://amazon-hike.com/policies</loc>${siteLastmod}
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
-    <loc>https://amazon-hike.com/surveys</loc>
-    <lastmod>${now}</lastmod>
+    <loc>https://amazon-hike.com/surveys</loc>${siteLastmod}
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>

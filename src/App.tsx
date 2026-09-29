@@ -16,6 +16,7 @@ import type { AssociationDatabase, CalendarActivity } from './types.js';
 
 const KNOWN_PATHS = new Set(['/', '/intro', '/tools', '/highlights', '/policies', '/surveys', '/admin']);
 const CHAPTER_PATH_RE = /^\/chapter(0[1-9]|1[0-5])$/i;
+const SITE_ORIGIN = 'https://amazon-hike.com';
 
 function normalizePath(p: string): string {
   if (!p || p === '/') return '/';
@@ -353,6 +354,7 @@ export default function App() {
 
     if (isUnknownPath) {
       is404 = true;
+      customCanonicalUrl = `${SITE_ORIGIN}/`;
       if (currentCategoryActivitySegments) {
         currentMeta = {
           title: '找不到此活動 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
@@ -366,7 +368,7 @@ export default function App() {
       }
     } else if (!currentMeta && currentCategoryActivity && currentCategoryButton) {
       const catSlug = getCategorySlug(currentCategoryButton);
-      customCanonicalUrl = `https://amazon-data.ai.studio/${catSlug}/${currentCategoryActivity.slug}/`;
+      customCanonicalUrl = `${SITE_ORIGIN}/${catSlug}/${currentCategoryActivity.slug}/`;
       const resolved = resolveActivitySeo(currentCategoryActivity, currentCategoryButton);
       currentMeta = {
         title: resolved.title,
@@ -374,27 +376,44 @@ export default function App() {
         ogImage: resolved.image,
       };
     } else if (!currentMeta && currentRouteActivity) {
-      customCanonicalUrl = `https://amazon-data.ai.studio/route/${currentRouteActivity.slug}`;
-      currentMeta = {
-        title: `${currentRouteActivity.title} | 亞馬遜國家山岳協會 | Amazon Alpine Association`,
-        description:
-          currentRouteActivity.description ||
-          `${currentRouteActivity.title} - 亞馬遜國家山岳協會登山行程活動說明與完整報名資訊。`,
-      };
+      if (currentRouteParentButton && currentRouteParentButton.enabled) {
+        const catSlug = getCategorySlug(currentRouteParentButton);
+        customCanonicalUrl = `${SITE_ORIGIN}/${catSlug}/${currentRouteActivity.slug}/`;
+        const resolved = resolveActivitySeo(currentRouteActivity, currentRouteParentButton);
+        currentMeta = {
+          title: resolved.title,
+          description: resolved.description,
+          ogImage: resolved.image,
+        };
+      } else {
+        customCanonicalUrl = `${SITE_ORIGIN}/route/${currentRouteActivity.slug}`;
+        currentMeta = {
+          title: `${currentRouteActivity.title} | 亞馬遜國家山岳協會 | Amazon Alpine Association`,
+          description:
+            currentRouteActivity.description ||
+            `${currentRouteActivity.title} - 亞馬遜國家山岳協會登山行程活動說明與完整報名資訊。`,
+          ogImage: currentRouteActivity.ogImage || currentRouteActivity.coverImage || undefined,
+        };
+      }
     } else if (!currentMeta && currentNavButton) {
-      customCanonicalUrl = `https://amazon-data.ai.studio/nav/${currentNavButton.id}`;
+      customCanonicalUrl = `${SITE_ORIGIN}/nav/${currentNavButton.id}`;
       currentMeta = {
         title: `${currentNavButton.title} - 活動列表 | 亞馬遜國家山岳協會 | Amazon Alpine Association`,
         description: `亞馬遜國家山岳協會 ${currentNavButton.title} 活動與行程清單。`,
       };
     } else if (!currentMeta && currentChapter) {
-      customCanonicalUrl = `https://amazon-data.ai.studio/${currentChapter.slug}/`;
+      const isOfficialChapter = CHAPTER_PATH_RE.test('/' + currentChapter.slug);
+      customCanonicalUrl = isOfficialChapter
+        ? `${SITE_ORIGIN}/${currentChapter.slug.toLowerCase()}/`
+        : `${SITE_ORIGIN}/intro/${currentChapter.slug}`;
       currentMeta = {
         title: `${currentChapter.title} | 亞馬遜國家山岳協會`,
         description: currentChapter.description || `${currentChapter.title} - 亞馬遜國家山岳協會登山入門教學專文。`,
+        ogImage: currentChapter.coverImage || undefined,
       };
     } else if (!currentMeta && currentChapterSlug) {
       is404 = true;
+      customCanonicalUrl = `${SITE_ORIGIN}/`;
       currentMeta = {
         title: '找不到此章節 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
         description: '抱歉，您所尋找的登山入門章節不存在或已被下架。',
@@ -424,41 +443,86 @@ export default function App() {
     const twitterDesc = document.querySelector('meta[name="twitter:description"]');
     if (twitterDesc) twitterDesc.setAttribute('content', currentMeta.description);
 
-    // Update canonical link: 各頁面指向自己的網址，路線頁指向 https://amazon-data.ai.studio/routes
-    let canonicalUrl: string;
-    if (customCanonicalUrl) {
+    // Update canonical link: 各頁面指向自己的網址，/admin 不產生可索引 canonical
+    let canonicalUrl: string | undefined;
+    if (currentPath === '/admin') {
+      canonicalUrl = undefined;
+    } else if (is404) {
+      canonicalUrl = `${SITE_ORIGIN}/`;
+    } else if (customCanonicalUrl) {
       canonicalUrl = customCanonicalUrl;
-    } else if (currentPath === '/' || currentPath === '/routes') {
-      canonicalUrl = 'https://amazon-data.ai.studio/routes';
+    } else if (currentPath === '/') {
+      canonicalUrl = `${SITE_ORIGIN}/`;
     } else {
-      canonicalUrl = `https://amazon-data.ai.studio${currentPath}`;
+      canonicalUrl = `${SITE_ORIGIN}${currentPath}`;
     }
+
     const canonicalLink = document.querySelector('link[rel="canonical"]');
-    if (canonicalLink) canonicalLink.setAttribute('href', canonicalUrl);
+    if (canonicalUrl) {
+      if (canonicalLink) {
+        canonicalLink.setAttribute('href', canonicalUrl);
+      } else {
+        const link = document.createElement('link');
+        link.setAttribute('rel', 'canonical');
+        link.setAttribute('href', canonicalUrl);
+        document.head.appendChild(link);
+      }
+    } else {
+      if (canonicalLink) {
+        canonicalLink.remove();
+      }
+    }
 
-    // Update og:url
-    const ogUrl = document.querySelector('meta[property="og:url"]');
-    if (ogUrl) ogUrl.setAttribute('content', canonicalUrl);
+    // Update og:url: 與 canonical 使用相同 URL
+    let ogUrl = document.querySelector('meta[property="og:url"]');
+    if (canonicalUrl) {
+      if (!ogUrl) {
+        ogUrl = document.createElement('meta');
+        ogUrl.setAttribute('property', 'og:url');
+        document.head.appendChild(ogUrl);
+      }
+      ogUrl.setAttribute('content', canonicalUrl);
+    } else {
+      if (ogUrl) {
+        ogUrl.remove();
+      }
+    }
 
-    // Update og:image if provided
+    // Update og:image & twitter:image: 只有存在合法 http/https 圖片網址時才設定
+    const isValidHttpUrl = (s?: string) => Boolean(s && /^https?:\/\//i.test(s.trim()));
+    const validOgImage = isValidHttpUrl(currentMeta.ogImage) ? currentMeta.ogImage!.trim() : undefined;
+
     let ogImageEl = document.querySelector('meta[property="og:image"]');
-    if (currentMeta.ogImage) {
+    let twitterImageEl = document.querySelector('meta[name="twitter:image"]');
+    if (validOgImage) {
       if (!ogImageEl) {
         ogImageEl = document.createElement('meta');
         ogImageEl.setAttribute('property', 'og:image');
         document.head.appendChild(ogImageEl);
       }
-      ogImageEl.setAttribute('content', currentMeta.ogImage);
+      ogImageEl.setAttribute('content', validOgImage);
+
+      if (!twitterImageEl) {
+        twitterImageEl = document.createElement('meta');
+        twitterImageEl.setAttribute('name', 'twitter:image');
+        document.head.appendChild(twitterImageEl);
+      }
+      twitterImageEl.setAttribute('content', validOgImage);
+    } else {
+      if (ogImageEl) ogImageEl.remove();
+      if (twitterImageEl) twitterImageEl.remove();
     }
 
-    // Update robots meta tag: 404 時設為 noindex, follow
+    // Update robots meta tag: /admin 設為 noindex, nofollow；404 設為 noindex, follow
     let robotsMeta = document.querySelector('meta[name="robots"]');
     if (!robotsMeta) {
       robotsMeta = document.createElement('meta');
       robotsMeta.setAttribute('name', 'robots');
       document.head.appendChild(robotsMeta);
     }
-    if (is404) {
+    if (currentPath === '/admin') {
+      robotsMeta.setAttribute('content', 'noindex, nofollow');
+    } else if (is404) {
       robotsMeta.setAttribute('content', 'noindex, follow');
     } else {
       robotsMeta.setAttribute('content', 'index, follow');
@@ -472,6 +536,9 @@ export default function App() {
     currentCategoryActivitySegments,
     currentCategoryButton,
     currentCategoryActivity,
+    currentRouteActivity,
+    currentRouteParentButton,
+    currentNavButton,
   ]);
 
   return (

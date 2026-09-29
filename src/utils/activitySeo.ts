@@ -69,7 +69,7 @@ export function resolveActivitySeo(
   const image =
     (activity.ogImage || '').trim() ||
     (activity.coverImage || '').trim() ||
-    'https://amazon-hike.com/og-image.jpg';
+    '';
 
   return { title, description, image };
 }

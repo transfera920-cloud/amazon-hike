@@ -1,6 +1,7 @@
 import React from 'react';
 import { ArrowLeft, BookOpen, ChevronRight, Calendar, ExternalLink } from 'lucide-react';
 import { normalizeUrl } from '../utils/url.js';
+import { isFormalChapterSlug } from '../utils/activitySeo.js';
 import type { ChapterItem, IntroItem } from '../types.js';
 
 interface IntroViewProps {
@@ -59,7 +60,7 @@ export const IntroView: React.FC<IntroViewProps> = ({
       ) : hasChapters ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {chapters.map((item) => {
-            const isFormal = /^chapter(0[1-9]|1[0-5])$/i.test(item.slug);
+            const isFormal = isFormalChapterSlug(item.slug);
             const href = isFormal ? `/${item.slug.toLowerCase()}/` : `/intro/${item.slug}`;
 
             return (

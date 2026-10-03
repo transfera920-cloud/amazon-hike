@@ -1,7 +1,12 @@
 import { loadDatabaseWorker } from './db-kv.js';
 import { handleApiRequest } from './api-handler.js';
 import type { WorkerEnv } from './db-kv.js';
-import { getCategorySlug, resolveActivitySeo } from '../src/utils/activitySeo.js';
+import {
+  getCategorySlug,
+  resolveActivitySeo,
+  CHAPTER_SLUG_RE,
+  CHAPTER_SLUG_SOURCE,
+} from '../src/utils/activitySeo.js';
 import type { NavButtonActivity } from '../src/types.js';
 
 declare const HTMLRewriter: any;
@@ -12,7 +17,8 @@ export interface RouteMetadata {
   image?: string;
 }
 
-const CHAPTER_SLUG_RE = /^chapter(0[1-9]|1[0-5])$/;
+const INTRO_REDIRECT_RE = new RegExp(`^/intro/(${CHAPTER_SLUG_SOURCE})$`);
+const CHAPTER_REDIRECT_RE = new RegExp(`^/(${CHAPTER_SLUG_SOURCE})$`);
 const escapeHtml = (s: string) =>
   String(s)
     .replace(/&/g, '&amp;')
@@ -581,13 +587,13 @@ ${activityUrls}
 
     // 2-1. 301 Redirects for Chapter URLs
     const trimmed = pathname.replace(/\/+$/, '').toLowerCase();
-    const introMatch = trimmed.match(/^\/intro\/(chapter(?:0[1-9]|1[0-5]))$/);
+    const introMatch = trimmed.match(INTRO_REDIRECT_RE);
     if (introMatch) {
       return Response.redirect(`https://amazon-hike.com/${introMatch[1]}/`, 301);
     }
 
     if (!pathname.endsWith('/')) {
-      const chapterMatch = trimmed.match(/^\/(chapter(?:0[1-9]|1[0-5]))$/);
+      const chapterMatch = trimmed.match(CHAPTER_REDIRECT_RE);
       if (chapterMatch) {
         return Response.redirect(`https://amazon-hike.com/${chapterMatch[1]}/`, 301);
       }

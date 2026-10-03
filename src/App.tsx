@@ -11,11 +11,11 @@ import { SurveysView } from './components/SurveysView.js';
 import { AdminPage } from './components/AdminPage.js';
 import { NavActivitiesView } from './components/NavActivitiesView.js';
 import { RouteActivityView } from './components/RouteActivityView.js';
-import { getCategorySlug, resolveActivitySeo } from './utils/activitySeo.js';
+import { getCategorySlug, resolveActivitySeo, CHAPTER_SLUG_SOURCE } from './utils/activitySeo.js';
 import type { AssociationDatabase, CalendarActivity } from './types.js';
 
 const KNOWN_PATHS = new Set(['/', '/intro', '/tools', '/highlights', '/policies', '/surveys', '/admin']);
-const CHAPTER_PATH_RE = /^\/chapter(0[1-9]|1[0-5])$/i;
+const CHAPTER_PATH_RE = new RegExp(`^/${CHAPTER_SLUG_SOURCE}$`, 'i');
 const SITE_ORIGIN = 'https://amazon-hike.com';
 
 function normalizePath(p: string): string {
@@ -123,7 +123,7 @@ export default function App() {
 
   // Routing navigation helper
   const navigate = (path: string) => {
-    const m = path.match(/^\/intro\/(chapter(?:0[1-9]|1[0-5]))\/?$/i);
+    const m = path.match(new RegExp(`^/intro/(${CHAPTER_SLUG_SOURCE})/?$`, 'i'));
     if (m) {
       window.location.assign(`/${m[1].toLowerCase()}/`);
       return;

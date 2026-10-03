@@ -210,9 +210,29 @@ async function runTests() {
 
   // 9. SEO Endpoints
   {
-    // Ensure mockKV has the 15 default chapters so sitemap and intro links can reflect them
+    // Ensure mockKV has the 15 default chapters plus chapter22 and chapter26 so sitemap and intro links can reflect them
     const currentDb = await env.ASSOCIATION_DB.get('association_data', 'json') || baselineData;
-    const chapters = getDefaultChapters();
+    const chapters = [
+      ...getDefaultChapters(),
+      {
+        id: 'chap_22',
+        slug: 'chapter22',
+        title: '第二十二篇：進階登山嚮導實務',
+        description: '進階登山嚮導實務說明',
+        content: '進階登山嚮導實務內容',
+        updatedAt: '2026-03-20',
+        enabled: true,
+      },
+      {
+        id: 'chap_26',
+        slug: 'chapter26',
+        title: '第二十六篇：高山生態觀察指南',
+        description: '高山生態觀察指南說明',
+        content: '高山生態觀察指南內容',
+        updatedAt: '2026-03-25',
+        enabled: true,
+      },
+    ];
     await env.ASSOCIATION_DB.put('association_data', JSON.stringify({ ...currentDb, chapters }));
 
     const resRobots = await worker.fetch(new Request('http://localhost/robots.txt'), env, {});
@@ -227,6 +247,8 @@ async function runTests() {
     assert(textSitemap.includes('<loc>https://amazon-hike.com/surveys</loc>'), '/sitemap.xml includes /surveys');
     assert(textSitemap.includes('<loc>https://amazon-hike.com/chapter01/</loc>'), '/sitemap.xml includes /chapter01/');
     assert(textSitemap.includes('<loc>https://amazon-hike.com/chapter15/</loc>'), '/sitemap.xml includes /chapter15/');
+    assert(textSitemap.includes('<loc>https://amazon-hike.com/chapter22/</loc>'), '/sitemap.xml includes /chapter22/');
+    assert(textSitemap.includes('<loc>https://amazon-hike.com/chapter26/</loc>'), '/sitemap.xml includes /chapter26/');
     assert(!textSitemap.includes('/intro/chapter01'), '/sitemap.xml does not contain /intro/chapter01');
   }
 
@@ -240,15 +262,25 @@ async function runTests() {
     assert(resChapterRedirect.status === 301, 'GET /chapter01 returns 301 redirect');
     assert(resChapterRedirect.headers.get('location') === 'https://amazon-hike.com/chapter01/', 'GET /chapter01 redirects to https://amazon-hike.com/chapter01/');
 
+    const resIntroRedirect22 = await worker.fetch(new Request('http://localhost/intro/chapter22', { redirect: 'manual' }), env, {});
+    assert(resIntroRedirect22.status === 301, '/intro/chapter22 returns 301 redirect');
+    assert(resIntroRedirect22.headers.get('location') === 'https://amazon-hike.com/chapter22/', '/intro/chapter22 redirects to https://amazon-hike.com/chapter22/');
+
+    const resChapterRedirect22 = await worker.fetch(new Request('http://localhost/chapter22', { redirect: 'manual' }), env, {});
+    assert(resChapterRedirect22.status === 301, 'GET /chapter22 returns 301 redirect');
+    assert(resChapterRedirect22.headers.get('location') === 'https://amazon-hike.com/chapter22/', 'GET /chapter22 redirects to https://amazon-hike.com/chapter22/');
+
     const resIntro = await worker.fetch(new Request('http://localhost/intro'), env, {});
     const htmlIntro = await resIntro.text();
     assert(resIntro.status === 200, '/intro status is 200');
     assert(htmlIntro.includes('href="/chapter01/"'), '/intro HTML includes href="/chapter01/"');
     assert(htmlIntro.includes('href="/chapter15/"'), '/intro HTML includes href="/chapter15/"');
+    assert(htmlIntro.includes('href="/chapter22/"'), '/intro HTML includes href="/chapter22/"');
+    assert(htmlIntro.includes('href="/chapter26/"'), '/intro HTML includes href="/chapter26/"');
     assert(!htmlIntro.includes('<h1'), '/intro HTML does not contain <h1');
   }
 
-  // 9-2. Dynamic Chapter SPA Route 404 on Missing or Disabled Chapter
+  // 9-2. Dynamic Chapter SPA Route 404 on Missing or Disabled Chapter, and 200 on Valid Chapter
   {
     // A nonexistent slug
     const res404 = await worker.fetch(new Request('http://localhost/intro/nonexistent-chapter'), env, {});
@@ -256,6 +288,20 @@ async function runTests() {
     assert(res404.status === 404, '/intro/nonexistent-chapter returns HTTP 404 status');
     assert(html404.includes('<title>找不到此章節 | 亞馬遜國家山岳協會 | Amazon Alpine Association</title>'), '/intro/nonexistent-chapter sets 404 title');
     assert(html404.includes('找不到此章節'), '/intro/nonexistent-chapter includes 404 meta content in HTML');
+
+    // /chapter26/ in KV returns 200 with article shell and canonical
+    const resChapter26 = await worker.fetch(new Request('http://localhost/chapter26/'), env, {});
+    const htmlChapter26 = await resChapter26.text();
+    assert(resChapter26.status === 200, '/chapter26/ status is 200 when enabled in KV');
+    assert(htmlChapter26.includes('第二十六篇：高山生態觀察指南'), '/chapter26/ HTML includes chapter title');
+    assert(htmlChapter26.includes('href="https://amazon-hike.com/chapter26/"'), '/chapter26/ has canonical pointing to https://amazon-hike.com/chapter26/');
+
+    // /chapter999/ absent from KV returns 404 with noindex, follow and canonical to home
+    const resChapter999 = await worker.fetch(new Request('http://localhost/chapter999/'), env, {});
+    const htmlChapter999 = await resChapter999.text();
+    assert(resChapter999.status === 404, '/chapter999/ returns HTTP 404 status when absent from KV');
+    assert(htmlChapter999.includes('content="noindex, follow"'), '/chapter999/ has noindex, follow robots meta');
+    assert(htmlChapter999.includes('href="https://amazon-hike.com/"'), '/chapter999/ canonical points to home');
   }
 
   // 9-3. SEO Shell, Trailing Slash 301, Unknown Route 404, and Index.html Static Links
@@ -562,6 +608,25 @@ async function runTests() {
         {}
       );
       assert(resReservedCat.status === 400, 'Reserved categorySlug returns HTTP 400');
+
+      // 11-1b. Reserved categorySlug chapter26 rejected with 400
+      const resReservedCat26 = await worker.fetch(
+        new Request('http://localhost/api/admin/save-nav-button', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            id: 'btn_test_chap26_cat',
+            title: '章節26衝突分類',
+            categorySlug: 'chapter26',
+            url: '',
+            sortOrder: 1,
+            enabled: true,
+          }),
+        }),
+        env,
+        {}
+      );
+      assert(resReservedCat26.status === 400, 'Reserved categorySlug chapter26 returns HTTP 400');
 
       // 11-2. Valid categorySlug saved successfully
       const resSaveCat1 = await worker.fetch(

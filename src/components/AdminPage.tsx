@@ -38,7 +38,7 @@ import type {
   AssociationDatabase,
   TripItinerary
 } from '../types.js';
-import { slugify, RESERVED_SLUGS, getCategorySlug } from '../utils/activitySeo.js';
+import { slugify, RESERVED_SLUGS, getCategorySlug, isFormalChapterSlug } from '../utils/activitySeo.js';
 import {
   calculateDaysFromDates
 } from '../utils/itineraryHelper.js';
@@ -422,7 +422,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
 
     const trimmedCatSlug = (editingNavButton.categorySlug || '').trim().toLowerCase();
     if (trimmedCatSlug) {
-      if (RESERVED_SLUGS.has(trimmedCatSlug) || /^chapter(0[1-9]|1[0-5])$/i.test(trimmedCatSlug)) {
+      if (RESERVED_SLUGS.has(trimmedCatSlug) || isFormalChapterSlug(trimmedCatSlug)) {
         showFeedback('此代稱與系統既有路徑衝突，請更換', true);
         return;
       }

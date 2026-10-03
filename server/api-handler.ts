@@ -16,7 +16,7 @@ import type {
   NavButtonActivity,
   CalendarActivity
 } from '../src/types.js';
-import { RESERVED_SLUGS, getCategorySlug } from '../src/utils/activitySeo.js';
+import { RESERVED_SLUGS, getCategorySlug, isFormalChapterSlug } from '../src/utils/activitySeo.js';
 import {
   cleanTripItinerary,
   buildCalendarActivityFromItinerary,
@@ -391,7 +391,7 @@ export async function handleApiRequest(
 
         const cleanCatSlug = (item.categorySlug || '').trim().toLowerCase();
         if (cleanCatSlug) {
-          if (RESERVED_SLUGS.has(cleanCatSlug) || /^chapter(0[1-9]|1[0-5])$/i.test(cleanCatSlug)) {
+          if (RESERVED_SLUGS.has(cleanCatSlug) || isFormalChapterSlug(cleanCatSlug)) {
             return jsonResponse({ error: '此代稱與系統既有路徑衝突，請更換' }, 400);
           }
         }

@@ -17,6 +17,12 @@ export function slugify(text: string): string {
     .replace(/^-+|-+$/g, ''); // trim leading and trailing dashes
 }
 
+export const CHAPTER_SLUG_SOURCE = 'chapter(?:0[1-9]|[1-9][0-9]+)';
+export const CHAPTER_SLUG_RE = new RegExp(`^${CHAPTER_SLUG_SOURCE}$`);
+export function isFormalChapterSlug(slug: string | undefined | null): boolean {
+  return CHAPTER_SLUG_RE.test(String(slug || '').trim().toLowerCase());
+}
+
 /**
  * Top-level system reserved slugs that cannot be used as categorySlug (first path segment)
  */

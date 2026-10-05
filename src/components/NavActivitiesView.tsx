@@ -361,7 +361,7 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
                   <th scope="col" className="px-3 py-2.5 text-center font-bold whitespace-nowrap min-w-[5rem]">
                     群組
                   </th>
-                  <th scope="col" className="hidden md:table-cell w-full min-w-[280px] overflow-visible px-3 py-2.5 text-left font-bold">
+                  <th scope="col" className="hidden md:table-cell w-full min-w-[320px] px-3 py-2.5 text-left font-bold">
                     備註
                   </th>
                   <th scope="col" className="w-[110px] min-w-[110px] shrink-0 pl-4 pr-3 py-2.5 text-right font-bold whitespace-nowrap">
@@ -397,7 +397,13 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
                             <ChevronRight size={14} className="text-neutral-500 shrink-0" />
                           </a>
                         ) : (
-                          <span className="inline-flex items-center whitespace-nowrap">{name}</span>
+                          name
+                        )}
+                        {/* 手機版：簡介收在山名下方 */}
+                        {activity.description && (
+                          <p className="md:hidden mt-1 text-xs font-normal text-neutral-400 leading-relaxed line-clamp-2 whitespace-normal">
+                            {activity.description}
+                          </p>
                         )}
                       </td>
 
@@ -411,8 +417,10 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
 
                       <td className="px-3 py-2.5 text-center text-neutral-300 whitespace-nowrap min-w-[5rem]">{group}</td>
 
-                      <td className="hidden md:table-cell w-full min-w-[280px] overflow-visible px-3 py-2.5 text-left text-xs text-neutral-400 leading-relaxed whitespace-normal break-words">
-                        {activity.description}
+                      <td className="hidden md:table-cell w-full min-w-[320px] px-3 py-2.5 text-left text-xs text-neutral-400 leading-relaxed whitespace-normal break-words">
+                        <span className="whitespace-normal break-words">
+                          {activity.description}
+                        </span>
                       </td>
 
                       <td className="w-[110px] min-w-[110px] shrink-0 pl-4 pr-3 py-2.5 text-right whitespace-nowrap">

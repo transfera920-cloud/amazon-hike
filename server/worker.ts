@@ -4,6 +4,7 @@ import type { WorkerEnv } from './db-kv.js';
 import {
   getCategorySlug,
   resolveActivitySeo,
+  resolveNavButtonDescription,
   CHAPTER_SLUG_RE,
   CHAPTER_SLUG_SOURCE,
 } from '../src/utils/activitySeo.js';
@@ -489,13 +490,17 @@ Sitemap: https://amazon-hike.com/sitemap.xml
         })
         .join('\n');
 
-      const validActivities = (db.navButtonActivities || [])
+      const allEnabledActivities = (db.navButtonActivities || [])
         .filter((act) => {
           if (!act.enabled || !act.slug || !act.slug.trim()) return false;
           const parentBtn = (db.navButtons || []).find((b) => b.id === act.navButtonId);
           return Boolean(parentBtn && parentBtn.enabled);
         })
         .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+
+      const validActivities = allEnabledActivities.filter((act) =>
+        Boolean((act.content || '').trim())
+      );
 
       const activityUrls = validActivities
         .map((act) => {
@@ -511,11 +516,11 @@ Sitemap: https://amazon-hike.com/sitemap.xml
         .join('\n');
 
       const navButtonsWithActivities = (db.navButtons || []).filter(
-        (b) => b.enabled && validActivities.some((a) => a.navButtonId === b.id)
+        (b) => b.enabled && allEnabledActivities.some((a) => a.navButtonId === b.id)
       );
       const navUrls = navButtonsWithActivities
         .map((btn) => {
-          const btnActivities = validActivities.filter((a) => a.navButtonId === btn.id);
+          const btnActivities = allEnabledActivities.filter((a) => a.navButtonId === btn.id);
           const latestActUpdate = btnActivities
             .map((a) => a.updatedAt)
             .filter(Boolean)
@@ -532,7 +537,7 @@ Sitemap: https://amazon-hike.com/sitemap.xml
 
       const latestUpdate = [
         ...enabledChapters.map((c) => c.updatedAt),
-        ...validActivities.map((a) => a.updatedAt),
+        ...allEnabledActivities.map((a) => a.updatedAt),
       ]
         .filter(Boolean)
         .sort()
@@ -699,7 +704,7 @@ ${activityUrls}
             if (btn) {
               routeMeta = {
                 title: `${btn.title} - 活動列表 | 亞馬遜國家山岳協會 | Amazon Alpine Association`,
-                description: `亞馬遜國家山岳協會 ${btn.title} 活動與行程清單。`,
+                description: resolveNavButtonDescription(btn),
               };
             } else {
               isNavNotFound = true;
@@ -716,6 +721,7 @@ ${activityUrls}
 
       // Dynamic single activity route matching: /route/:slug
       let isRouteNotFound = false;
+      let isThinActivity = false;
       if (!routeMeta && normalizedPath.startsWith('/route/')) {
         const slug = normalizedPath.replace(/^\/route\//, '').toLowerCase();
         if (slug) {
@@ -725,6 +731,7 @@ ${activityUrls}
               (a) => a.slug.toLowerCase() === slug && a.enabled
             );
             if (act) {
+              isThinActivity = !(act.content || '').trim();
               routeMeta = {
                 title: `${act.title} | 亞馬遜國家山岳協會 | Amazon Alpine Association`,
                 description:
@@ -766,6 +773,7 @@ ${activityUrls}
               (a) => a.navButtonId === parentBtn.id && a.slug.toLowerCase() === actSlug && a.enabled
             );
             if (act) {
+              isThinActivity = !(act.content || '').trim();
               const seo = resolveActivitySeo(act, parentBtn);
               routeMeta = {
                 title: seo.title,
@@ -860,7 +868,13 @@ ${activityUrls}
               ? (db.navButtonActivities || []).filter((a) => a.navButtonId === btn.id && a.enabled)
               : [];
             const catSlug = btn ? getCategorySlug(btn) : buttonId;
-            const listHtml = acts.map((a) => `<li><a href="/${catSlug}/${a.slug}/">${escapeHtml(a.title)}</a></li>`).join('');
+            const listHtml = acts
+              .map((a) =>
+                (a.content || '').trim()
+                  ? `<li><a href="/${catSlug}/${a.slug}/">${escapeHtml(a.title)}</a></li>`
+                  : `<li>${escapeHtml(a.title)}</li>`
+              )
+              .join('');
             rootHtml = `<main><h1>${escapeHtml(btn ? btn.title : '活動列表')}</h1><ul>${listHtml}</ul>${buildSiteNavHtml()}</main>`;
           } catch (e) {
             rootHtml = buildSectionShellHtml(routeMeta.title, routeMeta.description);
@@ -900,7 +914,7 @@ ${activityUrls}
           isNotFound ? 'https://amazon-hike.com/' : canonicalUrl,
           isNotFound ? 404 : undefined,
           rootHtml,
-          isNotFound,
+          isNotFound || isThinActivity,
           chapterJsonLd
         );
       }

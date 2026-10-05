@@ -1,8 +1,92 @@
-import React from 'react';
-import { ArrowLeft, Compass, ExternalLink, Link2, ChevronRight } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import {
+  ArrowLeft,
+  Compass,
+  ExternalLink,
+  Link2,
+  ChevronRight,
+  ChevronDown,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
+  BookOpen,
+} from 'lucide-react';
 import { normalizeUrl } from '../utils/url.js';
 import { getCategorySlug } from '../utils/activitySeo.js';
 import type { NavButtonItem, NavButtonActivity, NavButtonEntry } from '../types.js';
+
+
+/* ------------------------------------------------------------------ *
+ * 百岳總表：維基百科式表格版面
+ * 不新增任何後台欄位，直接由「活動標題」解析：
+ *   「001玉山3952五岳-1」「003 玉山東峰 3874 十峻-1」→ 編號／山名／高度／群組
+ * 解析不出來的列會退回顯示完整標題，不會壞版。
+ * ------------------------------------------------------------------ */
+
+// 按鈕標題含下列任一關鍵字時，改用表格版面；其他按鈕維持原本清單
+const PEAK_TABLE_TITLE_KEYWORDS = ['百岳總表'];
+
+// 導讀文字（可直接在此修改）
+export const PEAK_INTRO_PARAGRAPHS = [
+  '台灣百岳是臺灣登山界在 1970 年代初期選出的一百座高山，標高大致在三千公尺以上，分布於中央山脈、雪山山脈與玉山山脈，其中中央山脈就占了 69 座。許多山友把它當成長期累積的登山目標。',
+  '本頁整理百岳各峰的基本資料與本會的行程資訊，可作為規劃路線的起點。',
+];
+
+const PEAK_HOW_TO_READ: string[] = [
+  '山名帶有底線與箭頭者，可點選進入該山的詳細說明頁（行程時間、行前裝備與安全須知）。',
+  '點選「查看行程」：前往外部頁面查看完整行程或報名。',
+  '「群組」是傳統的百岳分類，例如五岳、三尖、十峻；後面的數字是該群組內的序號。',
+  '標高數據會因測量年份不同而與其他資料略有出入，實際規劃請以官方最新公告為準。',
+];
+
+const PEAK_SAFETY_NOTE =
+  '百岳皆為高山行程，出發前請先確認入山入園申請、天氣預報與路況，並依自身體能與經驗選擇適合的路線。';
+
+const PEAK_GROUP_GLOSSARY: Array<[string, string]> = [
+  ['五岳', '最具大山氣勢、鎮護一方的五座名山：玉山、雪山、秀姑巒山、南湖大山、北大武山。'],
+  ['三尖', '山形尖聳陡峭、呈金字塔狀的三座山：中央尖山、大霸尖山、達芬尖山。'],
+  ['一奇', '指奇萊北峰，山勢險峻奇特。'],
+  ['十峻', '五岳、三尖、一奇之外，山勢高大而險峻的十座山。'],
+  ['八秀', '山容秀麗、坡度和緩的山。'],
+  ['十崇', '山體高大、頂部寬闊、氣勢敦厚的山。'],
+  ['九峨', '高聳巍峨、在周圍群山中特別突出的山。'],
+  ['十潤', '山容柔和、坡度緩，不需攀岩的山。'],
+  ['十巖', '山頂多巨石岩峰，需手腳並用才能登頂的山。'],
+  ['十翠', '林木與箭竹蒼翠茂密，需穿越箭竹林的山。'],
+  ['九平', '山頂寬闊平坦、步行輕鬆的山。'],
+  ['九嶂', '山頂平整、橫亙如屏障的山。'],
+  ['八銳', '山峰尖銳、多崖壁陡坡的山。'],
+  ['八小巒', '山頂矮小、坡度緩，常在縱走途中順登的山。'],
+  ['六易', '山勢和緩、緊鄰山徑，容易順道登頂的山。'],
+  ['六肩稜', '靠近高峰、形如平肩的稜線山頭。'],
+  ['七峭 / 八瘦 / 九偏', '分別指山勢峭拔、山脊狹長瘦削、位置偏遠需專程前往的山。'],
+];
+
+interface PeakRow {
+  activity: NavButtonActivity;
+  no: number | null;
+  name: string;
+  elevation: number | null;
+  group: string;
+}
+
+function parsePeakTitle(activity: NavButtonActivity): PeakRow {
+  const raw = (activity.title || '').trim();
+  const m = raw.match(/^(\d{1,3})\s*(.+?)\s*(\d{4})\s*(.*)$/);
+  if (!m) {
+    return { activity, no: null, name: raw, elevation: null, group: '' };
+  }
+  return {
+    activity,
+    no: Number(m[1]),
+    name: m[2].trim(),
+    elevation: Number(m[3]),
+    group: m[4].trim(),
+  };
+}
+
+type SortKey = 'no' | 'elevation';
+type SortDir = 'asc' | 'desc';
 
 interface NavActivitiesViewProps {
   button: NavButtonItem;
@@ -21,8 +105,66 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
   onSelectActivity,
   onNavigateEntry,
 }) => {
+  const isPeakTable =
+    activities.length > 0 && PEAK_TABLE_TITLE_KEYWORDS.some((k) => (button.title || '').includes(k));
+
+  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir } | null>(null);
+
+  const peakRows = useMemo<PeakRow[]>(() => {
+    if (!isPeakTable) return [];
+    const rows = activities.map(parsePeakTitle);
+    if (!sort) return rows; // 維持後台設定的排序
+    const factor = sort.dir === 'asc' ? 1 : -1;
+    return rows
+      .map((r, i) => ({ r, i }))
+      .sort((a, b) => {
+        const av = sort.key === 'no' ? a.r.no : a.r.elevation;
+        const bv = sort.key === 'no' ? b.r.no : b.r.elevation;
+        if (av == null && bv == null) return a.i - b.i;
+        if (av == null) return 1; // 解析不到的列固定排最後
+        if (bv == null) return -1;
+        return av === bv ? a.i - b.i : (av - bv) * factor;
+      })
+      .map((x) => x.r);
+  }, [isPeakTable, activities, sort]);
+
+  // 同一欄位：預設方向 → 反方向 → 取消排序
+  const toggleSort = (key: SortKey) => {
+    const first: SortDir = key === 'elevation' ? 'desc' : 'asc';
+    const second: SortDir = first === 'asc' ? 'desc' : 'asc';
+    setSort((prev) => {
+      if (!prev || prev.key !== key) return { key, dir: first };
+      if (prev.dir === first) return { key, dir: second };
+      return null;
+    });
+  };
+
+  const SortIcon: React.FC<{ k: SortKey }> = ({ k }) => {
+    if (!sort || sort.key !== k) return <ArrowUpDown size={12} className="text-neutral-500" />;
+    return sort.dir === 'asc' ? (
+      <ArrowUp size={12} className="text-emerald-400" />
+    ) : (
+      <ArrowDown size={12} className="text-emerald-400" />
+    );
+  };
+
+  const ariaSort = (k: SortKey): 'ascending' | 'descending' | 'none' =>
+    sort && sort.key === k ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none';
+
+  // 後台「導讀內容」（空白行分段）；沒填時，百岳總表退回預設文字
+  const customIntro = useMemo(
+    () => (button.introContent || '').split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean),
+    [button.introContent]
+  );
+  const introParagraphs = customIntro.length > 0 ? customIntro : PEAK_INTRO_PARAGRAPHS;
+
+  const detailHref = (slug: string) => `/${getCategorySlug(button)}/${slug}/`;
+
   return (
-    <main className="max-w-4xl mx-auto px-4 sm:px-6 py-8" aria-label={`${button.title}活動清單`}>
+    <main
+      className={`${isPeakTable ? 'max-w-5xl' : 'max-w-4xl'} mx-auto px-4 sm:px-6 py-8`}
+      aria-label={`${button.title}活動清單`}
+    >
       {/* Breadcrumb / Back button */}
       <div className="flex items-center justify-between mb-6">
         <button
@@ -45,10 +187,67 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
         <h1 className="text-2xl sm:text-3xl font-extrabold text-neutral-100 tracking-tight">
           {button.title}
         </h1>
-        <p className="text-sm text-neutral-400 mt-2">
-          歡迎瀏覽本專區推薦之健行登山行程，點選活動可查看詳細說明或前往外部頁面報名。
-        </p>
+        {!isPeakTable &&
+          (customIntro.length > 0 ? (
+            <div className="mt-2 space-y-2 text-sm text-neutral-300 leading-relaxed">
+              {customIntro.map((p, idx) => (
+                <p key={idx} className="whitespace-pre-line">{p}</p>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-neutral-400 mt-2">
+              歡迎瀏覽本專區推薦之健行登山行程，點選活動可查看詳細說明或前往外部頁面報名。
+            </p>
+          ))}
       </header>
+
+      {/* 百岳總表：導讀 */}
+      {isPeakTable && (
+        <section
+          aria-labelledby="peak-intro-heading"
+          className="mb-8 rounded-lg border border-neutral-800 bg-neutral-900/50 p-5 sm:p-6"
+        >
+          <h2
+            id="peak-intro-heading"
+            className="flex items-center gap-2 text-sm sm:text-base font-bold text-emerald-400 mb-3"
+          >
+            <BookOpen size={16} />
+            <span>導讀：認識台灣百岳</span>
+          </h2>
+
+          <div className="space-y-3 text-sm sm:text-base text-neutral-300 leading-relaxed">
+            {introParagraphs.map((p, idx) => (
+              <p key={idx}>{p}</p>
+            ))}
+          </div>
+
+          <h3 className="text-sm font-bold text-neutral-200 mt-5 mb-2">如何使用本表</h3>
+          <ul className="list-disc pl-5 space-y-1.5 text-sm text-neutral-300 leading-relaxed">
+            {PEAK_HOW_TO_READ.map((t, idx) => (
+              <li key={idx}>{t}</li>
+            ))}
+          </ul>
+
+          <p className="mt-4 text-xs sm:text-sm text-amber-300/90 leading-relaxed border-t border-neutral-800 pt-3">
+            {PEAK_SAFETY_NOTE}
+          </p>
+
+          <details className="group mt-4 rounded-md border border-neutral-800 bg-neutral-950/40">
+            <summary className="cursor-pointer select-none list-none flex items-center justify-between gap-2 px-3 py-2 text-xs sm:text-sm font-semibold text-neutral-200 hover:text-emerald-400">
+              <span>群組名稱說明（五岳、三尖、十峻…）</span>
+              <ChevronDown size={14} className="transition-transform group-open:rotate-180" />
+            </summary>
+            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 px-3 pb-3 pt-1 text-xs sm:text-sm">
+              {PEAK_GROUP_GLOSSARY.map(([label, desc]) => (
+                <div key={label} className="flex gap-2">
+                  <dt className="shrink-0 font-bold text-emerald-400 w-14 sm:w-auto sm:min-w-[3.5rem]">{label}</dt>
+                  <dd className="text-neutral-400 leading-relaxed">{desc}</dd>
+                </div>
+              ))}
+            </dl>
+          </details>
+        </section>
+      )}
 
       {/* 相關連結專區 (NavButtonEntries) */}
       {entries && entries.length > 0 && (
@@ -118,7 +317,135 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
         </section>
       )}
 
-      {/* Activity list */}
+      {/* 百岳總表：維基百科式表格 */}
+      {isPeakTable ? (
+        <section aria-label="百岳總表">
+          <div className="flex items-end justify-between mb-2 px-0.5">
+            <h2 className="text-base sm:text-lg font-bold text-neutral-100">百岳列表</h2>
+            <span className="text-xs text-neutral-500">共 {peakRows.length} 座</span>
+          </div>
+
+          <div className="overflow-x-auto rounded-lg border border-neutral-800">
+            <table className="w-full min-w-[34rem] border-collapse text-sm">
+              <caption className="sr-only">{button.title}：編號、山名、標高、所屬國家公園、群組、備註與行程連結</caption>
+              <thead className="bg-neutral-800/70 text-neutral-200">
+                <tr>
+                  <th scope="col" aria-sort={ariaSort('no')} className="px-3 py-2.5 text-left font-bold whitespace-nowrap w-16">
+                    <button
+                      type="button"
+                      onClick={() => toggleSort('no')}
+                      className="inline-flex items-center gap-1 hover:text-emerald-400 transition-colors"
+                      title="依編號排序"
+                    >
+                      <span>#</span>
+                      <SortIcon k="no" />
+                    </button>
+                  </th>
+                  <th scope="col" className="px-3 py-2.5 text-left font-bold whitespace-nowrap">
+                    山名
+                  </th>
+                  <th scope="col" aria-sort={ariaSort('elevation')} className="px-3 py-2.5 text-right font-bold whitespace-nowrap">
+                    <button
+                      type="button"
+                      onClick={() => toggleSort('elevation')}
+                      className="inline-flex items-center gap-1 hover:text-emerald-400 transition-colors"
+                      title="依標高排序"
+                    >
+                      <span>標高（公尺）</span>
+                      <SortIcon k="elevation" />
+                    </button>
+                  </th>
+                  <th scope="col" className="hidden sm:table-cell px-3 py-2.5 text-left font-bold whitespace-nowrap">
+                    所屬國家公園
+                  </th>
+                  <th scope="col" className="px-3 py-2.5 text-left font-bold whitespace-nowrap">
+                    群組
+                  </th>
+                  <th scope="col" className="hidden md:table-cell px-3 py-2.5 text-left font-bold">
+                    備註
+                  </th>
+                  <th scope="col" className="px-3 py-2.5 text-right font-bold whitespace-nowrap">
+                    <span className="sr-only">行程連結</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {peakRows.map(({ activity, no, name, elevation, group }) => {
+                  const hasContent = Boolean((activity.content || '').trim());
+                  return (
+                    <tr
+                      key={activity.id}
+                      className="border-t border-neutral-800 odd:bg-neutral-900/40 even:bg-neutral-900/10 hover:bg-neutral-800/50 transition-colors align-top"
+                    >
+                      <td className="px-3 py-2.5 text-neutral-500 tabular-nums whitespace-nowrap">
+                        {no != null ? String(no).padStart(3, '0') : '—'}
+                      </td>
+
+                      <td className="px-3 py-2.5 font-bold text-neutral-100">
+                        {onSelectActivity && hasContent ? (
+                          <a
+                            href={detailHref(activity.slug)}
+                            onClick={(e) => {
+                              if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+                              e.preventDefault();
+                              onSelectActivity(activity.slug);
+                            }}
+                            className="inline-flex items-center gap-1 transition-colors underline decoration-neutral-600 underline-offset-4 hover:decoration-emerald-400 hover:text-emerald-400"
+                            title="查看詳細資訊"
+                          >
+                            <span>{name}</span>
+                            <ChevronRight size={14} className="text-neutral-500 shrink-0" />
+                          </a>
+                        ) : (
+                          name
+                        )}
+                        {/* 手機版：簡介收在山名下方 */}
+                        {activity.description && (
+                          <p className="md:hidden mt-1 text-xs font-normal text-neutral-400 leading-relaxed line-clamp-2">
+                            {activity.description}
+                          </p>
+                        )}
+                      </td>
+
+                      <td className="px-3 py-2.5 text-right text-neutral-200 tabular-nums whitespace-nowrap">
+                        {elevation != null ? elevation.toLocaleString('en-US') : ''}
+                      </td>
+
+                      <td className="hidden sm:table-cell px-3 py-2.5 text-neutral-300 whitespace-nowrap">
+                        {activity.nationalPark || ''}
+                      </td>
+
+                      <td className="px-3 py-2.5 text-neutral-300 whitespace-nowrap">{group}</td>
+
+                      <td className="hidden md:table-cell px-3 py-2.5 text-xs text-neutral-400 leading-relaxed">
+                        <span className="line-clamp-2" title={activity.description || undefined}>
+                          {activity.description}
+                        </span>
+                      </td>
+
+                      <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                        {activity.externalUrl && (
+                          <a
+                            href={normalizeUrl(activity.externalUrl)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition-colors shadow-sm"
+                            aria-label={`查看${name}行程（開新視窗）`}
+                          >
+                            <span>查看行程</span>
+                            <ExternalLink size={13} className="text-emerald-200" />
+                          </a>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : (
+        <>
       {activities.length > 0 ? (
         <div className="space-y-2.5 sm:space-y-3">
           {activities.map((activity) => {
@@ -195,6 +522,8 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
             返回首頁查看活動行事曆
           </button>
         </div>
+      )}
+        </>
       )}
     </main>
   );

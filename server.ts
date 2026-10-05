@@ -19,7 +19,12 @@ import type {
   NavButtonActivity,
   CalendarActivity,
 } from './src/types.js';
-import { RESERVED_SLUGS, getCategorySlug } from './src/utils/activitySeo.js';
+import {
+  RESERVED_SLUGS,
+  getCategorySlug,
+  isFormalChapterSlug,
+  processBatchImportActivities,
+} from './src/utils/activitySeo.js';
 import {
   cleanTripItinerary,
   buildCalendarActivityFromItinerary,
@@ -31,11 +36,14 @@ import {
 const app = express();
 const PORT = 3000;
 
-app.use(express.json());
+app.use(express.json({ limit: '5mb' }));
 
 // Token-based authentication for Admin routes
 const ADMIN_SECRET_TOKEN = process.env.ADMIN_TOKEN || 'amazon-alpine-secure-token-2026';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'yy661003';
+const ADMIN_PASSWORD = (process.env.ADMIN_PASSWORD || '').trim();
+if (!ADMIN_PASSWORD) {
+  console.warn('[Admin Auth] 尚未設定環境變數 ADMIN_PASSWORD，後台登入請求將被拒絕。');
+}
 
 function requireAdmin(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
@@ -121,7 +129,13 @@ apiRouter.post('/admin/login', (req: Request, res: Response) => {
     return res.status(400).json({ error: '請輸入管理密碼' });
   }
 
-  if (password === ADMIN_PASSWORD) {
+  const expectedPwd = (process.env.ADMIN_PASSWORD || '').trim();
+  if (!expectedPwd) {
+    console.warn('[Admin Auth] 尚未設定環境變數 ADMIN_PASSWORD，拒絕後台登入請求。');
+    return res.status(500).json({ error: '系統尚未設定後台管理密碼 (ADMIN_PASSWORD)，請先設定環境變數' });
+  }
+
+  if (password === expectedPwd) {
     return res.json({ success: true, token: ADMIN_SECRET_TOKEN });
   }
 
@@ -384,7 +398,7 @@ apiRouter.post('/admin/save-nav-button', requireAdmin, (req: Request, res: Respo
 
     const cleanCatSlug = (item.categorySlug || '').trim().toLowerCase();
     if (cleanCatSlug) {
-      if (RESERVED_SLUGS.has(cleanCatSlug) || /^chapter(0[1-9]|1[0-5])$/i.test(cleanCatSlug)) {
+      if (RESERVED_SLUGS.has(cleanCatSlug) || isFormalChapterSlug(cleanCatSlug)) {
         return res.status(400).json({ error: '此代稱與系統既有路徑衝突，請更換' });
       }
     }
@@ -414,6 +428,7 @@ apiRouter.post('/admin/save-nav-button', requireAdmin, (req: Request, res: Respo
       enabled: item.enabled ?? true,
       sortOrder: Number(item.sortOrder) || 0,
       categorySlug: cleanCatSlug || undefined,
+      introContent: (item.introContent || '').trim().slice(0, 3000) || undefined,
     };
 
     const existingIndex = db.navButtons.findIndex((b) => b.id === cleanItem.id);
@@ -488,9 +503,6 @@ apiRouter.post('/admin/save-nav-button-activity', requireAdmin, (req: Request, r
     if (!item.slug || !item.slug.trim()) {
       return res.status(400).json({ error: '主站內部路徑為必填欄位' });
     }
-    if (!item.externalUrl || !item.externalUrl.trim()) {
-      return res.status(400).json({ error: '完整行程／報名網址為必填欄位' });
-    }
 
     const rawSlug = item.slug.trim().toLowerCase().replace(/^\/+|\/+$/g, '');
     const cleanSlug = rawSlug.replace(/[^a-z0-9-_]/g, '') || `activity_${Date.now()}`;
@@ -515,7 +527,7 @@ apiRouter.post('/admin/save-nav-button-activity', requireAdmin, (req: Request, r
       slug: cleanSlug,
       title: item.title.trim(),
       description: (item.description || '').trim(),
-      externalUrl: item.externalUrl.trim(),
+      externalUrl: (item.externalUrl || '').trim(),
       sortOrder: Number(item.sortOrder) || 0,
       enabled: item.enabled ?? true,
       content: (item.content || '').trim() || undefined,
@@ -527,6 +539,7 @@ apiRouter.post('/admin/save-nav-button-activity', requireAdmin, (req: Request, r
       seoTitle: (item.seoTitle || '').trim() || undefined,
       metaDescription: (item.metaDescription || '').trim() || undefined,
       ogImage: (item.ogImage || '').trim() || undefined,
+      nationalPark: (item.nationalPark || '').trim() || undefined,
       updatedAt: new Date().toISOString().split('T')[0],
       itinerary: item.itinerary ? cleanTripItinerary(item.itinerary) : undefined,
     };
@@ -542,6 +555,37 @@ apiRouter.post('/admin/save-nav-button-activity', requireAdmin, (req: Request, r
 
     saveDatabase(db);
     res.json({ success: true, item: cleanItem });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Batch Import Nav Button Activities
+apiRouter.post('/admin/import-nav-button-activities', requireAdmin, (req: Request, res: Response) => {
+  try {
+    const db = loadDatabase();
+    const body = req.body;
+    const navButtonId = String(body?.navButtonId || '').trim();
+    const items = Array.isArray(body?.items)
+      ? body.items
+      : Array.isArray(body?.peaks)
+      ? body.peaks
+      : null;
+
+    if (!navButtonId) {
+      return res.status(400).json({ error: '所屬按鈕為必填欄位' });
+    }
+    if (!items || !Array.isArray(items)) {
+      return res.status(400).json({ error: '請提供有效的匯入陣列 (items)' });
+    }
+
+    if (!Array.isArray(db.navButtonActivities)) {
+      db.navButtonActivities = [];
+    }
+
+    const result = processBatchImportActivities(db.navButtonActivities, navButtonId, items, true);
+    saveDatabase(db);
+    res.json({ success: true, ...result });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

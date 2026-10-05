@@ -685,7 +685,7 @@ async function runTests() {
         {}
       );
 
-      // 11-4. Save activity under category 1
+      // 11-4. Save activity under category 1 (with content so it is indexed in sitemap)
       const resSaveAct1 = await worker.fetch(
         new Request('http://localhost/api/admin/save-nav-button-activity', {
           method: 'POST',
@@ -696,6 +696,7 @@ async function runTests() {
             slug: 'yushan-main-peak',
             title: '玉山主峰單攻',
             description: '台灣最高峰登頂健行體驗',
+            content: '玉山主峰海拔 3952 公尺，完整登山行程與行前準備說明。',
             externalUrl: 'https://example.com/yushan-register',
             sortOrder: 1,
             enabled: true,
@@ -727,7 +728,7 @@ async function runTests() {
       );
       assert(resDupActSameCat.status === 400, 'Duplicate activity slug under same category returns HTTP 400');
 
-      // 11-6. Same slug under DIFFERENT category is allowed (scoped uniqueness)
+      // 11-6. Same slug under DIFFERENT category is allowed (scoped uniqueness), without content (thin page)
       const resSameActDiffCat = await worker.fetch(
         new Request('http://localhost/api/admin/save-nav-button-activity', {
           method: 'POST',
@@ -748,19 +749,27 @@ async function runTests() {
       );
       assert(resSameActDiffCat.status === 200, 'Same activity slug across different categories is permitted');
 
-      // 11-7. Sitemap contains two-level activity URL
+      // 11-7. Sitemap contains two-level activity URL with content, and excludes thin activity without content
       const resSitemap2 = await worker.fetch(new Request('http://localhost/sitemap.xml'), env, {});
       const textSitemap2 = await resSitemap2.text();
-      assert(textSitemap2.includes('<loc>https://amazon-hike.com/baiyue-beginner/yushan-main-peak/</loc>'), 'Sitemap includes two-level activity URL');
+      assert(textSitemap2.includes('<loc>https://amazon-hike.com/baiyue-beginner/yushan-main-peak/</loc>'), 'Sitemap includes two-level activity URL with content');
+      assert(!textSitemap2.includes('<loc>https://amazon-hike.com/mid-mountains/yushan-main-peak/</loc>'), 'Sitemap excludes thin activity without content');
+      assert(textSitemap2.includes(`<loc>https://amazon-hike.com/nav/${testBtnId2}</loc>`), 'Sitemap still includes /nav/:id even if its activities have no content');
       assert(!textSitemap2.includes('/route/yushan-main-peak'), 'Sitemap does not include /route/ for activities');
 
-      // 11-8. GET /baiyue-beginner/yushan-main-peak/ (Two-Level SSR Route)
+      // 11-8. GET /baiyue-beginner/yushan-main-peak/ (Two-Level SSR Route with content)
       const resTwoLevel = await worker.fetch(new Request('http://localhost/baiyue-beginner/yushan-main-peak/'), env, {});
       const htmlTwoLevel = await resTwoLevel.text();
       assert(resTwoLevel.status === 200, 'Two-level activity route returns HTTP 200');
       assert(htmlTwoLevel.includes('玉山主峰單攻'), 'Two-level activity route includes activity title');
       assert(htmlTwoLevel.includes('https://example.com/yushan-register'), 'Two-level activity route includes external link');
       assert(htmlTwoLevel.includes('href="https://amazon-hike.com/baiyue-beginner/yushan-main-peak/"'), 'Canonical points to two-level URL');
+
+      // Thin activity page sets noindex, follow
+      const resThinPage = await worker.fetch(new Request('http://localhost/mid-mountains/yushan-main-peak/'), env, {});
+      const htmlThinPage = await resThinPage.text();
+      assert(resThinPage.status === 200, 'Thin activity route still returns HTTP 200');
+      assert(htmlThinPage.includes('content="noindex, follow"'), 'Thin activity route has noindex, follow robots meta');
 
       // 11-9. GET /baiyue-beginner/yushan-main-peak (no trailing slash) -> 301 Redirect
       const resNoSlash = await worker.fetch(
@@ -1116,6 +1125,167 @@ async function runTests() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ type: 'navButton', id: testBtnItin }),
+        }),
+        env,
+        {}
+      );
+    }
+
+    // 14. Peaks Batch Import, nationalPark, Optional externalUrl, and introContent SEO Tests
+    {
+      const testPeakBtnId = 'btn_test_peaks_100';
+      await worker.fetch(
+        new Request('http://localhost/api/admin/save-nav-button', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            id: testPeakBtnId,
+            title: '台灣百岳總表',
+            categorySlug: 'baiyue-peaks',
+            introContent: '台灣百岳是由林文安等人於 1970 年代選定的一百座三千公尺以上高山。\n\n本表提供完整百岳資訊。',
+            url: '',
+            sortOrder: 9,
+            enabled: true,
+          }),
+        }),
+        env,
+        {}
+      );
+
+      // Pre-create peak #1 without nationalPark and with custom externalUrl & content
+      const preExistId = 'act_preexist_peak1';
+      const resPre = await worker.fetch(
+        new Request('http://localhost/api/admin/save-nav-button-activity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            id: preExistId,
+            navButtonId: testPeakBtnId,
+            title: '001 玉山 3952 五岳-1',
+            slug: 'peak-001',
+            description: '自訂玉山備註不應被覆蓋',
+            externalUrl: 'https://example.com/yushan-custom',
+            content: '玉山主峰自訂詳細介紹內文',
+            nationalPark: '', // empty -> should be filled by batch import
+            sortOrder: 1,
+            enabled: true,
+          }),
+        }),
+        env,
+        {}
+      );
+      assert(resPre.status === 200, 'Pre-existing peak #1 saved without nationalPark');
+
+      // Batch import 3 items: #1 (existing, fills nationalPark), #2 (new, empty externalUrl), #3 (slug conflict with peak-002 -> auto suffix peak-002-2)
+      const resImport = await worker.fetch(
+        new Request('http://localhost/api/admin/import-nav-button-activities', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            navButtonId: testPeakBtnId,
+            items: [
+              {
+                no: 1,
+                name: '玉山',
+                elevation: 3952,
+                nationalPark: '玉山國家公園',
+                group: '五岳-1',
+                note: '匯入備註不應覆蓋既有備註',
+                title: '001 玉山 3952 五岳-1',
+                slug: 'peak-001',
+                sortOrder: 1,
+              },
+              {
+                no: 2,
+                name: '雪山',
+                elevation: 3886,
+                nationalPark: '雪霸國家公園',
+                group: '五岳-2',
+                note: '台灣第二高峰',
+                title: '002 雪山 3886 五岳-2',
+                slug: 'peak-002',
+                sortOrder: 2,
+              },
+              {
+                no: 3,
+                name: '玉山東峰',
+                elevation: 3869,
+                nationalPark: '玉山國家公園',
+                group: '十峻-1',
+                note: '百岳十峻之首',
+                title: '003 玉山東峰 3869 十峻-1',
+                slug: 'peak-002', // intentional duplicate slug -> should become peak-002-2
+                sortOrder: 3,
+              },
+            ],
+          }),
+        }),
+        env,
+        {}
+      );
+      const jsonImport: any = await resImport.json();
+      assert(resImport.status === 200 && jsonImport.success === true, 'Batch import API succeeded');
+      assert(jsonImport.created === 2, 'Batch import created 2 new peaks');
+      assert(jsonImport.updated === 1, 'Batch import updated 1 existing peak (filled nationalPark)');
+      assert(jsonImport.skipped === 0, 'Batch import skipped 0 peaks');
+
+      // Re-run same batch import -> all 3 should now be skipped
+      const resImportAgain = await worker.fetch(
+        new Request('http://localhost/api/admin/import-nav-button-activities', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            navButtonId: testPeakBtnId,
+            items: [
+              {
+                no: 1,
+                name: '玉山',
+                nationalPark: '其他公園不應覆蓋',
+                title: '001 玉山 3952 五岳-1',
+                slug: 'peak-001',
+                sortOrder: 1,
+              },
+              {
+                no: 2,
+                name: '雪山',
+                nationalPark: '雪霸國家公園',
+                title: '002 雪山 3886 五岳-2',
+                slug: 'peak-002',
+                sortOrder: 2,
+              },
+            ],
+          }),
+        }),
+        env,
+        {}
+      );
+      const jsonImportAgain: any = await resImportAgain.json();
+      assert(jsonImportAgain.created === 0 && jsonImportAgain.updated === 0 && jsonImportAgain.skipped === 2, 'Second batch import skips already populated peaks');
+
+      // Verify public-data and SSR output
+      const resPubPeaks = await worker.fetch(new Request('http://localhost/api/public-data'), env, {});
+      const jsonPubPeaks: any = await resPubPeaks.json();
+      const peakActs = jsonPubPeaks.data.navButtonActivities.filter((a: any) => a.navButtonId === testPeakBtnId);
+      const p1 = peakActs.find((a: any) => a.slug === 'peak-001');
+      const p2 = peakActs.find((a: any) => a.slug === 'peak-002');
+      const p3 = peakActs.find((a: any) => a.slug === 'peak-002-2');
+      assert(p1 && p1.nationalPark === '玉山國家公園' && p1.description === '自訂玉山備註不應被覆蓋', 'Existing peak kept custom fields and filled nationalPark');
+      assert(p2 && p2.nationalPark === '雪霸國家公園' && p2.externalUrl === '', 'New peak #2 has nationalPark and empty externalUrl');
+      assert(Boolean(p3), 'Slug conflict automatically resolved with -2 suffix (peak-002-2)');
+
+      // Verify /nav/:id SSR uses introContent for meta description and only links activities with content
+      const resNavPeak = await worker.fetch(new Request(`http://localhost/nav/${testPeakBtnId}`), env, {});
+      const htmlNavPeak = await resNavPeak.text();
+      assert(htmlNavPeak.includes('台灣百岳是由林文安等人於 1970 年代選定的一百座三千公尺以上高山。 本表提供完整百岳資訊。'), '/nav/:id uses introContent without newlines for meta description');
+      assert(htmlNavPeak.includes('<li><a href="/baiyue-peaks/peak-001/">001 玉山 3952 五岳-1</a></li>'), '/nav/:id SSR renders <a href> for activity with content');
+      assert(htmlNavPeak.includes('<li>002 雪山 3886 五岳-2</li>'), '/nav/:id SSR renders plain <li> without link for activity without content');
+
+      // Clean up test button (also deletes its activities)
+      await worker.fetch(
+        new Request('http://localhost/api/admin/delete-item', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ type: 'navButton', id: testPeakBtnId }),
         }),
         env,
         {}

@@ -61,6 +61,7 @@ export interface NavButtonItem {
   enabled: boolean;
   sortOrder: number;
   categorySlug?: string; // 新增：作為 /分類/活動/ 網址中的分類代稱，留空則由系統自動推導
+  introContent?: string; // 列表頁導讀內容（空白行分段；選填）
 }
 
 export interface NavButtonEntry {
@@ -90,6 +91,7 @@ export interface NavButtonActivity {
   seoTitle?: string;     // 自訂 SEO 標題
   metaDescription?: string; // 自訂 SEO 描述
   ogImage?: string;      // 自訂社群分享圖
+  nationalPark?: string; // 百岳總表用：所屬國家公園（選填）
   updatedAt?: string;    // 最後更新日期
   itinerary?: TripItinerary; // 選填的內嵌式登山行程資料
 }

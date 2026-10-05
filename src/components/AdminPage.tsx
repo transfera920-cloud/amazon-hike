@@ -38,7 +38,16 @@ import type {
   AssociationDatabase,
   TripItinerary
 } from '../types.js';
-import { slugify, RESERVED_SLUGS, getCategorySlug, isFormalChapterSlug } from '../utils/activitySeo.js';
+import {
+  slugify,
+  RESERVED_SLUGS,
+  getCategorySlug,
+  isFormalChapterSlug,
+  processBatchImportActivities,
+  type BatchImportResult,
+} from '../utils/activitySeo.js';
+import { PEAK_INTRO_PARAGRAPHS } from './NavActivitiesView.js';
+import peaksTop100Data from '../../data/peaks-top100.json';
 import {
   calculateDaysFromDates
 } from '../utils/itineraryHelper.js';
@@ -83,6 +92,15 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
   const [activitySlugManuallyEdited, setActivitySlugManuallyEdited] = useState(false);
   const [expandedActivityButtonId, setExpandedActivityButtonId] = useState<string | null>(null);
   const [editingCalendarActivity, setEditingCalendarActivity] = useState<Partial<CalendarActivity> | null>(null);
+
+  // Batch Import state for navButtonActivities
+  const [batchImportButtonId, setBatchImportButtonId] = useState<string | null>(null);
+  const [batchImportJsonText, setBatchImportJsonText] = useState('');
+  const [batchImportItems, setBatchImportItems] = useState<any[] | null>(null);
+  const [batchImportPreview, setBatchImportPreview] = useState<BatchImportResult | null>(null);
+  const [batchImportParseError, setBatchImportParseError] = useState<string | null>(null);
+  const [batchImportExecuting, setBatchImportExecuting] = useState(false);
+  const [batchImportResult, setBatchImportResult] = useState<BatchImportResult | null>(null);
 
   // Activity content auto-grow textarea ref & height calculation
   const activityContentTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -520,7 +538,6 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
       !editingNavButtonActivity ||
       !editingNavButtonActivity.title ||
       !editingNavButtonActivity.slug ||
-      !editingNavButtonActivity.externalUrl ||
       !editingNavButtonActivity.navButtonId
     )
       return;
@@ -540,6 +557,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
     const payload = {
       ...editingNavButtonActivity,
       slug: targetSlug,
+      externalUrl: (editingNavButtonActivity.externalUrl || '').trim(),
+      nationalPark: (editingNavButtonActivity.nationalPark || '').trim() || undefined,
     };
 
     try {
@@ -563,6 +582,96 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
       }
     } catch (err: any) {
       showFeedback(err.message || '連線儲存失敗', true);
+    }
+  };
+
+  const handlePreviewBatchImport = (navButtonId: string, rawText?: string) => {
+    const textToParse = (rawText !== undefined ? rawText : batchImportJsonText).trim();
+    setBatchImportParseError(null);
+    setBatchImportResult(null);
+
+    if (!textToParse) {
+      setBatchImportParseError('請先選擇 JSON 檔案或貼上 JSON 內容');
+      setBatchImportItems(null);
+      setBatchImportPreview(null);
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(textToParse);
+      const arr = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray(parsed?.peaks)
+        ? parsed.peaks
+        : Array.isArray(parsed?.items)
+        ? parsed.items
+        : null;
+
+      if (!arr || !Array.isArray(arr) || arr.length === 0) {
+        setBatchImportParseError('JSON 格式必須為陣列 [...] 或包含 { peaks: [...] } 且至少有一筆資料');
+        setBatchImportItems(null);
+        setBatchImportPreview(null);
+        return;
+      }
+
+      const preview = processBatchImportActivities(
+        adminData?.navButtonActivities || [],
+        navButtonId,
+        arr,
+        false
+      );
+      setBatchImportItems(arr);
+      setBatchImportPreview(preview);
+    } catch (err: any) {
+      setBatchImportParseError(`JSON 解析失敗：${err.message || '格式不正確'}`);
+      setBatchImportItems(null);
+      setBatchImportPreview(null);
+    }
+  };
+
+  const handleConfirmBatchImport = async (navButtonId: string) => {
+    if (!batchImportItems || batchImportItems.length === 0 || batchImportExecuting) return;
+    setBatchImportExecuting(true);
+    setBatchImportParseError(null);
+
+    try {
+      const res = await fetch('/api/admin/import-nav-button-activities', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          navButtonId,
+          items: batchImportItems,
+        }),
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        const resSummary: BatchImportResult = {
+          created: json.created ?? 0,
+          updated: json.updated ?? 0,
+          skipped: json.skipped ?? 0,
+          errors: Array.isArray(json.errors) ? json.errors : [],
+        };
+        setBatchImportResult(resSummary);
+        setBatchImportPreview(null);
+        setBatchImportItems(null);
+        showFeedback(
+          `批次匯入完成：新增 ${resSummary.created} 筆、補齊國家公園 ${resSummary.updated} 筆、略過 ${resSummary.skipped} 筆`
+        );
+        await fetchAdminData(token);
+        onDataUpdated();
+      } else {
+        setBatchImportParseError(json.error || '批次匯入失敗');
+        showFeedback(json.error || '批次匯入失敗', true);
+      }
+    } catch (err: any) {
+      setBatchImportParseError(err.message || '連線匯入失敗');
+      showFeedback(err.message || '連線匯入失敗', true);
+    } finally {
+      setBatchImportExecuting(false);
     }
   };
 
@@ -2427,6 +2536,58 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                   </p>
                 </div>
 
+                {/* 專屬導讀編輯區塊：顯示在此按鈕的列表頁標題下方 */}
+                <div className="rounded-lg border border-emerald-900/50 bg-emerald-950/10 p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <label
+                      htmlFor="button-intro-content"
+                      className="block text-emerald-400 font-semibold"
+                    >
+                      列表頁導讀內容（選填）
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (
+                          (editingNavButton.introContent || '').trim() &&
+                          !window.confirm('目前已有導讀內容，確定要用範例取代嗎？')
+                        ) {
+                          return;
+                        }
+                        setEditingNavButton({
+                          ...editingNavButton,
+                          introContent: PEAK_INTRO_PARAGRAPHS.join('\n\n'),
+                        });
+                      }}
+                      className="text-[11px] px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-300 border border-neutral-700 transition-colors"
+                    >
+                      帶入百岳範例導讀
+                    </button>
+                  </div>
+                  <textarea
+                    id="button-intro-content"
+                    rows={7}
+                    maxLength={3000}
+                    value={editingNavButton.introContent || ''}
+                    onChange={(e) =>
+                      setEditingNavButton({
+                        ...editingNavButton,
+                        introContent: e.target.value,
+                      })
+                    }
+                    placeholder={'例如：介紹這個專區是什麼、適合誰、如何使用。\n\n空一行即分成下一段。'}
+                    className="w-full px-3 py-2 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 leading-relaxed resize-y"
+                  />
+                  <div className="flex items-center justify-between text-[11px] text-neutral-400">
+                    <span>
+                      顯示在前台列表頁標題下方；空一行代表分段。標題含「百岳總表」的按鈕留空時，會使用系統預設導讀。
+                    </span>
+                    <span className="shrink-0 ml-3">
+                      {(editingNavButton.introContent || '').length} / 3000
+                    </span>
+                  </div>
+                </div>
+
                 <div className="flex flex-wrap items-center gap-6 pt-1">
                   <div>
                     <label className="block text-neutral-300 font-medium mb-1">
@@ -2797,34 +2958,212 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                     {/* Expanded Activities Management */}
                     {isActivityExpanded && (
                       <div className="bg-neutral-950/70 p-4 border-t border-neutral-800/80 pl-6 sm:pl-10 space-y-4">
-                        <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center justify-between gap-3 flex-wrap">
                           <div className="flex items-center gap-2">
                             <Compass size={14} className="text-emerald-500 shrink-0" />
                             <span className="text-xs font-semibold text-neutral-300">
                               「{item.title}」活動行程清單 ({buttonActivities.length})
                             </span>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setActivitySlugManuallyEdited(false);
-                              setEditingNavButtonActivity({
-                                id: '',
-                                navButtonId: item.id,
-                                title: '',
-                                slug: '',
-                                description: '',
-                                externalUrl: '',
-                                sortOrder: buttonActivities.length + 1,
-                                enabled: true,
-                              });
-                            }}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium bg-emerald-900/80 hover:bg-emerald-800 text-emerald-200 border border-emerald-700/60 transition-colors"
-                          >
-                            <Plus size={13} />
-                            <span>新增活動</span>
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (batchImportButtonId === item.id) {
+                                  setBatchImportButtonId(null);
+                                } else {
+                                  setBatchImportButtonId(item.id);
+                                  setBatchImportJsonText('');
+                                  setBatchImportItems(null);
+                                  setBatchImportPreview(null);
+                                  setBatchImportParseError(null);
+                                  setBatchImportResult(null);
+                                }
+                              }}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 transition-colors"
+                            >
+                              <span>{batchImportButtonId === item.id ? '收起批次匯入' : '批次匯入'}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActivitySlugManuallyEdited(false);
+                                setEditingNavButtonActivity({
+                                  id: '',
+                                  navButtonId: item.id,
+                                  title: '',
+                                  slug: '',
+                                  description: '',
+                                  externalUrl: '',
+                                  nationalPark: '',
+                                  sortOrder: buttonActivities.length + 1,
+                                  enabled: true,
+                                });
+                              }}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium bg-emerald-900/80 hover:bg-emerald-800 text-emerald-200 border border-emerald-700/60 transition-colors"
+                            >
+                              <Plus size={13} />
+                              <span>新增活動</span>
+                            </button>
+                          </div>
                         </div>
+
+                        {/* Batch Import Panel */}
+                        {batchImportButtonId === item.id && (
+                          <div className="p-4 rounded border border-emerald-800/60 bg-neutral-900/95 space-y-3 text-xs">
+                            <div className="flex items-center justify-between gap-2 flex-wrap">
+                              <div className="font-bold text-emerald-400">
+                                批次匯入活動（所屬按鈕：{item.title}）
+                              </div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <label className="cursor-pointer px-2.5 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 transition-colors">
+                                  <span>選擇 JSON 檔案</span>
+                                  <input
+                                    type="file"
+                                    accept=".json,application/json"
+                                    className="hidden"
+                                    onChange={(e) => {
+                                      const file = e.target.files?.[0];
+                                      if (!file) return;
+                                      const reader = new FileReader();
+                                      reader.onload = () => {
+                                        const text = String(reader.result || '');
+                                        setBatchImportJsonText(text);
+                                        handlePreviewBatchImport(item.id, text);
+                                      };
+                                      reader.readAsText(file);
+                                      e.target.value = '';
+                                    }}
+                                  />
+                                </label>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const text = JSON.stringify(peaksTop100Data, null, 2);
+                                    setBatchImportJsonText(text);
+                                    handlePreviewBatchImport(item.id, text);
+                                  }}
+                                  className="px-2.5 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-emerald-300 border border-neutral-700 transition-colors"
+                                >
+                                  載入內建 peaks-top100.json
+                                </button>
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="block text-neutral-400 mb-1">
+                                貼上 JSON 內容（支援 <code>{'{ peaks: [...] }'}</code> 或直接陣列 <code>{'[...]'}</code>）
+                              </label>
+                              <textarea
+                                rows={6}
+                                value={batchImportJsonText}
+                                onChange={(e) => {
+                                  setBatchImportJsonText(e.target.value);
+                                  setBatchImportPreview(null);
+                                  setBatchImportItems(null);
+                                }}
+                                placeholder={'{\n  "peaks": [\n    { "no": 1, "name": "玉山", "elevation": 3952, "nationalPark": "玉山國家公園", "group": "五岳-1", "note": "...", "title": "001 玉山 3952 五岳-1", "slug": "peak-001", "sortOrder": 1 }\n  ]\n}'}
+                                className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 font-mono text-[11px] focus:outline-none focus:border-emerald-500 resize-y"
+                              />
+                            </div>
+
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <button
+                                type="button"
+                                onClick={() => handlePreviewBatchImport(item.id)}
+                                className="px-3 py-1.5 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-100 border border-neutral-700 font-semibold transition-colors"
+                              >
+                                預覽匯入內容
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setBatchImportButtonId(null);
+                                  setBatchImportPreview(null);
+                                  setBatchImportItems(null);
+                                  setBatchImportParseError(null);
+                                }}
+                                className="px-3 py-1.5 rounded bg-neutral-800 text-neutral-400 hover:text-white transition-colors"
+                              >
+                                關閉
+                              </button>
+                            </div>
+
+                            {batchImportParseError && (
+                              <div className="p-2.5 rounded border border-rose-800 bg-rose-950/40 text-rose-300">
+                                {batchImportParseError}
+                              </div>
+                            )}
+
+                            {batchImportPreview && batchImportItems && (
+                              <div className="p-3 rounded border border-emerald-700/60 bg-emerald-950/20 space-y-2.5">
+                                <div className="font-bold text-emerald-300">
+                                  匯入前預覽（共解析 {batchImportItems.length} 筆資料）
+                                </div>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                                  <div className="p-2 rounded bg-neutral-900/90 border border-neutral-800">
+                                    <div className="text-neutral-400 text-[11px]">將新增</div>
+                                    <div className="text-base font-extrabold text-emerald-400">
+                                      {batchImportPreview.created} 筆
+                                    </div>
+                                  </div>
+                                  <div className="p-2 rounded bg-neutral-900/90 border border-neutral-800">
+                                    <div className="text-neutral-400 text-[11px]">補齊國家公園</div>
+                                    <div className="text-base font-extrabold text-amber-400">
+                                      {batchImportPreview.updated} 筆
+                                    </div>
+                                  </div>
+                                  <div className="p-2 rounded bg-neutral-900/90 border border-neutral-800">
+                                    <div className="text-neutral-400 text-[11px]">已存在略過</div>
+                                    <div className="text-base font-extrabold text-neutral-300">
+                                      {batchImportPreview.skipped} 筆
+                                    </div>
+                                  </div>
+                                  <div className="p-2 rounded bg-neutral-900/90 border border-neutral-800">
+                                    <div className="text-neutral-400 text-[11px]">格式異常</div>
+                                    <div className="text-base font-extrabold text-rose-400">
+                                      {batchImportPreview.errors.length} 筆
+                                    </div>
+                                  </div>
+                                </div>
+                                <p className="text-[11px] text-neutral-400">
+                                  說明：同按鈕底下若編號（1～3 位數）或山名相同，不會覆蓋既有標題、內文與報名網址，僅在「所屬國家公園」為空時自動補齊。
+                                </p>
+                                {batchImportPreview.errors.length > 0 && (
+                                  <div className="text-[11px] text-rose-300 space-y-0.5">
+                                    {batchImportPreview.errors.slice(0, 5).map((err, i) => (
+                                      <div key={i}>• {err}</div>
+                                    ))}
+                                  </div>
+                                )}
+                                <div className="pt-1 flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    disabled={batchImportExecuting}
+                                    onClick={() => handleConfirmBatchImport(item.id)}
+                                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-semibold transition-colors"
+                                  >
+                                    <CheckCircle2 size={13} />
+                                    <span>{batchImportExecuting ? '匯入處理中...' : '確認執行匯入'}</span>
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {batchImportResult && (
+                              <div className="p-3 rounded border border-emerald-700/60 bg-emerald-950/30 text-emerald-200 space-y-1">
+                                <div className="font-bold">
+                                  ✅ 匯入完成：新增 {batchImportResult.created} 筆、更新補齊 {batchImportResult.updated} 筆、略過 {batchImportResult.skipped} 筆
+                                </div>
+                                {batchImportResult.errors.length > 0 && (
+                                  <div className="text-rose-300 text-[11px]">
+                                    錯誤 ({batchImportResult.errors.length})：{batchImportResult.errors.join('；')}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
 
                         {/* Add / Edit Activity Form */}
                         {editingNavButtonActivity && editingNavButtonActivity.navButtonId === item.id && (
@@ -2882,23 +3221,42 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                                 </div>
                               </div>
 
-                              <div>
-                                <label className="block text-neutral-400 mb-1">
-                                  完整行程／報名外部網址 <span className="text-rose-500">*</span>
-                                </label>
-                                <input
-                                  type="url"
-                                  required
-                                  value={editingNavButtonActivity.externalUrl || ''}
-                                  onChange={(e) =>
-                                    setEditingNavButtonActivity((prev) => ({
-                                      ...prev,
-                                      externalUrl: e.target.value,
-                                    }))
-                                  }
-                                  placeholder="https://..."
-                                  className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 font-mono text-[11px]"
-                                />
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                  <label className="block text-neutral-400 mb-1">
+                                    完整行程／報名外部網址（選填）
+                                  </label>
+                                  <input
+                                    type="url"
+                                    value={editingNavButtonActivity.externalUrl || ''}
+                                    onChange={(e) =>
+                                      setEditingNavButtonActivity((prev) => ({
+                                        ...prev,
+                                        externalUrl: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="https://...（留空則前台不顯示「查看行程」按鈕）"
+                                    className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 font-mono text-[11px]"
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className="block text-neutral-400 mb-1">
+                                    所屬國家公園（選填）
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={editingNavButtonActivity.nationalPark || ''}
+                                    onChange={(e) =>
+                                      setEditingNavButtonActivity((prev) => ({
+                                        ...prev,
+                                        nationalPark: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="例如：玉山國家公園、雪霸國家公園、太魯閣國家公園"
+                                    className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 text-xs"
+                                  />
+                                </div>
                               </div>
 
                               <div>

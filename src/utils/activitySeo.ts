@@ -79,3 +79,172 @@ export function resolveActivitySeo(
 
   return { title, description, image };
 }
+
+/**
+ * Resolves SEO meta description for a navButton list page (/nav/:id).
+ * If introContent is present, takes the first 120 characters with newlines removed;
+ * otherwise falls back to the default template.
+ */
+export function resolveNavButtonDescription(btn: { title: string; introContent?: string }): string {
+  const cleanIntro = (btn.introContent || '').replace(/[\r\n]+/g, ' ').trim();
+  if (cleanIntro) {
+    return cleanIntro.slice(0, 120);
+  }
+  return `亞馬遜國家山岳協會 ${btn.title} 活動與行程清單。`;
+}
+
+export interface PeakImportItem {
+  no?: number;
+  name?: string;
+  elevation?: number;
+  nationalPark?: string;
+  group?: string;
+  note?: string;
+  description?: string;
+  title?: string;
+  slug?: string;
+  sortOrder?: number;
+}
+
+/**
+ * Extracts leading 1-3 digit peak number and mountain name from an activity title.
+ */
+export function extractPeakNoAndName(title: string): { no: number | null; name: string } {
+  const raw = (title || '').trim();
+  const fullMatch = raw.match(/^(\d{1,3})\s*(.+?)\s*(\d{4})\s*(.*)$/);
+  if (fullMatch) {
+    return { no: Number(fullMatch[1]), name: fullMatch[2].trim() };
+  }
+  const noMatch = raw.match(/^(\d{1,3})(?!\d)\s*[-.、:：]?\s*(.*)$/);
+  if (noMatch) {
+    return { no: Number(noMatch[1]), name: noMatch[2].trim() };
+  }
+  return { no: null, name: raw };
+}
+
+export interface BatchImportResult {
+  created: number;
+  updated: number;
+  skipped: number;
+  errors: string[];
+}
+
+/**
+ * Processes batch import of peak/activity items under a specific navButtonId.
+ * When mutate = true, mutates the provided activitiesArray in place.
+ * When mutate = false, performs a dry-run preview without modifying activitiesArray.
+ */
+export function processBatchImportActivities(
+  activitiesArray: NavButtonActivity[],
+  navButtonId: string,
+  rawItems: any[],
+  mutate: boolean
+): BatchImportResult {
+  const cleanBtnId = (navButtonId || '').trim();
+  const workingButtonActs: NavButtonActivity[] = activitiesArray
+    .filter((a) => a.navButtonId === cleanBtnId)
+    .map((a) => (mutate ? a : { ...a }));
+
+  const usedSlugs = new Set<string>(
+    workingButtonActs.map((a) => (a.slug || '').trim().toLowerCase()).filter(Boolean)
+  );
+
+  const now = Date.now();
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  let created = 0;
+  let updated = 0;
+  let skipped = 0;
+  const errors: string[] = [];
+
+  rawItems.forEach((rawItem, idx) => {
+    if (!rawItem || typeof rawItem !== 'object') {
+      errors.push(`第 ${idx + 1} 筆：資料格式無效`);
+      return;
+    }
+
+    const itemTitle =
+      String(rawItem.title || '').trim() ||
+      (rawItem.no != null && rawItem.name
+        ? `${String(rawItem.no).padStart(3, '0')} ${String(rawItem.name).trim()}${
+            rawItem.elevation ? ' ' + rawItem.elevation : ''
+          }${rawItem.group ? ' ' + String(rawItem.group).trim() : ''}`
+        : String(rawItem.name || '').trim());
+
+    if (!itemTitle) {
+      errors.push(`第 ${idx + 1} 筆：缺少活動標題 (title)`);
+      return;
+    }
+
+    const parsedFromTitle = extractPeakNoAndName(itemTitle);
+    const itemNo =
+      rawItem.no != null && rawItem.no !== '' && !Number.isNaN(Number(rawItem.no))
+        ? Number(rawItem.no)
+        : parsedFromTitle.no;
+    const itemName = String(rawItem.name || '').trim() || parsedFromTitle.name;
+    const incomingPark = String(rawItem.nationalPark || '').trim();
+
+    const matched = workingButtonActs.find((act) => {
+      const parsedAct = extractPeakNoAndName(act.title);
+      if (itemNo != null && parsedAct.no != null && itemNo === parsedAct.no) {
+        return true;
+      }
+      if (itemName && parsedAct.name && itemName === parsedAct.name) {
+        return true;
+      }
+      if ((act.title || '').trim() === itemTitle) {
+        return true;
+      }
+      return false;
+    });
+
+    if (matched) {
+      if (!(matched.nationalPark || '').trim() && incomingPark) {
+        matched.nationalPark = incomingPark;
+        updated++;
+      } else {
+        skipped++;
+      }
+      return;
+    }
+
+    const rawSlug = String(rawItem.slug || '')
+      .trim()
+      .toLowerCase()
+      .replace(/^\/+|\/+$/g, '');
+    const baseSlug =
+      rawSlug.replace(/[^a-z0-9-_]/g, '') ||
+      slugify(itemTitle) ||
+      (itemNo != null ? `peak-${String(itemNo).padStart(3, '0')}` : `activity_${now}_${idx}`);
+
+    let finalSlug = baseSlug;
+    let suffix = 2;
+    while (usedSlugs.has(finalSlug.toLowerCase())) {
+      finalSlug = `${baseSlug}-${suffix}`;
+      suffix++;
+    }
+    usedSlugs.add(finalSlug.toLowerCase());
+
+    const newAct: NavButtonActivity = {
+      id: `act_${now}_${idx}`,
+      navButtonId: cleanBtnId,
+      slug: finalSlug,
+      title: itemTitle,
+      description: String(rawItem.note ?? rawItem.description ?? '').trim(),
+      nationalPark: incomingPark || undefined,
+      sortOrder: Number(rawItem.sortOrder ?? rawItem.no ?? idx + 1) || 0,
+      externalUrl: '',
+      enabled: true,
+      updatedAt: todayStr,
+    };
+
+    workingButtonActs.push(newAct);
+    if (mutate) {
+      activitiesArray.push(newAct);
+    }
+    created++;
+  });
+
+  return { created, updated, skipped, errors };
+}
+

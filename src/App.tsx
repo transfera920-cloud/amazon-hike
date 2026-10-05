@@ -11,7 +11,12 @@ import { SurveysView } from './components/SurveysView.js';
 import { AdminPage } from './components/AdminPage.js';
 import { NavActivitiesView } from './components/NavActivitiesView.js';
 import { RouteActivityView } from './components/RouteActivityView.js';
-import { getCategorySlug, resolveActivitySeo, CHAPTER_SLUG_SOURCE } from './utils/activitySeo.js';
+import {
+  getCategorySlug,
+  resolveActivitySeo,
+  resolveNavButtonDescription,
+  CHAPTER_SLUG_SOURCE,
+} from './utils/activitySeo.js';
 import type { AssociationDatabase, CalendarActivity } from './types.js';
 
 const KNOWN_PATHS = new Set(['/', '/intro', '/tools', '/highlights', '/policies', '/surveys', '/admin']);
@@ -399,7 +404,7 @@ export default function App() {
       customCanonicalUrl = `${SITE_ORIGIN}/nav/${currentNavButton.id}`;
       currentMeta = {
         title: `${currentNavButton.title} - 活動列表 | 亞馬遜國家山岳協會 | Amazon Alpine Association`,
-        description: `亞馬遜國家山岳協會 ${currentNavButton.title} 活動與行程清單。`,
+        description: resolveNavButtonDescription(currentNavButton),
       };
     } else if (!currentMeta && currentChapter) {
       const isOfficialChapter = CHAPTER_PATH_RE.test('/' + currentChapter.slug);
@@ -520,9 +525,11 @@ export default function App() {
       robotsMeta.setAttribute('name', 'robots');
       document.head.appendChild(robotsMeta);
     }
+    const activeActivity = currentCategoryActivity || currentRouteActivity;
+    const isThinActivity = Boolean(activeActivity && !(activeActivity.content || '').trim());
     if (currentPath === '/admin') {
       robotsMeta.setAttribute('content', 'noindex, nofollow');
-    } else if (is404) {
+    } else if (is404 || isThinActivity) {
       robotsMeta.setAttribute('content', 'noindex, follow');
     } else {
       robotsMeta.setAttribute('content', 'index, follow');

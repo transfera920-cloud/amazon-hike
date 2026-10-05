@@ -16,7 +16,12 @@ import type {
   NavButtonActivity,
   CalendarActivity
 } from '../src/types.js';
-import { RESERVED_SLUGS, getCategorySlug, isFormalChapterSlug } from '../src/utils/activitySeo.js';
+import {
+  RESERVED_SLUGS,
+  getCategorySlug,
+  isFormalChapterSlug,
+  processBatchImportActivities,
+} from '../src/utils/activitySeo.js';
 import {
   cleanTripItinerary,
   buildCalendarActivityFromItinerary,
@@ -26,7 +31,6 @@ import {
 } from '../src/utils/itineraryHelper.js';
 
 const ADMIN_SECRET_TOKEN = 'amazon-alpine-secure-token-2026';
-const ADMIN_PASSWORD = 'yy661003';
 
 function jsonResponse(data: any, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -114,7 +118,11 @@ export async function handleApiRequest(
         if (!pwd) {
           return jsonResponse({ error: '請輸入管理密碼' }, 400);
         }
-        const expectedPwd = env.ADMIN_PASSWORD || ADMIN_PASSWORD;
+        const expectedPwd = (env.ADMIN_PASSWORD || '').trim();
+        if (!expectedPwd) {
+          console.warn('[Admin Auth] 尚未設定環境變數 ADMIN_PASSWORD，拒絕後台登入請求。');
+          return jsonResponse({ error: '系統尚未設定後台管理密碼 (ADMIN_PASSWORD)，請先設定環境變數' }, 500);
+        }
         if (pwd === expectedPwd) {
           const token = env.ADMIN_TOKEN || ADMIN_SECRET_TOKEN;
           return jsonResponse({ success: true, token });
@@ -421,6 +429,7 @@ export async function handleApiRequest(
           enabled: item.enabled ?? true,
           sortOrder: Number(item.sortOrder) || 0,
           categorySlug: cleanCatSlug || undefined,
+          introContent: (item.introContent || '').trim().slice(0, 3000) || undefined,
         };
         const idx = db.navButtons.findIndex((b) => b.id === cleanItem.id);
         if (idx >= 0) db.navButtons[idx] = cleanItem;
@@ -486,9 +495,6 @@ export async function handleApiRequest(
         if (!item.slug || !item.slug.trim()) {
           return jsonResponse({ error: '主站內部路徑為必填欄位' }, 400);
         }
-        if (!item.externalUrl || !item.externalUrl.trim()) {
-          return jsonResponse({ error: '完整行程／報名網址為必填欄位' }, 400);
-        }
 
         const rawSlug = item.slug.trim().toLowerCase().replace(/^\/+|\/+$/g, '');
         const cleanSlug = rawSlug.replace(/[^a-z0-9-_]/g, '') || `activity_${Date.now()}`;
@@ -513,7 +519,7 @@ export async function handleApiRequest(
           slug: cleanSlug,
           title: item.title.trim(),
           description: (item.description || '').trim(),
-          externalUrl: item.externalUrl.trim(),
+          externalUrl: (item.externalUrl || '').trim(),
           sortOrder: Number(item.sortOrder) || 0,
           enabled: item.enabled ?? true,
           content: (item.content || '').trim() || undefined,
@@ -525,6 +531,7 @@ export async function handleApiRequest(
           seoTitle: (item.seoTitle || '').trim() || undefined,
           metaDescription: (item.metaDescription || '').trim() || undefined,
           ogImage: (item.ogImage || '').trim() || undefined,
+          nationalPark: (item.nationalPark || '').trim() || undefined,
           updatedAt: new Date().toISOString().split('T')[0],
           itinerary: item.itinerary ? cleanTripItinerary(item.itinerary) : undefined,
         };
@@ -537,6 +544,37 @@ export async function handleApiRequest(
 
         await saveDatabaseWorker(db, env);
         return jsonResponse({ success: true, item: cleanItem });
+      } catch (err: any) {
+        return jsonResponse({ error: err.message }, 500);
+      }
+    }
+
+    // POST /api/admin/import-nav-button-activities
+    if (path === '/api/admin/import-nav-button-activities' && method === 'POST') {
+      try {
+        const db = await loadDatabaseWorker(env);
+        const body: any = await request.json();
+        const navButtonId = String(body?.navButtonId || '').trim();
+        const items = Array.isArray(body?.items)
+          ? body.items
+          : Array.isArray(body?.peaks)
+          ? body.peaks
+          : null;
+
+        if (!navButtonId) {
+          return jsonResponse({ error: '所屬按鈕為必填欄位' }, 400);
+        }
+        if (!items || !Array.isArray(items)) {
+          return jsonResponse({ error: '請提供有效的匯入陣列 (items)' }, 400);
+        }
+
+        if (!Array.isArray(db.navButtonActivities)) {
+          db.navButtonActivities = [];
+        }
+
+        const result = processBatchImportActivities(db.navButtonActivities, navButtonId, items, true);
+        await saveDatabaseWorker(db, env);
+        return jsonResponse({ success: true, ...result });
       } catch (err: any) {
         return jsonResponse({ error: err.message }, 500);
       }

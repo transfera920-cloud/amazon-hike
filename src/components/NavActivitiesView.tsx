@@ -344,7 +344,7 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
                   <th scope="col" className="px-3 py-2.5 text-left font-bold whitespace-nowrap">
                     山名
                   </th>
-                  <th scope="col" aria-sort={ariaSort('elevation')} className="px-3 py-2.5 text-right font-bold whitespace-nowrap">
+                  <th scope="col" aria-sort={ariaSort('elevation')} className="px-3 py-2.5 text-center font-bold whitespace-nowrap">
                     <button
                       type="button"
                       onClick={() => toggleSort('elevation')}
@@ -355,7 +355,7 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
                       <SortIcon k="elevation" />
                     </button>
                   </th>
-                  <th scope="col" className="hidden sm:table-cell px-3 py-2.5 text-left font-bold whitespace-nowrap">
+                  <th scope="col" className="hidden sm:table-cell px-3 py-2.5 text-center font-bold whitespace-nowrap">
                     所屬國家公園
                   </th>
                   <th scope="col" className="px-3 py-2.5 text-left font-bold whitespace-nowrap">
@@ -407,11 +407,11 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
                         )}
                       </td>
 
-                      <td className="px-3 py-2.5 text-right text-neutral-200 tabular-nums whitespace-nowrap">
+                      <td className="px-3 py-2.5 text-center text-neutral-200 tabular-nums whitespace-nowrap">
                         {elevation != null ? elevation.toLocaleString('en-US') : ''}
                       </td>
 
-                      <td className="hidden sm:table-cell px-3 py-2.5 text-neutral-300 whitespace-nowrap">
+                      <td className="hidden sm:table-cell px-3 py-2.5 text-center text-neutral-300 whitespace-nowrap">
                         {activity.nationalPark || ''}
                       </td>
 

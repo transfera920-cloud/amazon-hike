@@ -326,11 +326,11 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
           </div>
 
           <div className="overflow-x-auto rounded-lg border border-neutral-800">
-            <table className="w-full min-w-[34rem] border-collapse text-sm">
+            <table className="w-full table-auto border-collapse text-sm">
               <caption className="sr-only">{button.title}：編號、山名、標高、所屬國家公園、群組、備註與行程連結</caption>
               <thead className="bg-neutral-800/70 text-neutral-200">
                 <tr>
-                  <th scope="col" aria-sort={ariaSort('no')} className="px-3 py-2.5 text-left font-bold whitespace-nowrap w-16">
+                  <th scope="col" aria-sort={ariaSort('no')} className="px-3 py-2.5 text-left font-bold whitespace-nowrap w-16 min-w-[3.5rem]">
                     <button
                       type="button"
                       onClick={() => toggleSort('no')}
@@ -341,10 +341,10 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
                       <SortIcon k="no" />
                     </button>
                   </th>
-                  <th scope="col" className="px-3 py-2.5 text-left font-bold whitespace-nowrap">
+                  <th scope="col" className="px-3 py-2.5 text-left font-bold whitespace-nowrap min-w-[8em]">
                     山名
                   </th>
-                  <th scope="col" aria-sort={ariaSort('elevation')} className="px-3 py-2.5 text-center font-bold whitespace-nowrap">
+                  <th scope="col" aria-sort={ariaSort('elevation')} className="px-3 py-2.5 text-center font-bold whitespace-nowrap min-w-[6.5rem]">
                     <button
                       type="button"
                       onClick={() => toggleSort('elevation')}
@@ -355,13 +355,13 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
                       <SortIcon k="elevation" />
                     </button>
                   </th>
-                  <th scope="col" className="hidden sm:table-cell px-3 py-2.5 text-center font-bold whitespace-nowrap">
+                  <th scope="col" className="hidden sm:table-cell px-3 py-2.5 text-center font-bold whitespace-nowrap min-w-[7rem]">
                     所屬國家公園
                   </th>
-                  <th scope="col" className="px-3 py-2.5 text-left font-bold whitespace-nowrap">
+                  <th scope="col" className="px-3 py-2.5 text-left font-bold whitespace-nowrap min-w-[5rem]">
                     群組
                   </th>
-                  <th scope="col" className="hidden md:table-cell px-3 py-2.5 text-left font-bold">
+                  <th scope="col" className="hidden md:table-cell w-full min-w-0 px-3 py-2.5 text-left font-bold">
                     備註
                   </th>
                   <th scope="col" className="px-3 py-2.5 text-right font-bold whitespace-nowrap">
@@ -377,11 +377,11 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
                       key={activity.id}
                       className="border-t border-neutral-800 odd:bg-neutral-900/40 even:bg-neutral-900/10 hover:bg-neutral-800/50 transition-colors align-top"
                     >
-                      <td className="px-3 py-2.5 text-neutral-500 tabular-nums whitespace-nowrap">
+                      <td className="px-3 py-2.5 text-neutral-500 tabular-nums whitespace-nowrap min-w-[3.5rem]">
                         {no != null ? String(no).padStart(3, '0') : '—'}
                       </td>
 
-                      <td className="px-3 py-2.5 font-bold text-neutral-100">
+                      <td className="px-3 py-2.5 font-bold text-neutral-100 whitespace-nowrap min-w-[8em]">
                         {onSelectActivity && hasContent ? (
                           <a
                             href={detailHref(activity.slug)}
@@ -390,34 +390,28 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
                               e.preventDefault();
                               onSelectActivity(activity.slug);
                             }}
-                            className="inline-flex items-center gap-1 transition-colors underline decoration-neutral-600 underline-offset-4 hover:decoration-emerald-400 hover:text-emerald-400"
+                            className="inline-flex items-center gap-1 whitespace-nowrap transition-colors underline decoration-neutral-600 underline-offset-4 hover:decoration-emerald-400 hover:text-emerald-400"
                             title="查看詳細資訊"
                           >
                             <span>{name}</span>
                             <ChevronRight size={14} className="text-neutral-500 shrink-0" />
                           </a>
                         ) : (
-                          name
-                        )}
-                        {/* 手機版：簡介收在山名下方 */}
-                        {activity.description && (
-                          <p className="md:hidden mt-1 text-xs font-normal text-neutral-400 leading-relaxed line-clamp-2">
-                            {activity.description}
-                          </p>
+                          <span className="inline-flex items-center whitespace-nowrap">{name}</span>
                         )}
                       </td>
 
-                      <td className="px-3 py-2.5 text-center text-neutral-200 tabular-nums whitespace-nowrap">
+                      <td className="px-3 py-2.5 text-center text-neutral-200 tabular-nums whitespace-nowrap min-w-[6.5rem]">
                         {elevation != null ? elevation.toLocaleString('en-US') : ''}
                       </td>
 
-                      <td className="hidden sm:table-cell px-3 py-2.5 text-center text-neutral-300 whitespace-nowrap">
+                      <td className="hidden sm:table-cell px-3 py-2.5 text-center text-neutral-300 whitespace-nowrap min-w-[7rem]">
                         {activity.nationalPark || ''}
                       </td>
 
-                      <td className="px-3 py-2.5 text-neutral-300 whitespace-nowrap">{group}</td>
+                      <td className="px-3 py-2.5 text-neutral-300 whitespace-nowrap min-w-[5rem]">{group}</td>
 
-                      <td className="hidden md:table-cell px-3 py-2.5 text-xs text-neutral-400 leading-relaxed">
+                      <td className="hidden md:table-cell w-full min-w-0 px-3 py-2.5 text-xs text-neutral-400 leading-relaxed">
                         <span className="line-clamp-2" title={activity.description || undefined}>
                           {activity.description}
                         </span>

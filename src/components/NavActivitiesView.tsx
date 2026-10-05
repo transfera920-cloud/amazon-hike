@@ -330,11 +330,11 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
               <caption className="sr-only">{button.title}：編號、山名、標高、所屬國家公園、群組、備註與行程連結</caption>
               <thead className="bg-neutral-800/70 text-neutral-200">
                 <tr>
-                  <th scope="col" aria-sort={ariaSort('no')} className="px-3 py-2.5 text-left font-bold whitespace-nowrap w-16 min-w-[3.5rem]">
+                  <th scope="col" aria-sort={ariaSort('no')} className="px-3 py-2.5 text-center font-bold whitespace-nowrap w-16 min-w-[3.5rem]">
                     <button
                       type="button"
                       onClick={() => toggleSort('no')}
-                      className="inline-flex items-center gap-1 hover:text-emerald-400 transition-colors"
+                      className="inline-flex justify-center items-center gap-1 hover:text-emerald-400 transition-colors"
                       title="依編號排序"
                     >
                       <span>#</span>
@@ -348,7 +348,7 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
                     <button
                       type="button"
                       onClick={() => toggleSort('elevation')}
-                      className="inline-flex items-center gap-1 hover:text-emerald-400 transition-colors"
+                      className="inline-flex justify-center items-center gap-1 hover:text-emerald-400 transition-colors"
                       title="依標高排序"
                     >
                       <span>標高（公尺）</span>
@@ -358,13 +358,13 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
                   <th scope="col" className="hidden sm:table-cell px-3 py-2.5 text-center font-bold whitespace-nowrap min-w-[7rem]">
                     所屬國家公園
                   </th>
-                  <th scope="col" className="px-3 py-2.5 text-left font-bold whitespace-nowrap min-w-[5rem]">
+                  <th scope="col" className="px-3 py-2.5 text-center font-bold whitespace-nowrap min-w-[5rem]">
                     群組
                   </th>
-                  <th scope="col" className="hidden md:table-cell w-full min-w-0 px-3 py-2.5 text-left font-bold">
+                  <th scope="col" className="hidden md:table-cell w-full min-w-[280px] overflow-visible px-3 py-2.5 text-left font-bold">
                     備註
                   </th>
-                  <th scope="col" className="px-3 py-2.5 text-right font-bold whitespace-nowrap">
+                  <th scope="col" className="w-[110px] min-w-[110px] shrink-0 pl-4 pr-3 py-2.5 text-right font-bold whitespace-nowrap">
                     <span className="sr-only">行程連結</span>
                   </th>
                 </tr>
@@ -377,11 +377,11 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
                       key={activity.id}
                       className="border-t border-neutral-800 odd:bg-neutral-900/40 even:bg-neutral-900/10 hover:bg-neutral-800/50 transition-colors align-top"
                     >
-                      <td className="px-3 py-2.5 text-neutral-500 tabular-nums whitespace-nowrap min-w-[3.5rem]">
+                      <td className="px-3 py-2.5 text-center text-neutral-500 tabular-nums whitespace-nowrap w-16 min-w-[3.5rem]">
                         {no != null ? String(no).padStart(3, '0') : '—'}
                       </td>
 
-                      <td className="px-3 py-2.5 font-bold text-neutral-100 whitespace-nowrap min-w-[8em]">
+                      <td className="px-3 py-2.5 text-left font-bold text-neutral-100 whitespace-nowrap min-w-[8em]">
                         {onSelectActivity && hasContent ? (
                           <a
                             href={detailHref(activity.slug)}
@@ -409,15 +409,13 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
                         {activity.nationalPark || ''}
                       </td>
 
-                      <td className="px-3 py-2.5 text-neutral-300 whitespace-nowrap min-w-[5rem]">{group}</td>
+                      <td className="px-3 py-2.5 text-center text-neutral-300 whitespace-nowrap min-w-[5rem]">{group}</td>
 
-                      <td className="hidden md:table-cell w-full min-w-0 px-3 py-2.5 text-xs text-neutral-400 leading-relaxed">
-                        <span className="line-clamp-2" title={activity.description || undefined}>
-                          {activity.description}
-                        </span>
+                      <td className="hidden md:table-cell w-full min-w-[280px] overflow-visible px-3 py-2.5 text-left text-xs text-neutral-400 leading-relaxed whitespace-normal break-words">
+                        {activity.description}
                       </td>
 
-                      <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                      <td className="w-[110px] min-w-[110px] shrink-0 pl-4 pr-3 py-2.5 text-right whitespace-nowrap">
                         {activity.externalUrl && (
                           <a
                             href={normalizeUrl(activity.externalUrl)}

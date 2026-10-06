@@ -125,12 +125,21 @@ export const RouteActivityView: React.FC<RouteActivityViewProps> = ({
 
         {/* Cover Image if present */}
         {activity.coverImage && (
-          <div className="mb-6 rounded-lg overflow-hidden border border-neutral-800">
+          <div key={activity.coverImage} className="mb-6 rounded-lg overflow-hidden border border-neutral-800">
             <img
-              src={activity.coverImage}
+              src={normalizeUrl(activity.coverImage)}
               alt={activity.title}
+              referrerPolicy="no-referrer"
               className="w-full max-h-[420px] object-cover"
               loading="lazy"
+              onError={(e) => {
+                const wrapper = e.currentTarget.parentElement;
+                if (wrapper) {
+                  wrapper.style.display = 'none';
+                } else {
+                  e.currentTarget.style.display = 'none';
+                }
+              }}
             />
           </div>
         )}

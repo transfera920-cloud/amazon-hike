@@ -70,20 +70,37 @@ interface PeakRow {
   name: string;
   elevation: number | null;
   group: string;
+  groups: string[];
+}
+
+function splitGroupTokens(group: string): string[] {
+  return group
+    .split(/[\s\u3000、,，/／]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 function parsePeakTitle(activity: NavButtonActivity): PeakRow {
   const raw = (activity.title || '').trim();
   const m = raw.match(/^(\d{1,3})\s*(.+?)\s*(\d{4})\s*(.*)$/);
   if (!m) {
-    return { activity, no: null, name: raw, elevation: null, group: '' };
+    return { activity, no: null, name: raw, elevation: null, group: '', groups: [] };
   }
+  const group = m[4].trim();
+  const groups = Array.from(
+    new Set(
+      splitGroupTokens(group)
+        .map((t) => t.replace(/[-－]\d+$/, '').trim())
+        .filter(Boolean)
+    )
+  );
   return {
     activity,
     no: Number(m[1]),
     name: m[2].trim(),
     elevation: Number(m[3]),
-    group: m[4].trim(),
+    group,
+    groups,
   };
 }
 
@@ -121,8 +138,9 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
   const availableGroups = useMemo<Set<string>>(() => {
     const set = new Set<string>();
     for (const r of allPeakRows) {
-      const g = r.group.replace(/[-－]\d+$/, '').trim();
-      if (g) set.add(g);
+      for (const g of r.groups) {
+        set.add(g);
+      }
     }
     return set;
   }, [allPeakRows]);
@@ -130,7 +148,7 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
   const peakRows = useMemo<PeakRow[]>(() => {
     if (!isPeakTable) return [];
     const rows = groupFilter
-      ? allPeakRows.filter((r) => r.group.replace(/[-－]\d+$/, '').trim() === groupFilter)
+      ? allPeakRows.filter((r) => r.groups.includes(groupFilter))
       : allPeakRows;
     if (!sort) return rows; // 維持後台設定的排序
     const factor = sort.dir === 'asc' ? 1 : -1;
@@ -473,7 +491,14 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
                           {activity.nationalPark || ''}
                         </td>
 
-                        <td className="w-px whitespace-nowrap px-1 sm:px-3 py-2.5 text-center text-xs sm:text-sm text-neutral-300">{group}</td>
+                        <td className="w-px whitespace-nowrap px-1 sm:px-3 py-2.5 text-center text-xs sm:text-sm text-neutral-300">
+                          {(() => {
+                            const parts = splitGroupTokens(group);
+                            return parts.length > 1
+                              ? parts.map((p, i) => <div key={i}>{p}</div>)
+                              : group;
+                          })()}
+                        </td>
 
                         <td className="hidden md:table-cell w-full px-1.5 sm:px-3 py-2.5 text-left text-xs text-neutral-400 leading-relaxed whitespace-normal break-words">
                           <span className="whitespace-normal break-words">

@@ -104,6 +104,13 @@ export interface PeakImportItem {
   title?: string;
   slug?: string;
   sortOrder?: number;
+  content?: string;
+  seoTitle?: string;
+  metaDescription?: string;
+  seoDescription?: string; // metaDescription 的別名
+  ogImage?: string;
+  coverImage?: string;
+  overwrite?: boolean; // true 時,用匯入的非空值取代既有內容
 }
 
 /**
@@ -183,6 +190,12 @@ export function processBatchImportActivities(
         : parsedFromTitle.no;
     const itemName = String(rawItem.name || '').trim() || parsedFromTitle.name;
     const incomingPark = String(rawItem.nationalPark || '').trim();
+    const incomingContent = String(rawItem.content || '').trim();
+    const incomingSeoTitle = String(rawItem.seoTitle || '').trim();
+    const incomingMetaDescription = String(rawItem.metaDescription ?? rawItem.seoDescription ?? '').trim();
+    const overwrite = rawItem.overwrite === true;
+    const incomingOgImage = String(rawItem.ogImage || '').trim();
+    const incomingCoverImage = String(rawItem.coverImage || '').trim();
 
     const matched = workingButtonActs.find((act) => {
       const parsedAct = extractPeakNoAndName(act.title);
@@ -199,8 +212,35 @@ export function processBatchImportActivities(
     });
 
     if (matched) {
+      // 預設只補目前為空的欄位;item.overwrite === true 時,非空的匯入值會取代既有值。
+      // 匯入值為空時,永遠不清除既有資料。
+      let changed = false;
       if (!(matched.nationalPark || '').trim() && incomingPark) {
         matched.nationalPark = incomingPark;
+        changed = true;
+      }
+      if (incomingContent && (overwrite || !(matched.content || '').trim()) && matched.content !== incomingContent) {
+        matched.content = incomingContent;
+        changed = true;
+      }
+      if (incomingSeoTitle && (overwrite || !(matched.seoTitle || '').trim()) && matched.seoTitle !== incomingSeoTitle) {
+        matched.seoTitle = incomingSeoTitle;
+        changed = true;
+      }
+      if (incomingMetaDescription && (overwrite || !(matched.metaDescription || '').trim()) && matched.metaDescription !== incomingMetaDescription) {
+        matched.metaDescription = incomingMetaDescription;
+        changed = true;
+      }
+      if (incomingOgImage && (overwrite || !(matched.ogImage || '').trim()) && matched.ogImage !== incomingOgImage) {
+        matched.ogImage = incomingOgImage;
+        changed = true;
+      }
+      if (incomingCoverImage && (overwrite || !(matched.coverImage || '').trim()) && matched.coverImage !== incomingCoverImage) {
+        matched.coverImage = incomingCoverImage;
+        changed = true;
+      }
+      if (changed) {
+        matched.updatedAt = todayStr;
         updated++;
       } else {
         skipped++;
@@ -232,6 +272,11 @@ export function processBatchImportActivities(
       title: itemTitle,
       description: String(rawItem.note ?? rawItem.description ?? '').trim(),
       nationalPark: incomingPark || undefined,
+      content: incomingContent || undefined,
+      seoTitle: incomingSeoTitle || undefined,
+      metaDescription: incomingMetaDescription || undefined,
+      ogImage: incomingOgImage || undefined,
+      coverImage: incomingCoverImage || undefined,
       sortOrder: Number(rawItem.sortOrder ?? rawItem.no ?? idx + 1) || 0,
       externalUrl: '',
       enabled: true,

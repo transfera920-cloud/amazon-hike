@@ -48,6 +48,7 @@ import {
 } from '../utils/activitySeo.js';
 import { PEAK_INTRO_PARAGRAPHS } from './NavActivitiesView.js';
 import { ImageUploadButton } from './ImageUploadButton.js';
+import InlineEditorPortal, { editSlotKey } from './InlineEditorPortal.js';
 import peaksTop100Data from '../../data/peaks-top100.json';
 import {
   calculateDaysFromDates
@@ -1143,6 +1144,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
 
           {/* Edit / Create Form */}
           {editingChapter && (
+            <InlineEditorPortal kind="chapter" editId={editingChapter.id}>
             <div className="border border-emerald-700/80 rounded bg-neutral-900 p-5 space-y-4">
               <h3 className="text-sm font-bold text-emerald-400">
                 {editingChapter.id ? '編輯章節專文' : '新增章節專文'}
@@ -1295,16 +1297,18 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                 </div>
               </form>
             </div>
+            </InlineEditorPortal>
           )}
 
           {/* List Table */}
           <div className="border border-neutral-800 rounded bg-neutral-900/40 overflow-hidden">
             <div className="divide-y divide-neutral-800">
               {((adminData.chapters || []).slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))).map((item) => (
-                <div
-                  key={item.id}
-                  className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                >
+                <div key={item.id}>
+                  <div data-edit-slot={editSlotKey('chapter', item.id)} />
+                  <div
+                    className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                  >
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
                       <span className="text-xs px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 font-mono">
@@ -1363,6 +1367,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                       <Trash2 size={15} />
                     </button>
                   </div>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1402,6 +1407,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
 
           {/* Edit / Create Form */}
           {editingIntro && (
+            <InlineEditorPortal kind="intro" editId={editingIntro.id}>
             <div className="border border-emerald-700/80 rounded bg-neutral-900 p-5 space-y-4">
               <h3 className="text-sm font-bold text-emerald-400">
                 {editingIntro.id ? '編輯登山入門項目' : '新增登山入門項目'}
@@ -1523,16 +1529,18 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                 </div>
               </form>
             </div>
+            </InlineEditorPortal>
           )}
 
           {/* List Table */}
           <div className="border border-neutral-800 rounded bg-neutral-900/40 overflow-hidden">
             <div className="divide-y divide-neutral-800">
               {((adminData.intros || []).slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))).map((item) => (
-                <div
-                  key={item.id}
-                  className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                >
+                <div key={item.id}>
+                  <div data-edit-slot={editSlotKey('intro', item.id)} />
+                  <div
+                    className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                  >
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
                       <span className="text-xs px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 font-mono">
@@ -1579,6 +1587,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                       <Trash2 size={15} />
                     </button>
                   </div>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1617,6 +1626,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
 
           {/* Edit Tool Form */}
           {editingTool && (
+            <InlineEditorPortal kind="tool" editId={editingTool.id}>
             <div className="border border-emerald-700/80 rounded bg-neutral-900 p-5 space-y-4">
               <h3 className="text-sm font-bold text-emerald-400">
                 {editingTool.id ? '編輯登山工具' : '新增登山工具'}
@@ -1727,16 +1737,18 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                 </div>
               </form>
             </div>
+            </InlineEditorPortal>
           )}
 
           {/* Tools Table */}
           <div className="border border-neutral-800 rounded bg-neutral-900/40 overflow-hidden">
             <div className="divide-y divide-neutral-800">
               {((adminData.tools || []).slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))).map((item) => (
-                <div
-                  key={item.id}
-                  className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                >
+                <div key={item.id}>
+                  <div data-edit-slot={editSlotKey('tool', item.id)} />
+                  <div
+                    className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                  >
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
                       <span className="text-xs px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 font-mono">
@@ -1783,6 +1795,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                       <Trash2 size={15} />
                     </button>
                   </div>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1820,6 +1833,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
 
           {/* Edit Highlight Form */}
           {editingHighlight && (
+            <InlineEditorPortal kind="highlight" editId={editingHighlight.id}>
             <div className="border border-emerald-700/80 rounded bg-neutral-900 p-5 space-y-4">
               <h3 className="text-sm font-bold text-emerald-400">
                 {editingHighlight.id ? '編輯影片項目' : '新增影片項目'}
@@ -1902,16 +1916,18 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                 </div>
               </form>
             </div>
+            </InlineEditorPortal>
           )}
 
           {/* Highlights Table */}
           <div className="border border-neutral-800 rounded bg-neutral-900/40 overflow-hidden">
             <div className="divide-y divide-neutral-800">
               {((adminData.highlights || []).slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))).map((item) => (
-                <div
-                  key={item.id}
-                  className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                >
+                <div key={item.id}>
+                  <div data-edit-slot={editSlotKey('highlight', item.id)} />
+                  <div
+                    className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                  >
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
                       <span className="text-xs px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 font-mono">
@@ -1947,6 +1963,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                     >
                       <Trash2 size={15} />
                     </button>
+                  </div>
                   </div>
                 </div>
               ))}
@@ -1993,6 +2010,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
 
           {/* Edit / Create Survey Form */}
           {editingSurvey && (
+            <InlineEditorPortal kind="survey" editId={editingSurvey.id}>
             <div className="border border-emerald-700/80 rounded-lg bg-neutral-900 p-5 space-y-4 shadow-xl">
               <h3 className="text-sm font-bold text-emerald-400 flex items-center gap-1.5">
                 <Edit2 size={15} />
@@ -2110,16 +2128,18 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                 </div>
               </form>
             </div>
+            </InlineEditorPortal>
           )}
 
           {/* Surveys Table */}
           <div className="border border-neutral-800 rounded-lg bg-neutral-900/40 overflow-hidden shadow">
             <div className="divide-y divide-neutral-800">
               {((adminData.surveys || []).slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))).map((item) => (
-                <div
-                  key={item.id}
-                  className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-neutral-900/60 transition-colors"
-                >
+                <div key={item.id}>
+                  <div data-edit-slot={editSlotKey('survey', item.id)} />
+                  <div
+                    className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-neutral-900/60 transition-colors"
+                  >
                   <div className="space-y-1.5">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-xs px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 font-mono">
@@ -2184,6 +2204,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                     >
                       <Trash2 size={15} />
                     </button>
+                  </div>
                   </div>
                 </div>
               ))}
@@ -2261,6 +2282,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
 
           {/* Edit Policy Form */}
           {editingPolicy && (
+            <InlineEditorPortal kind="policy" editId={editingPolicy.id}>
             <div className="border border-emerald-700/80 rounded bg-neutral-900 p-5 space-y-4">
               <h3 className="text-sm font-bold text-emerald-400">
                 {editingPolicy.id ? '編輯條款項目' : '新增條款項目'}
@@ -2354,16 +2376,18 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                 </div>
               </form>
             </div>
+            </InlineEditorPortal>
           )}
 
           {/* Policies Table */}
           <div className="border border-neutral-800 rounded bg-neutral-900/40 overflow-hidden">
             <div className="divide-y divide-neutral-800">
               {((adminData.policies || []).slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))).map((item) => (
-                <div
-                  key={item.id}
-                  className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                >
+                <div key={item.id}>
+                  <div data-edit-slot={editSlotKey('policy', item.id)} />
+                  <div
+                    className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                  >
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
                       <span className="text-xs px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 font-mono">
@@ -2402,6 +2426,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                     >
                       <Trash2 size={15} />
                     </button>
+                  </div>
                   </div>
                 </div>
               ))}
@@ -2460,6 +2485,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
 
           {/* Edit / Create Nav Button Form */}
           {editingNavButton && (
+            <InlineEditorPortal kind="navButton" editId={editingNavButton.id}>
             <div className="border border-emerald-700/80 rounded bg-neutral-900 p-5 space-y-4">
               <h3 className="text-sm font-bold text-emerald-400">
                 {editingNavButton.id ? '編輯前台按鈕' : '新增前台按鈕'}
@@ -2676,6 +2702,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                 </div>
               </form>
             </div>
+            </InlineEditorPortal>
           )}
 
           {/* Navigation Buttons Table */}
@@ -2693,6 +2720,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
 
                 return (
                   <div key={item.id} className="divide-y divide-neutral-800/60">
+                    <div data-edit-slot={editSlotKey('navButton', item.id)} />
                     <div className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div className="space-y-1.5">
                         <div className="flex items-center gap-2">
@@ -2806,6 +2834,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
 
                         {/* Add / Edit Entry Form */}
                         {editingNavEntry && editingNavEntry.navButtonId === item.id && (
+                          <InlineEditorPortal kind="navEntry" editId={editingNavEntry.id}>
                           <div className="border border-emerald-700/60 rounded bg-neutral-900/95 p-4 space-y-3">
                             <h4 className="text-xs font-bold text-emerald-400">
                               {editingNavEntry.id ? '編輯次層項目' : '新增次層項目'}（所屬按鈕：{item.title}）
@@ -2902,16 +2931,18 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                               </div>
                             </form>
                           </div>
+                          </InlineEditorPortal>
                         )}
 
                         {/* Entries List */}
                         {buttonEntries.length > 0 ? (
                           <div className="divide-y divide-neutral-800 border border-neutral-800 rounded bg-neutral-900/60 overflow-hidden">
                             {buttonEntries.map((entry) => (
-                              <div
-                                key={entry.id}
-                                className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs"
-                              >
+                              <div key={entry.id}>
+                                <div data-edit-slot={editSlotKey('navEntry', entry.id)} />
+                                <div
+                                  className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs"
+                                >
                                 <div className="space-y-1">
                                   <div className="flex items-center gap-2">
                                     <span className="text-[11px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 font-mono">
@@ -2951,6 +2982,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                                   >
                                     <Trash2 size={13} />
                                   </button>
+                                </div>
                                 </div>
                               </div>
                             ))}
@@ -3175,6 +3207,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
 
                         {/* Add / Edit Activity Form */}
                         {editingNavButtonActivity && editingNavButtonActivity.navButtonId === item.id && (
+                          <InlineEditorPortal kind="navButtonActivity" editId={editingNavButtonActivity.id}>
                           <div className="p-4 rounded border border-neutral-700 bg-neutral-900/90 space-y-3">
                             <div className="text-xs font-bold text-emerald-400">
                               {editingNavButtonActivity.id ? '編輯活動' : '新增活動'}
@@ -3625,16 +3658,18 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                               </div>
                             </form>
                           </div>
+                          </InlineEditorPortal>
                         )}
 
                         {/* Activities List */}
                         {buttonActivities.length > 0 ? (
                           <div className="divide-y divide-neutral-800 border border-neutral-800 rounded bg-neutral-900/60 overflow-hidden">
                             {buttonActivities.map((act) => (
-                              <div
-                                key={act.id}
-                                className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs"
-                              >
+                              <div key={act.id}>
+                                <div data-edit-slot={editSlotKey('navButtonActivity', act.id)} />
+                                <div
+                                  className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs"
+                                >
                                 <div className="space-y-1">
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <span className="text-[11px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 font-mono">
@@ -3687,6 +3722,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                                   >
                                     <Trash2 size={13} />
                                   </button>
+                                </div>
                                 </div>
                               </div>
                             ))}
@@ -3748,6 +3784,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
 
           {/* Edit Calendar Activity Form */}
           {editingCalendarActivity && (
+            <InlineEditorPortal kind="calendarActivity" editId={editingCalendarActivity.id}>
             <div className="border border-emerald-700/80 rounded bg-neutral-900 p-5 space-y-4">
               <h3 className="text-sm font-bold text-emerald-400">
                 {editingCalendarActivity.id ? '編輯活動行程' : '新增活動行程'}
@@ -3886,6 +3923,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                 </div>
               </form>
             </div>
+            </InlineEditorPortal>
           )}
 
           {/* Calendar Activities Table */}
@@ -3899,10 +3937,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                   .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))).map((item) => {
                   const isMultiDay = item.endDate && item.endDate !== item.startDate;
                   return (
-                    <div
-                      key={item.id}
-                      className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                    >
+                    <div key={item.id}>
+                      <div data-edit-slot={editSlotKey('calendarActivity', item.id)} />
+                      <div
+                        className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                      >
                       <div className="space-y-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-xs px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 font-mono">
@@ -3947,6 +3986,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                         >
                           <Trash2 size={15} />
                         </button>
+                      </div>
                       </div>
                     </div>
                   );

@@ -113,12 +113,25 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir } | null>(null);
   const [groupFilter, setGroupFilter] = useState<string | null>(null);
 
+  const allPeakRows = useMemo<PeakRow[]>(
+    () => (isPeakTable ? activities.map(parsePeakTitle) : []),
+    [isPeakTable, activities]
+  );
+
+  const availableGroups = useMemo<Set<string>>(() => {
+    const set = new Set<string>();
+    for (const r of allPeakRows) {
+      const g = r.group.replace(/[-－]\d+$/, '').trim();
+      if (g) set.add(g);
+    }
+    return set;
+  }, [allPeakRows]);
+
   const peakRows = useMemo<PeakRow[]>(() => {
     if (!isPeakTable) return [];
-    const allRows = activities.map(parsePeakTitle);
     const rows = groupFilter
-      ? allRows.filter((r) => r.group.replace(/[-－]\d+$/, '').trim() === groupFilter)
-      : allRows;
+      ? allPeakRows.filter((r) => r.group.replace(/[-－]\d+$/, '').trim() === groupFilter)
+      : allPeakRows;
     if (!sort) return rows; // 維持後台設定的排序
     const factor = sort.dir === 'asc' ? 1 : -1;
     return rows
@@ -132,7 +145,7 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
         return av === bv ? a.i - b.i : (av - bv) * factor;
       })
       .map((x) => x.r);
-  }, [isPeakTable, activities, groupFilter, sort]);
+  }, [isPeakTable, allPeakRows, groupFilter, sort]);
 
   // 同一欄位：預設方向 → 反方向 → 取消排序
   const toggleSort = (key: SortKey) => {
@@ -245,28 +258,35 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
             </summary>
             <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 px-3 pb-3 pt-1 text-xs sm:text-sm">
               {PEAK_GROUP_GLOSSARY.map(([label, desc]) => {
+                const isAvailable = availableGroups.has(label);
                 const isSelected = groupFilter === label;
                 return (
                   <div key={label} className="flex items-start gap-2">
                     <dt className="shrink-0">
-                      <button
-                        type="button"
-                        aria-pressed={isSelected}
-                        onClick={() => {
-                          setGroupFilter((prev) => (prev === label ? null : label));
-                          document.getElementById('peak-list-section')?.scrollIntoView({
-                            behavior: 'smooth',
-                            block: 'start',
-                          });
-                        }}
-                        className={`shrink-0 min-w-[3.5rem] font-bold border rounded px-2 py-0.5 transition-colors ${
-                          isSelected
-                            ? 'bg-emerald-600 text-white border-emerald-600'
-                            : 'text-emerald-400 border-neutral-700'
-                        }`}
-                      >
-                        {label}
-                      </button>
+                      {isAvailable ? (
+                        <button
+                          type="button"
+                          aria-pressed={isSelected}
+                          onClick={() => {
+                            setGroupFilter((prev) => (prev === label ? null : label));
+                            document.getElementById('peak-list-section')?.scrollIntoView({
+                              behavior: 'smooth',
+                              block: 'start',
+                            });
+                          }}
+                          className={`shrink-0 min-w-[3.5rem] font-bold border rounded px-2 py-0.5 transition-colors ${
+                            isSelected
+                              ? 'bg-emerald-600 text-white border-emerald-600'
+                              : 'text-emerald-400 border-neutral-700'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ) : (
+                        <span className="inline-block shrink-0 min-w-[3.5rem] font-bold text-emerald-400/50 px-2 py-0.5">
+                          {label}
+                        </span>
+                      )}
                     </dt>
                     <dd className="text-neutral-400 leading-relaxed">{desc}</dd>
                   </div>
@@ -367,24 +387,12 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
             </div>
           </div>
 
-          {peakRows.length === 0 ? (
-            <p className="py-8 text-center text-sm text-neutral-400">
-              此群組目前沒有項目　
-              <button
-                type="button"
-                onClick={() => setGroupFilter(null)}
-                className="text-emerald-400 hover:text-emerald-300 underline underline-offset-2"
-              >
-                清除篩選
-              </button>
-            </p>
-          ) : (
-            <div className="overflow-x-auto rounded-lg border border-neutral-800">
+          <div className="overflow-x-auto rounded-lg border border-neutral-800">
               <table className="w-full table-auto border-collapse text-sm">
                 <caption className="sr-only">{button.title}：編號、山名、標高、所屬國家公園、群組、備註與行程連結</caption>
                 <thead className="bg-neutral-800/70 text-neutral-200">
                   <tr>
-                    <th scope="col" aria-sort={ariaSort('no')} className="px-1.5 sm:px-3 py-2.5 text-center text-xs sm:text-sm font-bold whitespace-nowrap">
+                    <th scope="col" aria-sort={ariaSort('no')} className="w-px whitespace-nowrap px-1 sm:px-3 py-2.5 text-center text-xs sm:text-sm font-bold">
                       <button
                         type="button"
                         onClick={() => toggleSort('no')}
@@ -395,10 +403,10 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
                         <SortIcon k="no" />
                       </button>
                     </th>
-                    <th scope="col" className="px-1.5 sm:px-3 py-2.5 text-left font-bold">
+                    <th scope="col" className="w-full md:w-auto md:whitespace-nowrap pl-1.5 pr-1 sm:px-3 py-2.5 text-left font-bold">
                       山名
                     </th>
-                    <th scope="col" aria-sort={ariaSort('elevation')} className="px-1.5 sm:px-3 py-2.5 text-center font-bold whitespace-nowrap">
+                    <th scope="col" aria-sort={ariaSort('elevation')} className="w-px whitespace-nowrap px-1.5 sm:px-3 py-2.5 text-center text-xs sm:text-sm font-bold">
                       <button
                         type="button"
                         onClick={() => toggleSort('elevation')}
@@ -411,16 +419,16 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
                         <SortIcon k="elevation" />
                       </button>
                     </th>
-                    <th scope="col" className="hidden sm:table-cell px-1.5 sm:px-3 py-2.5 text-center font-bold whitespace-nowrap">
+                    <th scope="col" className="hidden sm:table-cell w-px whitespace-nowrap px-1.5 sm:px-3 py-2.5 text-center font-bold">
                       所屬國家公園
                     </th>
-                    <th scope="col" className="px-1.5 sm:px-3 py-2.5 text-center text-xs sm:text-sm font-bold whitespace-nowrap">
+                    <th scope="col" className="w-px whitespace-nowrap px-1 sm:px-3 py-2.5 text-center text-xs sm:text-sm font-bold">
                       群組
                     </th>
                     <th scope="col" className="hidden md:table-cell w-full px-1.5 sm:px-3 py-2.5 text-left font-bold">
                       備註
                     </th>
-                    <th scope="col" className="px-1.5 sm:px-3 py-2.5 text-right font-bold whitespace-nowrap">
+                    <th scope="col" className="w-px whitespace-nowrap pl-1.5 pr-2 sm:px-3 py-2.5 text-right font-bold">
                       <span className="sr-only">行程連結</span>
                     </th>
                   </tr>
@@ -433,11 +441,11 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
                       className="border-t border-neutral-800 odd:bg-neutral-900/40 even:bg-neutral-900/10 hover:bg-neutral-800/50 transition-colors"
                     >
                       <tr className="align-top">
-                        <td className="px-1.5 sm:px-3 py-2.5 text-center text-xs sm:text-sm text-neutral-500 tabular-nums whitespace-nowrap">
+                        <td className="w-px whitespace-nowrap px-1 sm:px-3 py-2.5 text-center text-xs sm:text-sm text-neutral-500 tabular-nums">
                           {no != null ? String(no).padStart(3, '0') : '—'}
                         </td>
 
-                        <td className="px-1.5 sm:px-3 py-2.5 text-left font-bold text-neutral-100">
+                        <td className="w-full md:w-auto md:whitespace-nowrap pl-1.5 pr-1 sm:px-3 py-2.5 text-left font-bold text-neutral-100">
                           {onSelectActivity && hasContent ? (
                             <a
                               href={detailHref(activity.slug)}
@@ -457,15 +465,15 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
                           )}
                         </td>
 
-                        <td className="px-1.5 sm:px-3 py-2.5 text-center text-neutral-200 tabular-nums whitespace-nowrap">
+                        <td className="w-px whitespace-nowrap px-1.5 sm:px-3 py-2.5 text-center text-xs sm:text-sm text-neutral-200 tabular-nums">
                           {elevation != null ? elevation.toLocaleString('en-US') : ''}
                         </td>
 
-                        <td className="hidden sm:table-cell px-1.5 sm:px-3 py-2.5 text-center text-neutral-300 whitespace-nowrap">
+                        <td className="hidden sm:table-cell w-px whitespace-nowrap px-1.5 sm:px-3 py-2.5 text-center text-neutral-300">
                           {activity.nationalPark || ''}
                         </td>
 
-                        <td className="px-1.5 sm:px-3 py-2.5 text-center text-xs sm:text-sm text-neutral-300 whitespace-nowrap">{group}</td>
+                        <td className="w-px whitespace-nowrap px-1 sm:px-3 py-2.5 text-center text-xs sm:text-sm text-neutral-300">{group}</td>
 
                         <td className="hidden md:table-cell w-full px-1.5 sm:px-3 py-2.5 text-left text-xs text-neutral-400 leading-relaxed whitespace-normal break-words">
                           <span className="whitespace-normal break-words">
@@ -473,7 +481,7 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
                           </span>
                         </td>
 
-                        <td className="px-1.5 sm:px-3 py-2.5 text-right whitespace-nowrap">
+                        <td className="w-px whitespace-nowrap pl-1.5 pr-2 sm:px-3 py-2.5 text-right">
                           {activity.externalUrl && (
                             <a
                               href={normalizeUrl(activity.externalUrl)}
@@ -500,7 +508,6 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
                 })}
               </table>
             </div>
-          )}
         </section>
       ) : (
         <>

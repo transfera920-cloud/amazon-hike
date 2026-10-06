@@ -1,4 +1,6 @@
 import express, { Request, Response, NextFunction } from 'express';
+import fs from 'fs';
+import crypto from 'crypto';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import {
@@ -119,6 +121,44 @@ const handleCalendarActivities = (req: Request, res: Response) => {
 apiRouter.get('/calendar-activities', handleCalendarActivities);
 apiRouter.get('/activities', handleCalendarActivities);
 
+// Public Image Serving: GET/HEAD /api/images/<32-hex-id>.<ext>
+apiRouter.get('/images/:filename', (req: Request, res: Response) => {
+  const filename = String(req.params.filename || '');
+  const imgMatch = filename.match(/^([0-9a-f]{32})\.(jpg|jpeg|png|webp|gif)$/i);
+  if (!imgMatch) {
+    return res.status(404).type('text/plain').send('Not Found');
+  }
+  const imgId = imgMatch[1].toLowerCase();
+  const ext = imgMatch[2].toLowerCase();
+  const extToMime: Record<string, string> = {
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    png: 'image/png',
+    webp: 'image/webp',
+    gif: 'image/gif',
+  };
+  const uploadsDir = path.join(process.cwd(), 'data', 'uploads');
+  const filePath = path.join(uploadsDir, `${imgId}.${ext}`);
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).type('text/plain').send('Not Found');
+  }
+  try {
+    const buf = fs.readFileSync(filePath);
+    res.removeHeader('Pragma');
+    res.removeHeader('Expires');
+    res.setHeader('Content-Type', extToMime[ext] || 'application/octet-stream');
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    if (req.method === 'HEAD') {
+      return res.status(200).end();
+    }
+    return res.status(200).end(buf);
+  } catch {
+    return res.status(404).type('text/plain').send('Not Found');
+  }
+});
+
 // ----------------------------------------------------
 // Admin Auth & Management APIs
 // ----------------------------------------------------
@@ -141,6 +181,61 @@ apiRouter.post('/admin/login', (req: Request, res: Response) => {
 
   return res.status(401).json({ error: '管理員認證密碼不符' });
 });
+
+apiRouter.post(
+  '/admin/upload-image',
+  requireAdmin,
+  express.raw({ type: '*/*', limit: '6mb' }),
+  (req: Request, res: Response) => {
+    try {
+      const rawContentType = String(req.headers['content-type'] || '')
+        .split(';')[0]
+        .trim()
+        .toLowerCase();
+      const mimeToExt: Record<string, string> = {
+        'image/jpeg': 'jpg',
+        'image/png': 'png',
+        'image/webp': 'webp',
+        'image/gif': 'gif',
+      };
+      const ext = mimeToExt[rawContentType];
+      if (!ext) {
+        return res.status(400).json({ error: '僅支援上傳 JPG、PNG、WebP 或 GIF 圖片格式（不支援 SVG）' });
+      }
+
+      const maxBytes = 5 * 1024 * 1024;
+      const contentLengthHeader = req.headers['content-length'];
+      if (contentLengthHeader && Number(contentLengthHeader) > maxBytes) {
+        return res.status(413).json({ error: '圖片檔案大小不得超過 5MB' });
+      }
+
+      const buf = Buffer.isBuffer(req.body) ? req.body : null;
+      if (!buf || buf.length === 0) {
+        return res.status(400).json({ error: '上傳的圖片內容為空' });
+      }
+      if (buf.length > maxBytes) {
+        return res.status(413).json({ error: '圖片檔案大小不得超過 5MB' });
+      }
+
+      const id = crypto.randomBytes(16).toString('hex');
+      const uploadsDir = path.join(process.cwd(), 'data', 'uploads');
+      fs.mkdirSync(uploadsDir, { recursive: true });
+      fs.writeFileSync(path.join(uploadsDir, `${id}.${ext}`), buf);
+
+      const protocol = (req.headers['x-forwarded-proto'] as string)?.split(',')[0]?.trim() || req.protocol || 'http';
+      const host = req.get('host') || `localhost:${PORT}`;
+      const origin = `${protocol}://${host}`;
+
+      return res.json({
+        success: true,
+        url: `${origin}/api/images/${id}.${ext}`,
+        size: buf.length,
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || '圖片上傳失敗' });
+    }
+  }
+);
 
 apiRouter.get('/admin/data', requireAdmin, (req: Request, res: Response) => {
   try {

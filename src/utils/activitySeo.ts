@@ -112,7 +112,8 @@ export interface PeakImportItem {
   coverImage?: string;
   requiredGear?: string; // 行前必備裝備(多行,空行分段)
   safetyNotes?: string; // 安全須知(多行,空行分段)
-  itinerary?: { requiredGear?: string; safetyNotes?: string }; // 也可寫在 itinerary 內
+  subtitle?: string; // 副標題
+  itinerary?: { subtitle?: string; requiredGear?: string; safetyNotes?: string }; // 也可寫在 itinerary 內
   overwrite?: boolean; // true 時,用匯入的非空值取代既有內容
 }
 
@@ -196,6 +197,7 @@ export function processBatchImportActivities(
     const incomingContent = String(rawItem.content || '').trim();
     const incomingSeoTitle = String(rawItem.seoTitle || '').trim();
     const incomingMetaDescription = String(rawItem.metaDescription ?? rawItem.seoDescription ?? '').trim();
+    const incomingSubtitle = String(rawItem.subtitle ?? rawItem.itinerary?.subtitle ?? '').trim();
     const incomingGear = String(rawItem.requiredGear ?? rawItem.itinerary?.requiredGear ?? '')
       .replace(/\r\n?/g, '\n')
       .trim();
@@ -248,10 +250,14 @@ export function processBatchImportActivities(
         matched.coverImage = incomingCoverImage;
         changed = true;
       }
-      if (incomingGear || incomingSafety) {
+      if (incomingSubtitle || incomingGear || incomingSafety) {
         // 複製一份再修改,避免預覽(mutate=false)時改到原本資料的 itinerary 物件
         const it: any = matched.itinerary ? { ...matched.itinerary } : { enabled: true, days: [] };
         let itChanged = false;
+        if (incomingSubtitle && (overwrite || !(it.subtitle || '').trim()) && it.subtitle !== incomingSubtitle) {
+          it.subtitle = incomingSubtitle;
+          itChanged = true;
+        }
         if (incomingGear && (overwrite || !(it.requiredGear || '').trim()) && it.requiredGear !== incomingGear) {
           it.requiredGear = incomingGear;
           itChanged = true;
@@ -304,8 +310,14 @@ export function processBatchImportActivities(
       ogImage: incomingOgImage || undefined,
       coverImage: incomingCoverImage || undefined,
       itinerary:
-        incomingGear || incomingSafety
-          ? { enabled: true, requiredGear: incomingGear || undefined, safetyNotes: incomingSafety || undefined, days: [] }
+        incomingSubtitle || incomingGear || incomingSafety
+          ? {
+              enabled: true,
+              subtitle: incomingSubtitle || undefined,
+              requiredGear: incomingGear || undefined,
+              safetyNotes: incomingSafety || undefined,
+              days: [],
+            }
           : undefined,
       sortOrder: Number(rawItem.sortOrder ?? rawItem.no ?? idx + 1) || 0,
       externalUrl: '',

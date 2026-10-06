@@ -108,6 +108,50 @@ export async function handleApiRequest(
     }
   }
 
+  // Public Image Serving: GET/HEAD /api/images/<32-hex-id>.<ext>
+  if (path.startsWith('/api/images/')) {
+    if (method !== 'GET' && method !== 'HEAD') {
+      return new Response('Not Found', { status: 404 });
+    }
+    const imgMatch = path.match(/^\/api\/images\/([0-9a-f]{32})\.(jpg|jpeg|png|webp|gif)$/i);
+    if (!imgMatch) {
+      return new Response('Not Found', { status: 404 });
+    }
+    const imgId = imgMatch[1].toLowerCase();
+    const ext = imgMatch[2].toLowerCase();
+    const extToMime: Record<string, string> = {
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      png: 'image/png',
+      webp: 'image/webp',
+      gif: 'image/gif',
+    };
+    if (!env.ASSOCIATION_DB || typeof env.ASSOCIATION_DB.getWithMetadata !== 'function') {
+      return new Response('Not Found', { status: 404 });
+    }
+    try {
+      const result = await env.ASSOCIATION_DB.getWithMetadata(`img_${imgId}`, 'arrayBuffer');
+      if (!result || !result.value) {
+        return new Response('Not Found', { status: 404 });
+      }
+      const contentType =
+        (result.metadata && typeof result.metadata.contentType === 'string' && result.metadata.contentType) ||
+        extToMime[ext] ||
+        'application/octet-stream';
+      return new Response(method === 'HEAD' ? null : result.value, {
+        status: 200,
+        headers: {
+          'Content-Type': contentType,
+          'Cache-Control': 'public, max-age=31536000, immutable',
+          'X-Content-Type-Options': 'nosniff',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
+    } catch {
+      return new Response('Not Found', { status: 404 });
+    }
+  }
+
   // Admin APIs
   if (path.startsWith('/api/admin/')) {
     // POST /api/admin/login
@@ -136,6 +180,57 @@ export async function handleApiRequest(
     // Require Auth for all other admin routes
     if (!verifyAdmin(request, env)) {
       return jsonResponse({ error: '未授權存取：請先登入後台管理系統' }, 401);
+    }
+
+    // POST /api/admin/upload-image
+    if (path === '/api/admin/upload-image' && method === 'POST') {
+      try {
+        const rawContentType = (request.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
+        const mimeToExt: Record<string, string> = {
+          'image/jpeg': 'jpg',
+          'image/png': 'png',
+          'image/webp': 'webp',
+          'image/gif': 'gif',
+        };
+        const ext = mimeToExt[rawContentType];
+        if (!ext) {
+          return jsonResponse({ error: '僅支援上傳 JPG、PNG、WebP 或 GIF 圖片格式（不支援 SVG）' }, 400);
+        }
+
+        const maxBytes = 5 * 1024 * 1024;
+        const contentLengthHeader = request.headers.get('Content-Length');
+        if (contentLengthHeader && Number(contentLengthHeader) > maxBytes) {
+          return jsonResponse({ error: '圖片檔案大小不得超過 5MB' }, 413);
+        }
+
+        const buffer = await request.arrayBuffer();
+        if (!buffer || buffer.byteLength === 0) {
+          return jsonResponse({ error: '上傳的圖片內容為空' }, 400);
+        }
+        if (buffer.byteLength > maxBytes) {
+          return jsonResponse({ error: '圖片檔案大小不得超過 5MB' }, 413);
+        }
+
+        if (!env.ASSOCIATION_DB) {
+          return jsonResponse({ error: '系統尚未綁定 Cloudflare KV (ASSOCIATION_DB)，無法儲存圖片' }, 500);
+        }
+
+        const randomBytes = new Uint8Array(16);
+        crypto.getRandomValues(randomBytes);
+        const id = Array.from(randomBytes, (b) => b.toString(16).padStart(2, '0')).join('');
+
+        await env.ASSOCIATION_DB.put(`img_${id}`, buffer, {
+          metadata: { contentType: rawContentType },
+        });
+
+        return jsonResponse({
+          success: true,
+          url: `${url.origin}/api/images/${id}.${ext}`,
+          size: buffer.byteLength,
+        });
+      } catch (err: any) {
+        return jsonResponse({ error: err.message || '圖片上傳失敗' }, 500);
+      }
     }
 
     // GET /api/admin/data

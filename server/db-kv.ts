@@ -8,7 +8,15 @@ export interface KVNamespaceLike {
   get(key: string, type: 'text'): Promise<string | null>;
   get(key: string, type: 'json'): Promise<any | null>;
   get(key: string): Promise<string | null>;
-  put(key: string, value: string): Promise<void>;
+  getWithMetadata?(
+    key: string,
+    type: 'arrayBuffer'
+  ): Promise<{ value: ArrayBuffer | null; metadata: Record<string, any> | null }>;
+  put(
+    key: string,
+    value: string | ArrayBuffer,
+    options?: { metadata?: Record<string, unknown> }
+  ): Promise<void>;
   delete(key: string): Promise<void>;
 }
 

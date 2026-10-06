@@ -47,6 +47,7 @@ import {
   type BatchImportResult,
 } from '../utils/activitySeo.js';
 import { PEAK_INTRO_PARAGRAPHS } from './NavActivitiesView.js';
+import { ImageUploadButton } from './ImageUploadButton.js';
 import peaksTop100Data from '../../data/peaks-top100.json';
 import {
   calculateDaysFromDates
@@ -1226,6 +1227,13 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                     }
                     placeholder="https://..."
                     className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                  />
+                  <ImageUploadButton
+                    token={token}
+                    value={editingChapter.coverImage || ''}
+                    onUploaded={(url) =>
+                      setEditingChapter((prev) => (prev ? { ...prev, coverImage: url } : prev))
+                    }
                   />
                 </div>
 
@@ -3288,6 +3296,15 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                                   }
                                   placeholder="https://images.unsplash.com/... 或相片網址"
                                   className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 font-mono text-[11px]"
+                                />
+                                <ImageUploadButton
+                                  token={token}
+                                  value={editingNavButtonActivity.coverImage || ''}
+                                  onUploaded={(url) =>
+                                    setEditingNavButtonActivity((prev) =>
+                                      prev ? { ...prev, coverImage: url } : prev
+                                    )
+                                  }
                                 />
                               </div>
 

@@ -59,7 +59,9 @@ const PEAK_GROUP_GLOSSARY: Array<[string, string]> = [
   ['八小巒', '山頂矮小、坡度緩，常在縱走途中順登的山。'],
   ['六易', '山勢和緩、緊鄰山徑，容易順道登頂的山。'],
   ['六肩稜', '靠近高峰、形如平肩的稜線山頭。'],
-  ['七峭 / 八瘦 / 九偏', '分別指山勢峭拔、山脊狹長瘦削、位置偏遠需專程前往的山。'],
+  ['七峭', '山勢峭拔的山。'],
+  ['八瘦', '山脊狹長瘦削的山。'],
+  ['九偏', '位置偏遠、需專程前往的山。'],
 ];
 
 interface PeakRow {
@@ -109,10 +111,14 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
     activities.length > 0 && PEAK_TABLE_TITLE_KEYWORDS.some((k) => (button.title || '').includes(k));
 
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir } | null>(null);
+  const [groupFilter, setGroupFilter] = useState<string | null>(null);
 
   const peakRows = useMemo<PeakRow[]>(() => {
     if (!isPeakTable) return [];
-    const rows = activities.map(parsePeakTitle);
+    const allRows = activities.map(parsePeakTitle);
+    const rows = groupFilter
+      ? allRows.filter((r) => r.group.replace(/[-－]\d+$/, '').trim() === groupFilter)
+      : allRows;
     if (!sort) return rows; // 維持後台設定的排序
     const factor = sort.dir === 'asc' ? 1 : -1;
     return rows
@@ -126,7 +132,7 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
         return av === bv ? a.i - b.i : (av - bv) * factor;
       })
       .map((x) => x.r);
-  }, [isPeakTable, activities, sort]);
+  }, [isPeakTable, activities, groupFilter, sort]);
 
   // 同一欄位：預設方向 → 反方向 → 取消排序
   const toggleSort = (key: SortKey) => {
@@ -162,7 +168,7 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
 
   return (
     <main
-      className={`${isPeakTable ? 'max-w-5xl' : 'max-w-4xl'} mx-auto px-4 sm:px-6 py-8`}
+      className={`${isPeakTable ? 'max-w-5xl px-2' : 'max-w-4xl px-4'} mx-auto sm:px-6 py-8`}
       aria-label={`${button.title}活動清單`}
     >
       {/* Breadcrumb / Back button */}
@@ -205,7 +211,7 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
       {isPeakTable && (
         <section
           aria-labelledby="peak-intro-heading"
-          className="mb-8 rounded-lg border border-neutral-800 bg-neutral-900/50 p-5 sm:p-6"
+          className="mb-8 rounded-lg border border-neutral-800 bg-neutral-900/50 p-3 sm:p-6"
         >
           <h2
             id="peak-intro-heading"
@@ -238,12 +244,34 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
               <ChevronDown size={14} className="transition-transform group-open:rotate-180" />
             </summary>
             <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 px-3 pb-3 pt-1 text-xs sm:text-sm">
-              {PEAK_GROUP_GLOSSARY.map(([label, desc]) => (
-                <div key={label} className="flex gap-2">
-                  <dt className="shrink-0 font-bold text-emerald-400 w-14 sm:w-auto sm:min-w-[3.5rem]">{label}</dt>
-                  <dd className="text-neutral-400 leading-relaxed">{desc}</dd>
-                </div>
-              ))}
+              {PEAK_GROUP_GLOSSARY.map(([label, desc]) => {
+                const isSelected = groupFilter === label;
+                return (
+                  <div key={label} className="flex items-start gap-2">
+                    <dt className="shrink-0">
+                      <button
+                        type="button"
+                        aria-pressed={isSelected}
+                        onClick={() => {
+                          setGroupFilter((prev) => (prev === label ? null : label));
+                          document.getElementById('peak-list-section')?.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'start',
+                          });
+                        }}
+                        className={`shrink-0 min-w-[3.5rem] font-bold border rounded px-2 py-0.5 transition-colors ${
+                          isSelected
+                            ? 'bg-emerald-600 text-white border-emerald-600'
+                            : 'text-emerald-400 border-neutral-700'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    </dt>
+                    <dd className="text-neutral-400 leading-relaxed">{desc}</dd>
+                  </div>
+                );
+              })}
             </dl>
           </details>
         </section>
@@ -319,130 +347,160 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
 
       {/* 百岳總表：維基百科式表格 */}
       {isPeakTable ? (
-        <section aria-label="百岳總表">
+        <section id="peak-list-section" aria-label="百岳總表">
           <div className="flex items-end justify-between mb-2 px-0.5">
             <h2 className="text-base sm:text-lg font-bold text-neutral-100">百岳列表</h2>
-            <span className="text-xs text-neutral-500">共 {peakRows.length} 座</span>
+            <div className="text-right">
+              <span className="text-xs text-neutral-500">共 {peakRows.length} 座</span>
+              {groupFilter && (
+                <div className="text-xs text-neutral-400 mt-0.5">
+                  篩選：{groupFilter}　
+                  <button
+                    type="button"
+                    onClick={() => setGroupFilter(null)}
+                    className="text-emerald-400 hover:text-emerald-300 underline underline-offset-2"
+                  >
+                    清除
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
-          <div className="overflow-x-auto rounded-lg border border-neutral-800">
-            <table className="w-full table-auto border-collapse text-sm">
-              <caption className="sr-only">{button.title}：編號、山名、標高、所屬國家公園、群組、備註與行程連結</caption>
-              <thead className="bg-neutral-800/70 text-neutral-200">
-                <tr>
-                  <th scope="col" aria-sort={ariaSort('no')} className="px-3 py-2.5 text-center font-bold whitespace-nowrap w-16 min-w-[3.5rem]">
-                    <button
-                      type="button"
-                      onClick={() => toggleSort('no')}
-                      className="inline-flex justify-center items-center gap-1 hover:text-emerald-400 transition-colors"
-                      title="依編號排序"
-                    >
-                      <span>#</span>
-                      <SortIcon k="no" />
-                    </button>
-                  </th>
-                  <th scope="col" className="px-3 py-2.5 text-left font-bold whitespace-nowrap min-w-[8em]">
-                    山名
-                  </th>
-                  <th scope="col" aria-sort={ariaSort('elevation')} className="px-3 py-2.5 text-center font-bold whitespace-nowrap min-w-[6.5rem]">
-                    <button
-                      type="button"
-                      onClick={() => toggleSort('elevation')}
-                      className="inline-flex justify-center items-center gap-1 hover:text-emerald-400 transition-colors"
-                      title="依標高排序"
-                    >
-                      <span>標高（公尺）</span>
-                      <SortIcon k="elevation" />
-                    </button>
-                  </th>
-                  <th scope="col" className="hidden sm:table-cell px-3 py-2.5 text-center font-bold whitespace-nowrap min-w-[7rem]">
-                    所屬國家公園
-                  </th>
-                  <th scope="col" className="px-3 py-2.5 text-center font-bold whitespace-nowrap min-w-[5rem]">
-                    群組
-                  </th>
-                  <th scope="col" className="hidden md:table-cell w-full min-w-[320px] px-3 py-2.5 text-left font-bold">
-                    備註
-                  </th>
-                  <th scope="col" className="w-[110px] min-w-[110px] shrink-0 pl-4 pr-3 py-2.5 text-right font-bold whitespace-nowrap">
-                    <span className="sr-only">行程連結</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
+          {peakRows.length === 0 ? (
+            <p className="py-8 text-center text-sm text-neutral-400">
+              此群組目前沒有項目　
+              <button
+                type="button"
+                onClick={() => setGroupFilter(null)}
+                className="text-emerald-400 hover:text-emerald-300 underline underline-offset-2"
+              >
+                清除篩選
+              </button>
+            </p>
+          ) : (
+            <div className="overflow-x-auto rounded-lg border border-neutral-800">
+              <table className="w-full table-auto border-collapse text-sm">
+                <caption className="sr-only">{button.title}：編號、山名、標高、所屬國家公園、群組、備註與行程連結</caption>
+                <thead className="bg-neutral-800/70 text-neutral-200">
+                  <tr>
+                    <th scope="col" aria-sort={ariaSort('no')} className="px-1.5 sm:px-3 py-2.5 text-center text-xs sm:text-sm font-bold whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={() => toggleSort('no')}
+                        className="inline-flex justify-center items-center gap-1 hover:text-emerald-400 transition-colors"
+                        title="依編號排序"
+                      >
+                        <span>#</span>
+                        <SortIcon k="no" />
+                      </button>
+                    </th>
+                    <th scope="col" className="px-1.5 sm:px-3 py-2.5 text-left font-bold">
+                      山名
+                    </th>
+                    <th scope="col" aria-sort={ariaSort('elevation')} className="px-1.5 sm:px-3 py-2.5 text-center font-bold whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={() => toggleSort('elevation')}
+                        className="inline-flex justify-center items-center gap-1 hover:text-emerald-400 transition-colors"
+                        title="依標高排序"
+                      >
+                        <span>
+                          標高<span className="hidden sm:inline">（公尺）</span>
+                        </span>
+                        <SortIcon k="elevation" />
+                      </button>
+                    </th>
+                    <th scope="col" className="hidden sm:table-cell px-1.5 sm:px-3 py-2.5 text-center font-bold whitespace-nowrap">
+                      所屬國家公園
+                    </th>
+                    <th scope="col" className="px-1.5 sm:px-3 py-2.5 text-center text-xs sm:text-sm font-bold whitespace-nowrap">
+                      群組
+                    </th>
+                    <th scope="col" className="hidden md:table-cell w-full px-1.5 sm:px-3 py-2.5 text-left font-bold">
+                      備註
+                    </th>
+                    <th scope="col" className="px-1.5 sm:px-3 py-2.5 text-right font-bold whitespace-nowrap">
+                      <span className="sr-only">行程連結</span>
+                    </th>
+                  </tr>
+                </thead>
                 {peakRows.map(({ activity, no, name, elevation, group }) => {
                   const hasContent = Boolean((activity.content || '').trim());
                   return (
-                    <tr
+                    <tbody
                       key={activity.id}
-                      className="border-t border-neutral-800 odd:bg-neutral-900/40 even:bg-neutral-900/10 hover:bg-neutral-800/50 transition-colors align-top"
+                      className="border-t border-neutral-800 odd:bg-neutral-900/40 even:bg-neutral-900/10 hover:bg-neutral-800/50 transition-colors"
                     >
-                      <td className="px-3 py-2.5 text-center text-neutral-500 tabular-nums whitespace-nowrap w-16 min-w-[3.5rem]">
-                        {no != null ? String(no).padStart(3, '0') : '—'}
-                      </td>
+                      <tr className="align-top">
+                        <td className="px-1.5 sm:px-3 py-2.5 text-center text-xs sm:text-sm text-neutral-500 tabular-nums whitespace-nowrap">
+                          {no != null ? String(no).padStart(3, '0') : '—'}
+                        </td>
 
-                      <td className="px-3 py-2.5 text-left font-bold text-neutral-100 whitespace-nowrap min-w-[8em]">
-                        {onSelectActivity && hasContent ? (
-                          <a
-                            href={detailHref(activity.slug)}
-                            onClick={(e) => {
-                              if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
-                              e.preventDefault();
-                              onSelectActivity(activity.slug);
-                            }}
-                            className="inline-flex items-center gap-1 whitespace-nowrap transition-colors underline decoration-neutral-600 underline-offset-4 hover:decoration-emerald-400 hover:text-emerald-400"
-                            title="查看詳細資訊"
-                          >
-                            <span>{name}</span>
-                            <ChevronRight size={14} className="text-neutral-500 shrink-0" />
-                          </a>
-                        ) : (
-                          name
-                        )}
-                        {/* 手機版：簡介收在山名下方 */}
-                        {activity.description && (
-                          <p className="md:hidden mt-1 text-xs font-normal text-neutral-400 leading-relaxed line-clamp-2 whitespace-normal">
+                        <td className="px-1.5 sm:px-3 py-2.5 text-left font-bold text-neutral-100">
+                          {onSelectActivity && hasContent ? (
+                            <a
+                              href={detailHref(activity.slug)}
+                              onClick={(e) => {
+                                if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+                                e.preventDefault();
+                                onSelectActivity(activity.slug);
+                              }}
+                              className="inline-flex items-center gap-1 transition-colors underline decoration-neutral-600 underline-offset-4 hover:decoration-emerald-400 hover:text-emerald-400"
+                              title="查看詳細資訊"
+                            >
+                              <span>{name}</span>
+                              <ChevronRight size={14} className="text-neutral-500 shrink-0" />
+                            </a>
+                          ) : (
+                            name
+                          )}
+                        </td>
+
+                        <td className="px-1.5 sm:px-3 py-2.5 text-center text-neutral-200 tabular-nums whitespace-nowrap">
+                          {elevation != null ? elevation.toLocaleString('en-US') : ''}
+                        </td>
+
+                        <td className="hidden sm:table-cell px-1.5 sm:px-3 py-2.5 text-center text-neutral-300 whitespace-nowrap">
+                          {activity.nationalPark || ''}
+                        </td>
+
+                        <td className="px-1.5 sm:px-3 py-2.5 text-center text-xs sm:text-sm text-neutral-300 whitespace-nowrap">{group}</td>
+
+                        <td className="hidden md:table-cell w-full px-1.5 sm:px-3 py-2.5 text-left text-xs text-neutral-400 leading-relaxed whitespace-normal break-words">
+                          <span className="whitespace-normal break-words">
                             {activity.description}
-                          </p>
-                        )}
-                      </td>
+                          </span>
+                        </td>
 
-                      <td className="px-3 py-2.5 text-center text-neutral-200 tabular-nums whitespace-nowrap min-w-[6.5rem]">
-                        {elevation != null ? elevation.toLocaleString('en-US') : ''}
-                      </td>
-
-                      <td className="hidden sm:table-cell px-3 py-2.5 text-center text-neutral-300 whitespace-nowrap min-w-[7rem]">
-                        {activity.nationalPark || ''}
-                      </td>
-
-                      <td className="px-3 py-2.5 text-center text-neutral-300 whitespace-nowrap min-w-[5rem]">{group}</td>
-
-                      <td className="hidden md:table-cell w-full min-w-[320px] px-3 py-2.5 text-left text-xs text-neutral-400 leading-relaxed whitespace-normal break-words">
-                        <span className="whitespace-normal break-words">
-                          {activity.description}
-                        </span>
-                      </td>
-
-                      <td className="w-[110px] min-w-[110px] shrink-0 pl-4 pr-3 py-2.5 text-right whitespace-nowrap">
-                        {activity.externalUrl && (
-                          <a
-                            href={normalizeUrl(activity.externalUrl)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition-colors shadow-sm"
-                            aria-label={`查看${name}行程（開新視窗）`}
-                          >
-                            <span>查看行程</span>
-                            <ExternalLink size={13} className="text-emerald-200" />
-                          </a>
-                        )}
-                      </td>
-                    </tr>
+                        <td className="px-1.5 sm:px-3 py-2.5 text-right whitespace-nowrap">
+                          {activity.externalUrl && (
+                            <a
+                              href={normalizeUrl(activity.externalUrl)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 px-2 py-1 sm:px-3 sm:py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition-colors shadow-sm"
+                              aria-label={`查看${name}行程（開新視窗）`}
+                            >
+                              <span>查看行程</span>
+                              <ExternalLink size={13} className="hidden sm:inline text-emerald-200" />
+                            </a>
+                          )}
+                        </td>
+                      </tr>
+                      {activity.description && (
+                        <tr className="md:hidden">
+                          <td colSpan={5} className="px-2 pb-2.5 pt-0 text-xs leading-relaxed text-neutral-400">
+                            {activity.description}
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
                   );
                 })}
-              </tbody>
-            </table>
-          </div>
+              </table>
+            </div>
+          )}
         </section>
       ) : (
         <>

@@ -11,6 +11,39 @@ interface IntroViewProps {
   onSelectChapter?: (slug: string) => void;
 }
 
+/** 只允許站內連結（/ 開頭或 https://amazon-hike.com），避免導讀內文被塞入外部或危險連結 */
+function isSafeGuideHref(href: string): boolean {
+  return /^\/(?!\/)/.test(href) || /^https:\/\/amazon-hike\.com(\/|$)/i.test(href);
+}
+
+/** 將導讀內文中的 [文字](網址) 轉為連結，其餘維持純文字（不使用 dangerouslySetInnerHTML） */
+function renderGuideParagraph(text: string): React.ReactNode[] {
+  const nodes: React.ReactNode[] = [];
+  const re = /\[([^\]]+)\]\(([^)\s]+)\)/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  let i = 0;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) nodes.push(text.slice(last, m.index));
+    if (isSafeGuideHref(m[2])) {
+      nodes.push(
+        <a
+          key={`g-${i++}`}
+          href={m[2]}
+          className="text-emerald-400 underline underline-offset-2 hover:text-emerald-300"
+        >
+          {m[1]}
+        </a>
+      );
+    } else {
+      nodes.push(m[1]);
+    }
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) nodes.push(text.slice(last));
+  return nodes;
+}
+
 export const IntroView: React.FC<IntroViewProps> = ({
   chapters = [],
   intros = [],
@@ -19,6 +52,10 @@ export const IntroView: React.FC<IntroViewProps> = ({
 }) => {
   // Prefer chapters if available, otherwise fallback to intros if any
   const hasChapters = chapters.length > 0;
+
+  // 導讀置頂：pinned 的項目獨立顯示在最上方，不放入一般卡片列表
+  const pinnedIntros = intros.filter((i) => i.pinned);
+  const listIntros = intros.filter((i) => !i.pinned);
 
   return (
     <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6" aria-label="登山入門專區">
@@ -46,17 +83,55 @@ export const IntroView: React.FC<IntroViewProps> = ({
               登山入門
             </h1>
             <p className="text-xs text-neutral-400 mt-0.5">
-              高山健行觀念、裝備配置與山林實用常識專題指南（共 {chapters.length || intros.length} 講）
+              高山健行觀念、裝備配置與山林實用常識專題指南（共 {chapters.length || listIntros.length} 講）
             </p>
           </div>
         </div>
       </div>
 
+      {/* 導讀（置頂） */}
+      {pinnedIntros.map((guide) => {
+        const paragraphs = (guide.content || guide.description || '')
+          .split(/\n{2,}/)
+          .map((t) => t.trim())
+          .filter(Boolean);
+        return (
+          <section
+            key={guide.id}
+            id={`intro-guide-${guide.id}`}
+            aria-label="登山入門導讀"
+            className="mb-6 rounded border border-emerald-900/60 bg-emerald-950/20 p-5 sm:p-6"
+          >
+            <h2 className="text-base sm:text-lg font-bold text-emerald-300 mb-3">
+              {guide.title}
+            </h2>
+            <div className="space-y-3 text-sm text-neutral-300 leading-relaxed">
+              {paragraphs.map((para, idx) => (
+                <p key={idx} className="whitespace-pre-line">
+                  {renderGuideParagraph(para)}
+                </p>
+              ))}
+            </div>
+            {guide.url && (
+              <a
+                href={normalizeUrl(guide.url) || '#'}
+                className="inline-flex items-center gap-1 mt-4 text-xs font-semibold text-emerald-400 hover:text-emerald-300"
+              >
+                <span>延伸閱讀</span>
+                <ChevronRight size={14} />
+              </a>
+            )}
+          </section>
+        );
+      })}
+
       {/* Chapters / Articles List */}
-      {!hasChapters && intros.length === 0 ? (
+      {!hasChapters && listIntros.length === 0 ? (
+        pinnedIntros.length > 0 ? null : (
         <div className="p-12 text-center text-xs text-neutral-500 border border-neutral-800 rounded bg-neutral-900/40">
           目前暫無登山入門專文資料
         </div>
+        )
       ) : hasChapters ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {chapters.map((item) => {
@@ -112,7 +187,7 @@ export const IntroView: React.FC<IntroViewProps> = ({
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {intros.map((item) => {
+          {listIntros.map((item) => {
             const url = normalizeUrl(item.url);
             return (
               <a

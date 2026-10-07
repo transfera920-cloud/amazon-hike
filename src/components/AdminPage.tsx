@@ -1447,13 +1447,18 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                     內容
                   </label>
                   <textarea
-                    rows={4}
+                    rows={editingIntro.pinned ? 14 : 4}
                     value={editingIntro.content || ''}
                     onChange={(e) =>
                       setEditingIntro({ ...editingIntro, content: e.target.value })
                     }
                     className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
                   />
+                  {editingIntro.pinned && (
+                    <p className="text-[11px] text-neutral-500 mt-1">
+                      導讀內文：空一行分段；連結寫法 [文字](/chapter02/)
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -1509,6 +1514,27 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                       啟用顯示
                     </label>
                   </div>
+
+                  <div className="flex items-center gap-2 mt-5">
+                    <input
+                      type="checkbox"
+                      id="intro-pinned"
+                      checked={editingIntro.pinned ?? false}
+                      onChange={(e) =>
+                        setEditingIntro({
+                          ...editingIntro,
+                          pinned: e.target.checked,
+                        })
+                      }
+                      className="rounded border-neutral-700 text-emerald-600 focus:ring-0"
+                    />
+                    <label
+                      htmlFor="intro-pinned"
+                      className="text-neutral-300 font-medium"
+                    >
+                      導讀置頂（顯示在頁面最上方）
+                    </label>
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-2 pt-3">
@@ -1549,6 +1575,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                       <span className="font-bold text-neutral-100">
                         {item.title}
                       </span>
+                      {item.pinned && (
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-300 border border-emerald-800">
+                          導讀置頂
+                        </span>
+                      )}
                       {!item.enabled && (
                         <span className="text-[10px] px-1.5 py-0.2 rounded bg-rose-950 text-rose-300 border border-rose-800">
                           已停用

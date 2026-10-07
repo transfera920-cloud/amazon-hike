@@ -324,6 +324,7 @@ export async function handleApiRequest(
           url: (item.url || '').trim(),
           enabled: item.enabled ?? true,
           sortOrder: Number(item.sortOrder) || 0,
+          pinned: item.pinned === true,
         };
         const idx = db.intros.findIndex((i) => i.id === cleanItem.id);
         if (idx >= 0) db.intros[idx] = cleanItem;

@@ -18,6 +18,8 @@ export interface IntroItem {
   url: string;
   enabled: boolean;
   sortOrder: number;
+  /** 導讀置頂：為 true 時，顯示在 /intro 頁面最上方的導讀區塊，不再放入一般篇章卡片列表 */
+  pinned?: boolean;
 }
 
 export interface ToolItem {

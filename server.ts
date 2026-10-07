@@ -342,6 +342,7 @@ apiRouter.post('/admin/save-intro', requireAdmin, (req: Request, res: Response) 
       url: (item.url || '').trim(),
       enabled: item.enabled ?? true,
       sortOrder: Number(item.sortOrder) || 0,
+      pinned: item.pinned === true,
     };
 
     const existingIndex = db.intros.findIndex((i) => i.id === cleanItem.id);

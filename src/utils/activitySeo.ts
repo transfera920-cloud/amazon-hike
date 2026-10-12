@@ -65,7 +65,7 @@ export function resolveActivitySeo(
 ): { title: string; description: string; image: string } {
   const title =
     (activity.seoTitle || '').trim() ||
-    `${activity.title} | ${parentButton ? parentButton.title + ' - ' : ''}亞馬遜國家山岳協會 | Amazon Alpine Association`;
+    `${activity.title} | ${parentButton ? parentButton.title + ' | ' : ''}亞馬遜國家山岳協會`;
 
   const description =
     (activity.metaDescription || '').trim() ||
@@ -335,3 +335,37 @@ export function processBatchImportActivities(
   return { created, updated, skipped, errors };
 }
 
+
+
+/**
+ * 全站預設分享圖（1200x630，放在 public/og-default.png）。
+ * 頁面沒有自己的封面圖時，og:image / twitter:image 使用這張。
+ */
+export const DEFAULT_OG_IMAGE = 'https://amazon-hike.com/og-default.png';
+
+/**
+ * 預設章節資料（server/default-chapters.ts）每章共用的樣板句。
+ * 內文含這句代表該章還沒寫真正的內容。
+ */
+const SEED_CHAPTER_MARKER = '進入高山環境前，完善的知識累積與充足的事前準備是保障登山安全的第一步';
+
+/**
+ * 目前仍由「主站 Worker」自己渲染的章節。
+ * chapter05 以後已遷移成獨立專案、由 Cloudflare Route 導到別的 Worker，
+ * 主站資料庫裡那幾章只是占位資料，不能拿來判斷薄內容。
+ * 之後 chapter01~04 遷移完成，就從這個清單移除。
+ */
+export const MAIN_WORKER_CHAPTER_SLUGS = new Set(['chapter01', 'chapter02', 'chapter03', 'chapter04']);
+
+/**
+ * 主站自己渲染、而且內容仍是空白或預設樣板的章節 → 視為薄內容頁：
+ * 頁面加 noindex, follow，並且不放進 sitemap。
+ * 非 chapterNN 格式的 slug（/intro/xxx）一律視為由主站渲染。
+ */
+export function isThinMainChapter(chapter: { slug?: string; content?: string }): boolean {
+  const slug = String(chapter.slug || '').trim().toLowerCase();
+  const servedByMain = !CHAPTER_SLUG_RE.test(slug) || MAIN_WORKER_CHAPTER_SLUGS.has(slug);
+  if (!servedByMain) return false;
+  const body = (chapter.content || '').trim();
+  return !body || body.includes(SEED_CHAPTER_MARKER);
+}

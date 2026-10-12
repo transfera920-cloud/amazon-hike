@@ -169,35 +169,35 @@ async function runTests() {
     assert(resIntro.status === 200, 'Frontend SPA route /intro status is 200');
     assert(resIntro.headers.get('content-type')?.includes('text/html') === true, '/intro content-type is text/html');
     assert(textIntro.includes('<div id="root"'), '/intro returns SPA root element');
-    assert(textIntro.includes('登山入門指南 | 亞馬遜國家山岳協會 | Amazon Alpine Association'), '/intro has custom SEO title');
+    assert(textIntro.includes('登山入門指南 | 亞馬遜國家山岳協會'), '/intro has custom SEO title');
     assert(textIntro.includes('href="https://amazon-hike.com/intro"'), '/intro has custom canonical link');
     assert(textIntro.includes('content="https://amazon-hike.com/intro"'), '/intro has custom og:url');
 
     const resTools = await worker.fetch(new Request('http://localhost/tools'), env, {});
     const textTools = await resTools.text();
     assert(resTools.status === 200, 'Frontend SPA route /tools status is 200');
-    assert(textTools.includes('登山工具與氣象服務 | 亞馬遜國家山岳協會 | Amazon Alpine Association'), '/tools has custom SEO title');
+    assert(textTools.includes('登山工具與氣象服務 | 亞馬遜國家山岳協會'), '/tools has custom SEO title');
     assert(textTools.includes('href="https://amazon-hike.com/tools"'), '/tools has custom canonical link');
     assert(textTools.includes('content="https://amazon-hike.com/tools"'), '/tools has custom og:url');
 
     const resHighlights = await worker.fetch(new Request('http://localhost/highlights'), env, {});
     const textHighlights = await resHighlights.text();
     assert(resHighlights.status === 200, 'Frontend SPA route /highlights status is 200');
-    assert(textHighlights.includes('活動花絮影音專區 | 亞馬遜國家山岳協會 | Amazon Alpine Association'), '/highlights has custom SEO title');
+    assert(textHighlights.includes('活動花絮影音專區 | 亞馬遜國家山岳協會'), '/highlights has custom SEO title');
     assert(textHighlights.includes('href="https://amazon-hike.com/highlights"'), '/highlights has custom canonical link');
     assert(textHighlights.includes('content="https://amazon-hike.com/highlights"'), '/highlights has custom og:url');
 
     const resPolicies = await worker.fetch(new Request('http://localhost/policies'), env, {});
     const textPolicies = await resPolicies.text();
     assert(resPolicies.status === 200, 'Frontend SPA route /policies status is 200');
-    assert(textPolicies.includes('政策與章程條款 | 亞馬遜國家山岳協會 | Amazon Alpine Association'), '/policies has custom SEO title');
+    assert(textPolicies.includes('政策與章程條款 | 亞馬遜國家山岳協會'), '/policies has custom SEO title');
     assert(textPolicies.includes('href="https://amazon-hike.com/policies"'), '/policies has custom canonical link');
     assert(textPolicies.includes('content="https://amazon-hike.com/policies"'), '/policies has custom og:url');
 
     const resSurveys = await worker.fetch(new Request('http://localhost/surveys'), env, {});
     const textSurveys = await resSurveys.text();
     assert(resSurveys.status === 200, 'Frontend SPA route /surveys status is 200');
-    assert(textSurveys.includes('問卷調查專區 | 亞馬遜國家山岳協會 | Amazon Alpine Association'), '/surveys has custom SEO title');
+    assert(textSurveys.includes('問卷調查專區 | 亞馬遜國家山岳協會'), '/surveys has custom SEO title');
     assert(textSurveys.includes('href="https://amazon-hike.com/surveys"'), '/surveys has custom canonical link');
     assert(textSurveys.includes('content="https://amazon-hike.com/surveys"'), '/surveys has custom og:url');
 
@@ -245,11 +245,23 @@ async function runTests() {
     assert(resSitemap.status === 200, '/sitemap.xml status is 200');
     assert(textSitemap.includes('<urlset') && textSitemap.includes('<loc>https://amazon-hike.com/intro</loc>'), '/sitemap.xml contains URL list');
     assert(textSitemap.includes('<loc>https://amazon-hike.com/surveys</loc>'), '/sitemap.xml includes /surveys');
-    assert(textSitemap.includes('<loc>https://amazon-hike.com/chapter01/</loc>'), '/sitemap.xml includes /chapter01/');
+    // 主站自己渲染、內容仍是預設樣板的章節（chapter01~04）視為薄內容頁，不進 sitemap
+    assert(!textSitemap.includes('<loc>https://amazon-hike.com/chapter01/</loc>'), '/sitemap.xml excludes thin main-worker chapter01');
+    assert(!textSitemap.includes('<loc>https://amazon-hike.com/chapter04/</loc>'), '/sitemap.xml excludes thin main-worker chapter04');
+    // chapter05 以後由獨立 Worker 渲染，主站資料只是占位，不能被誤排除
+    assert(textSitemap.includes('<loc>https://amazon-hike.com/chapter05/</loc>'), '/sitemap.xml still includes separately-served chapter05');
     assert(textSitemap.includes('<loc>https://amazon-hike.com/chapter15/</loc>'), '/sitemap.xml includes /chapter15/');
     assert(textSitemap.includes('<loc>https://amazon-hike.com/chapter22/</loc>'), '/sitemap.xml includes /chapter22/');
     assert(textSitemap.includes('<loc>https://amazon-hike.com/chapter26/</loc>'), '/sitemap.xml includes /chapter26/');
     assert(!textSitemap.includes('/intro/chapter01'), '/sitemap.xml does not contain /intro/chapter01');
+    // 靜態頁不再帶不準確的 lastmod
+    const introBlock = textSitemap.split('<loc>https://amazon-hike.com/intro</loc>')[1].split('</url>')[0];
+    assert(!introBlock.includes('<lastmod>'), '/sitemap.xml static page /intro has no fake lastmod');
+    const homeBlock = textSitemap.split('<loc>https://amazon-hike.com/</loc>')[1].split('</url>')[0];
+    assert(!homeBlock.includes('<lastmod>'), '/sitemap.xml home has no fake lastmod');
+    // 章節本身有真實更新時間的仍保留 lastmod
+    const ch22Block = textSitemap.split('<loc>https://amazon-hike.com/chapter22/</loc>')[1].split('</url>')[0];
+    assert(ch22Block.includes('<lastmod>2026-03-20</lastmod>'), '/sitemap.xml keeps real lastmod for chapter22');
   }
 
   // 9-1. Chapter 301 Redirects and /intro Injected Links
@@ -286,7 +298,7 @@ async function runTests() {
     const res404 = await worker.fetch(new Request('http://localhost/intro/nonexistent-chapter'), env, {});
     const html404 = await res404.text();
     assert(res404.status === 404, '/intro/nonexistent-chapter returns HTTP 404 status');
-    assert(html404.includes('<title>找不到此章節 | 亞馬遜國家山岳協會 | Amazon Alpine Association</title>'), '/intro/nonexistent-chapter sets 404 title');
+    assert(html404.includes('<title>找不到此章節 | 亞馬遜國家山岳協會</title>'), '/intro/nonexistent-chapter sets 404 title');
     assert(html404.includes('找不到此章節'), '/intro/nonexistent-chapter includes 404 meta content in HTML');
 
     // /chapter26/ in KV returns 200 with article shell and canonical
@@ -295,6 +307,17 @@ async function runTests() {
     assert(resChapter26.status === 200, '/chapter26/ status is 200 when enabled in KV');
     assert(htmlChapter26.includes('第二十六篇：高山生態觀察指南'), '/chapter26/ HTML includes chapter title');
     assert(htmlChapter26.includes('href="https://amazon-hike.com/chapter26/"'), '/chapter26/ has canonical pointing to https://amazon-hike.com/chapter26/');
+
+    // 薄內容章節（主站渲染 + 預設樣板內容）：200，但 noindex, follow
+    const resChapter01 = await worker.fetch(new Request('http://localhost/chapter01/'), env, {});
+    const htmlChapter01 = await resChapter01.text();
+    assert(resChapter01.status === 200, '/chapter01/ (thin) still returns 200');
+    assert(htmlChapter01.includes('content="noindex, follow"'), '/chapter01/ (thin template content) has noindex, follow');
+    // 有真實內容的章節維持可索引
+    assert(!htmlChapter26.includes('content="noindex, follow"'), '/chapter26/ (real content) stays indexable');
+    // 沒有專屬圖片時使用全站預設分享圖
+    assert(htmlChapter26.includes('property="og:image" content="https://amazon-hike.com/og-default.png"'), '/chapter26/ falls back to default og:image');
+    assert(htmlChapter26.includes('name="twitter:image" content="https://amazon-hike.com/og-default.png"'), '/chapter26/ falls back to default twitter:image');
 
     // /chapter999/ absent from KV returns 404 with noindex, follow and canonical to home
     const resChapter999 = await worker.fetch(new Request('http://localhost/chapter999/'), env, {});
@@ -322,7 +345,7 @@ async function runTests() {
     const resUnknown = await worker.fetch(new Request('http://localhost/unknown-route'), env, {});
     const htmlUnknown = await resUnknown.text();
     assert(resUnknown.status === 404, 'Unknown path returns HTTP 404 status');
-    assert(htmlUnknown.includes('<title>找不到此頁面 | 亞馬遜國家山岳協會 | Amazon Alpine Association</title>'), 'Unknown path sets 404 title');
+    assert(htmlUnknown.includes('<title>找不到此頁面 | 亞馬遜國家山岳協會</title>'), 'Unknown path sets 404 title');
     assert(htmlUnknown.includes('content="noindex, follow"'), 'Unknown path has noindex, follow robots meta');
     assert(htmlUnknown.includes('href="https://amazon-hike.com/"'), 'Unknown path canonical points to home');
 

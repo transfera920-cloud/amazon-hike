@@ -16,6 +16,8 @@ import {
   resolveActivitySeo,
   resolveNavButtonDescription,
   CHAPTER_SLUG_SOURCE,
+  DEFAULT_OG_IMAGE,
+  isThinMainChapter,
 } from './utils/activitySeo.js';
 import type { AssociationDatabase, CalendarActivity } from './types.js';
 
@@ -328,27 +330,27 @@ export default function App() {
         description: '亞馬遜國家山岳協會（Amazon Alpine Association）官方入口網站與活動行事曆，提倡全民運動、鍛鍊強健體魄、培養互助團隊精神，以及接觸大自然與山林相關知識及技能。',
       },
       '/intro': {
-        title: '登山入門指南 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+        title: '登山入門指南 | 亞馬遜國家山岳協會',
         description: '專為登山新手與山友整理的登山入門指南，涵蓋高山裝備清單、行前體能鍛鍊、山林安全自保守則與無痕山林（LNT）準則，助您安全開啟山岳旅程。',
       },
       '/tools': {
-        title: '登山工具與氣象服務 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+        title: '登山工具與氣象服務 | 亞馬遜國家山岳協會',
         description: '登山實用數位工具與氣象服務專區，即時整合高山氣象預報、國家公園入山入園線上申辦、步道路況通報及離線地圖軌跡等數位資源。',
       },
       '/highlights': {
-        title: '活動花絮影音專區 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+        title: '活動花絮影音專區 | 亞馬遜國家山岳協會',
         description: '亞馬遜國家山岳協會歷年登山行程精選花絮與影音專區，收錄百岳縱走記錄、山友精彩回顧、自然風光縮時與活動實況影片分享。',
       },
       '/policies': {
-        title: '政策與章程條款 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+        title: '政策與章程條款 | 亞馬遜國家山岳協會',
         description: '亞馬遜國家山岳協會章程、活動報名規範、費用與退費標準、山域活動安全責任守則及個人資料保護聲明，維護全體山友權益。',
       },
       '/surveys': {
-        title: '問卷調查專區 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+        title: '問卷調查專區 | 亞馬遜國家山岳協會',
         description: '亞馬遜國家山岳協會意見回饋與問卷調查專區，歡迎山友填寫活動滿意度調查及山岳發展建議，共同打造優質山岳社群。',
       },
       '/admin': {
-        title: '後台管理系統 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+        title: '後台管理系統 | 亞馬遜國家山岳協會',
         description: '亞馬遜國家山岳協會後台管理系統。',
       },
     };
@@ -362,12 +364,12 @@ export default function App() {
       customCanonicalUrl = `${SITE_ORIGIN}/`;
       if (currentCategoryActivitySegments) {
         currentMeta = {
-          title: '找不到此活動 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+          title: '找不到此活動 | 亞馬遜國家山岳協會',
           description: '找不到該行程活動，可能已下架、網址錯誤或分類已異動。',
         };
       } else {
         currentMeta = {
-          title: '找不到此頁面 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+          title: '找不到此頁面 | 亞馬遜國家山岳協會',
           description: '很抱歉，您所尋找的頁面不存在或已被移除。請返回首頁或瀏覽其他專題專區。',
         };
       }
@@ -393,7 +395,7 @@ export default function App() {
       } else {
         customCanonicalUrl = `${SITE_ORIGIN}/route/${currentRouteActivity.slug}`;
         currentMeta = {
-          title: `${currentRouteActivity.title} | 亞馬遜國家山岳協會 | Amazon Alpine Association`,
+          title: `${currentRouteActivity.title} | 亞馬遜國家山岳協會`,
           description:
             currentRouteActivity.description ||
             `${currentRouteActivity.title} - 亞馬遜國家山岳協會登山行程活動說明與完整報名資訊。`,
@@ -403,7 +405,7 @@ export default function App() {
     } else if (!currentMeta && currentNavButton) {
       customCanonicalUrl = `${SITE_ORIGIN}/nav/${currentNavButton.id}`;
       currentMeta = {
-        title: `${currentNavButton.title} - 活動列表 | 亞馬遜國家山岳協會 | Amazon Alpine Association`,
+        title: `${currentNavButton.title} - 活動列表 | 亞馬遜國家山岳協會`,
         description: resolveNavButtonDescription(currentNavButton),
       };
     } else if (!currentMeta && currentChapter) {
@@ -420,7 +422,7 @@ export default function App() {
       is404 = true;
       customCanonicalUrl = `${SITE_ORIGIN}/`;
       currentMeta = {
-        title: '找不到此章節 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+        title: '找不到此章節 | 亞馬遜國家山岳協會',
         description: '抱歉，您所尋找的登山入門章節不存在或已被下架。',
       };
     } else if (!currentMeta) {
@@ -493,9 +495,9 @@ export default function App() {
       }
     }
 
-    // Update og:image & twitter:image: 只有存在合法 http/https 圖片網址時才設定
+    // Update og:image & twitter:image: 有頁面專屬的合法 http/https 圖片就用它，否則用全站預設分享圖
     const isValidHttpUrl = (s?: string) => Boolean(s && /^https?:\/\//i.test(s.trim()));
-    const validOgImage = isValidHttpUrl(currentMeta.ogImage) ? currentMeta.ogImage!.trim() : undefined;
+    const validOgImage = isValidHttpUrl(currentMeta.ogImage) ? currentMeta.ogImage!.trim() : DEFAULT_OG_IMAGE;
 
     let ogImageEl = document.querySelector('meta[property="og:image"]');
     let twitterImageEl = document.querySelector('meta[name="twitter:image"]');
@@ -513,9 +515,6 @@ export default function App() {
         document.head.appendChild(twitterImageEl);
       }
       twitterImageEl.setAttribute('content', validOgImage);
-    } else {
-      if (ogImageEl) ogImageEl.remove();
-      if (twitterImageEl) twitterImageEl.remove();
     }
 
     // Update robots meta tag: /admin 設為 noindex, nofollow；404 設為 noindex, follow
@@ -527,9 +526,10 @@ export default function App() {
     }
     const activeActivity = currentCategoryActivity || currentRouteActivity;
     const isThinActivity = Boolean(activeActivity && !(activeActivity.content || '').trim());
+    const isThinChapterPage = Boolean(currentChapter && isThinMainChapter(currentChapter));
     if (currentPath === '/admin') {
       robotsMeta.setAttribute('content', 'noindex, nofollow');
-    } else if (is404 || isThinActivity) {
+    } else if (is404 || isThinActivity || isThinChapterPage) {
       robotsMeta.setAttribute('content', 'noindex, follow');
     } else {
       robotsMeta.setAttribute('content', 'index, follow');

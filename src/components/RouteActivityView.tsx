@@ -29,7 +29,7 @@ export const RouteActivityView: React.FC<RouteActivityViewProps> = ({
   useEffect(() => {
     const pageTitle =
       (activity.seoTitle || '').trim() ||
-      `${activity.title} | ${parentButton ? parentButton.title + ' - ' : ''}亞馬遜國家山岳協會 | Amazon Alpine Association`;
+      `${activity.title} | ${parentButton ? parentButton.title + ' | ' : ''}亞馬遜國家山岳協會`;
     document.title = pageTitle;
 
     const metaDesc = document.querySelector('meta[name="description"]');

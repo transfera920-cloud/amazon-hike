@@ -7,6 +7,8 @@ import {
   resolveNavButtonDescription,
   CHAPTER_SLUG_RE,
   CHAPTER_SLUG_SOURCE,
+  DEFAULT_OG_IMAGE,
+  isThinMainChapter,
 } from '../src/utils/activitySeo.js';
 import type { NavButtonActivity } from '../src/types.js';
 
@@ -199,23 +201,23 @@ const ROUTE_META_MAP: Record<string, RouteMetadata> = {
     description: '亞馬遜國家山岳協會（Amazon Alpine Association）官方入口網站與活動行事曆，提倡全民運動、鍛鍊強健體魄、培養互助團隊精神，以及接觸大自然與山林相關知識及技能。',
   },
   '/intro': {
-    title: '登山入門指南 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+    title: '登山入門指南 | 亞馬遜國家山岳協會',
     description: '專為登山新手與山友整理的登山入門指南，涵蓋高山裝備清單、行前體能鍛鍊、山林安全自保守則與無痕山林（LNT）準則，助您安全開啟山岳旅程。',
   },
   '/tools': {
-    title: '登山工具與氣象服務 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+    title: '登山工具與氣象服務 | 亞馬遜國家山岳協會',
     description: '登山實用數位工具與氣象服務專區，即時整合高山氣象預報、國家公園入山入園線上申辦、步道路況通報及離線地圖軌跡等數位資源。',
   },
   '/highlights': {
-    title: '活動花絮影音專區 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+    title: '活動花絮影音專區 | 亞馬遜國家山岳協會',
     description: '亞馬遜國家山岳協會歷年登山行程精選花絮與影音專區，收錄百岳縱走記錄、山友精彩回顧、自然風光縮時與活動實況影片分享。',
   },
   '/policies': {
-    title: '政策與章程條款 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+    title: '政策與章程條款 | 亞馬遜國家山岳協會',
     description: '亞馬遜國家山岳協會章程、活動報名規範、費用與退費標準、山域活動安全責任守則及個人資料保護聲明，維護全體山友權益。',
   },
   '/surveys': {
-    title: '問卷調查專區 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+    title: '問卷調查專區 | 亞馬遜國家山岳協會',
     description: '亞馬遜國家山岳協會意見回饋與問卷調查專區，歡迎山友填寫活動滿意度調查及山岳發展建議，共同打造優質山岳社群。',
   },
 };
@@ -224,7 +226,7 @@ const ROUTE_META_MAP: Record<string, RouteMetadata> = {
  * 找不到頁面 (404) 的 Meta 資料
  */
 const NOT_FOUND_META: RouteMetadata = {
-  title: '找不到此頁面 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+  title: '找不到此頁面 | 亞馬遜國家山岳協會',
   description: '很抱歉，您所尋找的頁面不存在或已被移除。請返回首頁或瀏覽其他專題專區。',
 };
 
@@ -295,47 +297,19 @@ async function applyRouteMeta(
     }
 
     const isValidHttpUrl = (s?: string) => Boolean(s && /^https?:\/\//i.test(s.trim()));
-    const validImage = isValidHttpUrl(meta.image) ? meta.image!.trim() : undefined;
-
-    if (validImage) {
-      let ogImageHandled = false;
-      let twitterImageHandled = false;
-      rewriter = rewriter
-        .on('meta[property="og:image"]', {
-          element(e: any) {
-            e.setAttribute('content', validImage);
-            ogImageHandled = true;
-          },
-        })
-        .on('meta[name="twitter:image"]', {
-          element(e: any) {
-            e.setAttribute('content', validImage);
-            twitterImageHandled = true;
-          },
-        })
-        .on('head', {
-          element(e: any) {
-            if (!ogImageHandled) {
-              e.append(`<meta property="og:image" content="${escapeHtml(validImage)}" />`, { html: true });
-            }
-            if (!twitterImageHandled) {
-              e.append(`<meta name="twitter:image" content="${escapeHtml(validImage)}" />`, { html: true });
-            }
-          },
-        });
-    } else {
-      rewriter = rewriter
-        .on('meta[property="og:image"]', {
-          element(e: any) {
-            e.remove();
-          },
-        })
-        .on('meta[name="twitter:image"]', {
-          element(e: any) {
-            e.remove();
-          },
-        });
-    }
+    // 沒有頁面專屬圖片時改用全站預設分享圖；index.html 已內建 og:image / twitter:image 標籤
+    const validImage = isValidHttpUrl(meta.image) ? meta.image!.trim() : DEFAULT_OG_IMAGE;
+    rewriter = rewriter
+      .on('meta[property="og:image"]', {
+        element(e: any) {
+          e.setAttribute('content', validImage);
+        },
+      })
+      .on('meta[name="twitter:image"]', {
+        element(e: any) {
+          e.setAttribute('content', validImage);
+        },
+      });
 
     if (jsonLd) {
       rewriter = rewriter.on('head', {
@@ -405,9 +379,9 @@ async function applyRouteMeta(
   }
 
   const isValidHttpUrl = (s?: string) => Boolean(s && /^https?:\/\//i.test(s.trim()));
-  const validImage = isValidHttpUrl(meta.image) ? meta.image!.trim() : undefined;
+  const validImage = isValidHttpUrl(meta.image) ? meta.image!.trim() : DEFAULT_OG_IMAGE;
 
-  if (validImage) {
+  {
     const escapedImage = escapeHtml(validImage);
     if (/<meta\s+property=["']og:image["']/i.test(html)) {
       html = html.replace(/(<meta\s+property=["']og:image["']\s+content=["']).*?(["']\s*\/?>)/i, `$1${escapedImage}$2`);
@@ -419,9 +393,6 @@ async function applyRouteMeta(
     } else {
       html = html.replace(/<\/head>/i, () => `<meta name="twitter:image" content="${escapedImage}" /></head>`);
     }
-  } else {
-    html = html.replace(/<meta\s+property=["']og:image["'].*?\/?>\s*/gi, '');
-    html = html.replace(/<meta\s+name=["']twitter:image["'].*?\/?>\s*/gi, '');
   }
 
   if (jsonLd) {
@@ -473,7 +444,7 @@ Sitemap: https://amazon-hike.com/sitemap.xml
     if (pathname === '/sitemap.xml') {
       const db = await loadDatabaseWorker(env);
       const enabledChapters = (db.chapters || [])
-        .filter((c) => c.enabled)
+        .filter((c) => c.enabled && !isThinMainChapter(c))
         .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
 
       const chapterUrls = enabledChapters
@@ -535,45 +506,36 @@ Sitemap: https://amazon-hike.com/sitemap.xml
         })
         .join('\n');
 
-      const latestUpdate = [
-        ...enabledChapters.map((c) => c.updatedAt),
-        ...allEnabledActivities.map((a) => a.updatedAt),
-      ]
-        .filter(Boolean)
-        .sort()
-        .pop();
-      const siteLastmod = latestUpdate ? `\n    <lastmod>${latestUpdate}</lastmod>` : '';
-
       return new Response(
         `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://amazon-hike.com/</loc>${siteLastmod}
+    <loc>https://amazon-hike.com/</loc>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://amazon-hike.com/intro</loc>${siteLastmod}
+    <loc>https://amazon-hike.com/intro</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://amazon-hike.com/tools</loc>${siteLastmod}
+    <loc>https://amazon-hike.com/tools</loc>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://amazon-hike.com/highlights</loc>${siteLastmod}
+    <loc>https://amazon-hike.com/highlights</loc>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://amazon-hike.com/policies</loc>${siteLastmod}
+    <loc>https://amazon-hike.com/policies</loc>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
-    <loc>https://amazon-hike.com/surveys</loc>${siteLastmod}
+    <loc>https://amazon-hike.com/surveys</loc>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
@@ -676,7 +638,7 @@ ${activityUrls}
               // 找不到此章節或找到但 enabled 為 false
               isChapterNotFound = true;
               routeMeta = {
-                title: '找不到此章節 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+                title: '找不到此章節 | 亞馬遜國家山岳協會',
                 description: '很抱歉，您所尋找的登山入門專文不存在、已下架或網址錯誤。請返回登山入門專頁瀏覽其他專題文章。',
               };
             }
@@ -703,13 +665,13 @@ ${activityUrls}
             });
             if (btn) {
               routeMeta = {
-                title: `${btn.title} - 活動列表 | 亞馬遜國家山岳協會 | Amazon Alpine Association`,
+                title: `${btn.title} - 活動列表 | 亞馬遜國家山岳協會`,
                 description: resolveNavButtonDescription(btn),
               };
             } else {
               isNavNotFound = true;
               routeMeta = {
-                title: '找不到此活動專區 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+                title: '找不到此活動專區 | 亞馬遜國家山岳協會',
                 description: '很抱歉，您所尋找的活動專區不存在或已被移除。',
               };
             }
@@ -733,7 +695,7 @@ ${activityUrls}
             if (act) {
               isThinActivity = !(act.content || '').trim();
               routeMeta = {
-                title: `${act.title} | 亞馬遜國家山岳協會 | Amazon Alpine Association`,
+                title: `${act.title} | 亞馬遜國家山岳協會`,
                 description:
                   act.description ||
                   `${act.title} - 亞馬遜國家山岳協會登山行程活動說明與完整報名資訊。`,
@@ -741,7 +703,7 @@ ${activityUrls}
             } else {
               isRouteNotFound = true;
               routeMeta = {
-                title: '找不到此活動 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+                title: '找不到此活動 | 亞馬遜國家山岳協會',
                 description: '很抱歉，您所尋找的活動行程不存在或已下架。',
               };
             }
@@ -782,14 +744,14 @@ ${activityUrls}
             } else {
               isCategoryActivityNotFound = true;
               routeMeta = {
-                title: '找不到此活動 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+                title: '找不到此活動 | 亞馬遜國家山岳協會',
                 description: '很抱歉，您所尋找的活動行程不存在或已下架。',
               };
             }
           } else {
             isCategoryActivityNotFound = true;
             routeMeta = {
-              title: '找不到此活動分類 | 亞馬遜國家山岳協會 | Amazon Alpine Association',
+              title: '找不到此活動分類 | 亞馬遜國家山岳協會',
               description: '很抱歉，您所尋找的活動行程分類不存在或已下架。',
             };
           }
@@ -914,7 +876,7 @@ ${activityUrls}
           isNotFound ? 'https://amazon-hike.com/' : canonicalUrl,
           isNotFound ? 404 : undefined,
           rootHtml,
-          isNotFound || isThinActivity,
+          isNotFound || isThinActivity || Boolean(matchedChapter && isThinMainChapter(matchedChapter)),
           chapterJsonLd
         );
       }

@@ -557,7 +557,8 @@ Sitemap: https://amazon-hike.com/sitemap.xml
         .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
         .map((t) => {
           const p = toInternalPath(resolveToolHref(t.url));
-          if (!p || p === '/tools' || seenToolPaths.has(p)) return '';
+          // 只收格式乾淨的站內路徑（例如 /tool25/），含 * 或引號等字元的錯誤網址一律略過
+          if (!p || p === '/tools' || !/^\/[A-Za-z0-9_\-\/]+$/.test(p) || seenToolPaths.has(p)) return '';
           seenToolPaths.add(p);
           return `  <url>
     <loc>${escapeHtml(SITE_ORIGIN + p)}</loc>

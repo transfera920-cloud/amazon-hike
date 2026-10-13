@@ -125,17 +125,14 @@ export const HighlightsView: React.FC<HighlightsViewProps> = ({ highlights, intr
                   </p>
                 )}
 
-                <div className="p-3 bg-neutral-900/80 border-t border-neutral-800 flex items-center justify-between text-xs">
-                  <span className="text-neutral-400 font-mono truncate">
-                    {item.youtubeUrl}
-                  </span>
+                <div className="p-3 bg-neutral-900/80 border-t border-neutral-800 flex items-center justify-end text-xs">
                   <a
                     href={originalUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="shrink-0 ml-2 text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
+                    className="text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
                   >
-                    <span>開啟 YouTube</span>
+                    <span>在 YouTube 觀看{itemTitle ? `「${itemTitle}」` : ''}</span>
                     <ExternalLink size={12} />
                   </a>
                 </div>

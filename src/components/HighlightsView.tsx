@@ -1,5 +1,5 @@
-import React from 'react';
-import { ArrowLeft, Video, ExternalLink } from 'lucide-react';
+import React, { useState } from 'react';
+import { ArrowLeft, Video, ExternalLink, Play } from 'lucide-react';
 import type { HighlightItem } from '../types.js';
 import { getYouTubeVideoId, normalizeUrl } from '../utils/url.js';
 
@@ -9,6 +9,51 @@ interface HighlightsViewProps {
   introContent?: string;
   onBack: () => void;
 }
+
+/**
+ * 點擊才載入的影片播放器：
+ * 一開始只顯示縮圖（很輕），按下播放後才載入 YouTube 播放器，
+ * 避免一頁幾十支影片同時載入造成畫面卡頓。
+ */
+const LazyYouTube: React.FC<{ videoId: string; title: string }> = ({ videoId, title }) => {
+  const [playing, setPlaying] = useState(false);
+
+  if (playing) {
+    return (
+      <iframe
+        src={`https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0`}
+        title={title}
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        allowFullScreen
+        className="w-full h-full border-0"
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setPlaying(true)}
+      aria-label={`播放影片：${title}`}
+      className="group relative block w-full h-full bg-black"
+    >
+      <img
+        src={`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`}
+        alt={title}
+        loading="lazy"
+        decoding="async"
+        width={480}
+        height={360}
+        className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity"
+      />
+      <span className="absolute inset-0 flex items-center justify-center">
+        <span className="flex items-center justify-center w-14 h-14 rounded-full bg-black/60 border border-white/40 text-white group-hover:bg-emerald-600 transition-colors">
+          <Play size={24} fill="currentColor" />
+        </span>
+      </span>
+    </button>
+  );
+};
 
 export const HighlightsView: React.FC<HighlightsViewProps> = ({ highlights, introContent, onBack }) => {
   const introParagraphs = (introContent || '')
@@ -80,13 +125,9 @@ export const HighlightsView: React.FC<HighlightsViewProps> = ({ highlights, intr
               >
                 {videoId ? (
                   <div className="aspect-video w-full bg-black">
-                    <iframe
-                      src={`https://www.youtube-nocookie.com/embed/${videoId}`}
+                    <LazyYouTube
+                      videoId={videoId}
                       title={itemTitle || (item.description || '').split('\n')[0].trim().slice(0, 60) || 'YouTube video player'}
-                      loading="lazy"
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      allowFullScreen
-                      className="w-full h-full border-0"
                     />
                   </div>
                 ) : (

@@ -46,7 +46,7 @@ import {
   processBatchImportActivities,
   type BatchImportResult,
 } from '../utils/activitySeo.js';
-import { PEAK_INTRO_PARAGRAPHS } from './NavActivitiesView.js';
+import { PEAK_INTRO_PARAGRAPHS } from '../utils/activitySeo.js';
 import { ImageUploadButton } from './ImageUploadButton.js';
 import InlineEditorPortal, { editSlotKey } from './InlineEditorPortal.js';
 import peaksTop100Data from '../../data/peaks-top100.json';
@@ -2728,6 +2728,44 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                     <span className="shrink-0 ml-3">
                       {(editingNavButton.introContent || '').length} / 3000
                     </span>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-neutral-800 bg-neutral-950/40 p-3 space-y-3">
+                  <div>
+                    <label htmlFor="button-seo-title" className="block text-neutral-300 font-medium mb-1">
+                      SEO 標題（選填）
+                    </label>
+                    <input
+                      id="button-seo-title"
+                      type="text"
+                      maxLength={120}
+                      value={editingNavButton.seoTitle || ''}
+                      onChange={(e) =>
+                        setEditingNavButton({ ...editingNavButton, seoTitle: e.target.value })
+                      }
+                      placeholder="留空則使用「按鈕標題 | 亞馬遜國家山岳協會」"
+                      className="w-full px-3 py-2 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="button-meta-description" className="block text-neutral-300 font-medium mb-1">
+                      SEO 描述 meta description（選填）
+                    </label>
+                    <textarea
+                      id="button-meta-description"
+                      rows={3}
+                      maxLength={200}
+                      value={editingNavButton.metaDescription || ''}
+                      onChange={(e) =>
+                        setEditingNavButton({ ...editingNavButton, metaDescription: e.target.value })
+                      }
+                      placeholder="建議 80–120 字、一段完整的話。留空則由導讀內容自動取完整句子。"
+                      className="w-full px-3 py-2 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 leading-relaxed resize-y"
+                    />
+                    <div className="text-[11px] text-neutral-400 mt-1 text-right">
+                      {(editingNavButton.metaDescription || '').length} / 200
+                    </div>
                   </div>
                 </div>
 

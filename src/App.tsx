@@ -14,7 +14,7 @@ import { RouteActivityView } from './components/RouteActivityView.js';
 import {
   getCategorySlug,
   resolveActivitySeo,
-  resolveNavButtonDescription,
+  resolveNavButtonSeo,
   CHAPTER_SLUG_SOURCE,
   DEFAULT_OG_IMAGE,
   isThinMainChapter,
@@ -404,10 +404,7 @@ export default function App() {
       }
     } else if (!currentMeta && currentNavButton) {
       customCanonicalUrl = `${SITE_ORIGIN}/nav/${currentNavButton.id}`;
-      currentMeta = {
-        title: `${currentNavButton.title} - 活動列表 | 亞馬遜國家山岳協會`,
-        description: resolveNavButtonDescription(currentNavButton),
-      };
+      currentMeta = resolveNavButtonSeo(currentNavButton);
     } else if (!currentMeta && currentChapter) {
       const isOfficialChapter = CHAPTER_PATH_RE.test('/' + currentChapter.slug);
       customCanonicalUrl = isOfficialChapter

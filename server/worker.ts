@@ -4,7 +4,10 @@ import type { WorkerEnv } from './db-kv.js';
 import {
   getCategorySlug,
   resolveActivitySeo,
-  resolveNavButtonDescription,
+  resolveNavButtonSeo,
+  resolveNavButtonIntroParagraphs,
+  isPeakTableButton,
+  formatPeakLinkText,
   CHAPTER_SLUG_RE,
   CHAPTER_SLUG_SOURCE,
   DEFAULT_OG_IMAGE,
@@ -847,10 +850,7 @@ ${activityUrls}
               return false;
             });
             if (btn) {
-              routeMeta = {
-                title: `${btn.title} - 活動列表 | 亞馬遜國家山岳協會`,
-                description: resolveNavButtonDescription(btn),
-              };
+              routeMeta = resolveNavButtonSeo(btn);
             } else {
               isNavNotFound = true;
               routeMeta = {
@@ -1020,14 +1020,22 @@ ${activityUrls}
               ? (db.navButtonActivities || []).filter((a) => a.navButtonId === btn.id && a.enabled)
               : [];
             const catSlug = btn ? getCategorySlug(btn) : buttonId;
+            const isPeak = btn ? isPeakTableButton(btn) : false;
+            const linkText = (t: string) => escapeHtml(isPeak ? formatPeakLinkText(t) : t);
             const listHtml = acts
               .map((a) =>
                 (a.content || '').trim()
-                  ? `<li><a href="/${catSlug}/${a.slug}/">${escapeHtml(a.title)}</a></li>`
-                  : `<li>${escapeHtml(a.title)}</li>`
+                  ? `<li><a href="/${catSlug}/${a.slug}/">${linkText(a.title)}</a></li>`
+                  : `<li>${linkText(a.title)}</li>`
               )
               .join('');
-            rootHtml = `<main><h1>${escapeHtml(btn ? btn.title : '活動列表')}</h1><ul>${listHtml}</ul>${buildSiteNavHtml()}</main>`;
+            // 導讀文字放進初始 HTML 本文，不只出現在 meta description
+            const introHtml = btn
+              ? resolveNavButtonIntroParagraphs(btn)
+                  .map((p) => `<p>${escapeHtml(p)}</p>`)
+                  .join('')
+              : '';
+            rootHtml = `<main><h1>${escapeHtml(btn ? btn.title : '活動列表')}</h1>${introHtml}<ul>${listHtml}</ul>${buildSiteNavHtml()}</main>`;
             if (btn) {
               chapterJsonLd = buildBreadcrumbJsonLd(
                 [

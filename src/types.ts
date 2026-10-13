@@ -68,6 +68,8 @@ export interface NavButtonItem {
   sortOrder: number;
   categorySlug?: string; // 新增：作為 /分類/活動/ 網址中的分類代稱，留空則由系統自動推導
   introContent?: string; // 列表頁導讀內容（空白行分段；選填）
+  seoTitle?: string; // 列表頁自訂 SEO 標題（選填）
+  metaDescription?: string; // 列表頁自訂 meta description（選填，建議 80–120 字）
 }
 
 export interface NavButtonEntry {

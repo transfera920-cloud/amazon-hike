@@ -12,7 +12,12 @@ import {
   BookOpen,
 } from 'lucide-react';
 import { normalizeUrl } from '../utils/url.js';
-import { getCategorySlug } from '../utils/activitySeo.js';
+import {
+  getCategorySlug,
+  isPeakTableButton,
+  resolveNavButtonIntroParagraphs,
+  PEAK_INTRO_PARAGRAPHS,
+} from '../utils/activitySeo.js';
 import type { NavButtonItem, NavButtonActivity, NavButtonEntry } from '../types.js';
 
 
@@ -23,14 +28,8 @@ import type { NavButtonItem, NavButtonActivity, NavButtonEntry } from '../types.
  * 解析不出來的列會退回顯示完整標題，不會壞版。
  * ------------------------------------------------------------------ */
 
-// 按鈕標題含下列任一關鍵字時，改用表格版面；其他按鈕維持原本清單
-const PEAK_TABLE_TITLE_KEYWORDS = ['百岳總表'];
-
-// 導讀文字（可直接在此修改）
-export const PEAK_INTRO_PARAGRAPHS = [
-  '台灣百岳是臺灣登山界在 1970 年代初期選出的一百座高山，標高大致在三千公尺以上，分布於中央山脈、雪山山脈與玉山山脈，其中中央山脈就占了 69 座。許多山友把它當成長期累積的登山目標。',
-  '本頁整理百岳各峰的基本資料與本會的行程資訊，可作為規劃路線的起點。',
-];
+// 導讀預設文字與「百岳總表」判斷集中在 utils/activitySeo.ts（前台與 SSR 外殼共用）
+export { PEAK_INTRO_PARAGRAPHS };
 
 const PEAK_HOW_TO_READ: string[] = [
   '山名帶有底線與箭頭者，可點選進入該山的詳細說明頁（行程時間、行前裝備與安全須知）。',
@@ -125,7 +124,7 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
   onNavigateEntry,
 }) => {
   const isPeakTable =
-    activities.length > 0 && PEAK_TABLE_TITLE_KEYWORDS.some((k) => (button.title || '').includes(k));
+    activities.length > 0 && isPeakTableButton(button);
 
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir } | null>(null);
   const [groupFilter, setGroupFilter] = useState<string | null>(null);

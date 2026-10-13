@@ -532,6 +532,8 @@ export async function handleApiRequest(
           sortOrder: Number(item.sortOrder) || 0,
           categorySlug: cleanCatSlug || undefined,
           introContent: (item.introContent || '').trim().slice(0, 3000) || undefined,
+          seoTitle: (item.seoTitle || '').trim().slice(0, 120) || undefined,
+          metaDescription: (item.metaDescription || '').trim().slice(0, 200) || undefined,
         };
         const idx = db.navButtons.findIndex((b) => b.id === cleanItem.id);
         if (idx >= 0) db.navButtons[idx] = cleanItem;

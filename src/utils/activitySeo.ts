@@ -80,17 +80,84 @@ export function resolveActivitySeo(
   return { title, description, image };
 }
 
+/** 標題含此關鍵字的按鈕使用「百岳總表」表格版面，沒填導讀時退回預設導讀 */
+export const PEAK_TABLE_TITLE_KEYWORDS = ['百岳總表'];
+
+/** 百岳總表預設導讀（後台沒填「列表頁導讀內容」時使用；前台本文與 SSR 外殼共用） */
+export const PEAK_INTRO_PARAGRAPHS = [
+  '台灣百岳是臺灣登山界在 1970 年代初期選出的一百座高山，標高大致在三千公尺以上，分布於中央山脈、雪山山脈與玉山山脈，其中中央山脈就占了 69 座。許多山友把它當成長期累積的登山目標。',
+  '本頁整理百岳各峰的基本資料與本會的行程資訊，可作為規劃路線的起點。',
+];
+
+export function isPeakTableButton(btn: { title: string }): boolean {
+  return PEAK_TABLE_TITLE_KEYWORDS.some((k) => (btn.title || '').includes(k));
+}
+
+/** 列表頁導讀段落：後台導讀內容優先（空白行分段），百岳總表沒填時用預設導讀 */
+export function resolveNavButtonIntroParagraphs(btn: { title: string; introContent?: string }): string[] {
+  const custom = (btn.introContent || '')
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (custom.length > 0) return custom;
+  return isPeakTableButton(btn) ? PEAK_INTRO_PARAGRAPHS : [];
+}
+
 /**
- * Resolves SEO meta description for a navButton list page (/nav/:id).
- * If introContent is present, takes the first 120 characters with newlines removed;
- * otherwise falls back to the default template.
+ * 從導讀文字產生 meta description：在句號邊界收尾，不在句子中間截斷。
+ * 以完整句子累加到 maxLen 為止；第一句就超長時，才硬截斷並補「…」。
  */
-export function resolveNavButtonDescription(btn: { title: string; introContent?: string }): string {
-  const cleanIntro = (btn.introContent || '').replace(/[\r\n]+/g, ' ').trim();
-  if (cleanIntro) {
-    return cleanIntro.slice(0, 120);
+export function summarizeForMeta(text: string, maxLen = 120): string {
+  const clean = (text || '').replace(/\s+/g, ' ').trim();
+  if (!clean) return '';
+  if (clean.length <= maxLen) return clean;
+  const sentences = clean.match(/[^。！？!?]+[。！？!?]?/g) || [clean];
+  let out = '';
+  for (const s of sentences) {
+    if ((out + s).length > maxLen) break;
+    out += s;
   }
-  return `亞馬遜國家山岳協會 ${btn.title} 活動與行程清單。`;
+  if (out) return out.trim();
+  return clean.slice(0, maxLen - 1).trim() + '…';
+}
+
+/**
+ * Resolves SEO title + meta description for a navButton list page (/nav/:id).
+ * 優先序：後台「SEO 標題／SEO 描述」→ 導讀內容 → 預設樣板。
+ * 預設標題不再帶「活動列表」：「{按鈕標題} | 亞馬遜國家山岳協會」。
+ */
+export function resolveNavButtonSeo(btn: {
+  title: string;
+  introContent?: string;
+  seoTitle?: string;
+  metaDescription?: string;
+}): { title: string; description: string } {
+  const title = (btn.seoTitle || '').trim() || `${btn.title} | 亞馬遜國家山岳協會`;
+  const custom = (btn.metaDescription || '').replace(/\s+/g, ' ').trim();
+  const intro = summarizeForMeta(resolveNavButtonIntroParagraphs(btn).join(' '), 120);
+  const description =
+    custom || intro || `亞馬遜國家山岳協會 ${btn.title} 活動與行程清單。`;
+  return { title, description };
+}
+
+/** 舊介面保留：只取 description */
+export function resolveNavButtonDescription(btn: {
+  title: string;
+  introContent?: string;
+  metaDescription?: string;
+}): string {
+  return resolveNavButtonSeo(btn).description;
+}
+
+/**
+ * 百岳列表連結文字：「001玉山3952五岳-1」→「玉山（3952公尺）」。
+ * 解析不出來就回傳原標題。
+ */
+export function formatPeakLinkText(title: string): string {
+  const raw = (title || '').trim();
+  const m = raw.match(/^(\d{1,3})\s*(.+?)\s*(\d{4})\s*(.*)$/);
+  if (!m) return raw;
+  return `${m[2].trim()}（${Number(m[3]).toLocaleString('en-US').replace(/,/g, '')}公尺）`;
 }
 
 export interface PeakImportItem {

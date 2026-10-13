@@ -134,7 +134,10 @@ export function resolveNavButtonSeo(btn: {
 }): { title: string; description: string } {
   const title = (btn.seoTitle || '').trim() || `${btn.title} | 亞馬遜國家山岳協會`;
   const custom = (btn.metaDescription || '').replace(/\s+/g, ' ').trim();
-  const intro = summarizeForMeta(resolveNavButtonIntroParagraphs(btn).join(' '), 120);
+  // 導讀裡單獨一行的小標題（例如「台灣百岳的由來與發展」）不放進 description，只取有句號的正文段落
+  const paras = resolveNavButtonIntroParagraphs(btn);
+  const bodyParas = paras.filter((p) => /[。！？!?]$/.test(p) || p.length >= 40);
+  const intro = summarizeForMeta((bodyParas.length ? bodyParas : paras).join(' '), 120);
   const description =
     custom || intro || `亞馬遜國家山岳協會 ${btn.title} 活動與行程清單。`;
   return { title, description };

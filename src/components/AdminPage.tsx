@@ -1891,7 +1891,61 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
 
                 <div>
                   <label className="block text-neutral-300 font-medium mb-1">
-                    影片說明文字（選填，顯示在影片下方）
+                    影片標題（建議填寫，會成為 H2 標題，例如：2025 秀姑巒山三日縱走花絮）
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={100}
+                    value={editingHighlight.title || ''}
+                    onChange={(e) =>
+                      setEditingHighlight({
+                        ...editingHighlight,
+                        title: e.target.value,
+                      })
+                    }
+                    className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-neutral-300 font-medium mb-1">
+                      影片日期（選填，格式 2025-09-20；有填才會產生影片結構化資料）
+                    </label>
+                    <input
+                      type="date"
+                      value={editingHighlight.uploadDate || ''}
+                      onChange={(e) =>
+                        setEditingHighlight({
+                          ...editingHighlight,
+                          uploadDate: e.target.value,
+                        })
+                      }
+                      className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-neutral-300 font-medium mb-1">
+                      對應行程頁網址（選填，站內路徑）
+                    </label>
+                    <input
+                      type="text"
+                      value={editingHighlight.relatedUrl || ''}
+                      onChange={(e) =>
+                        setEditingHighlight({
+                          ...editingHighlight,
+                          relatedUrl: e.target.value,
+                        })
+                      }
+                      placeholder="/baiyue-traverse/xiuguluan/"
+                      className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-neutral-300 font-medium mb-1">
+                    影片說明文字（建議 80～150 字：山名、日期、天數、路線特色）
                   </label>
                   <textarea
                     rows={4}

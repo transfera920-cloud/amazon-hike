@@ -35,6 +35,9 @@ export interface HighlightItem {
   id: string;
   youtubeUrl: string;
   description?: string; // 影片說明文字（後台輸入，前台顯示在影片下方）
+  title?: string; // 影片標題（顯示為 H2，也會寫入影片結構化資料）
+  uploadDate?: string; // 影片日期 YYYY-MM-DD（影片結構化資料必填）
+  relatedUrl?: string; // 對應行程頁的站內路徑，例如 /baiyue-traverse/xiuguluan/
   enabled: boolean;
   sortOrder: number;
 }

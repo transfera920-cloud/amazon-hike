@@ -11,6 +11,7 @@ import {
   isThinMainChapter,
 } from '../src/utils/activitySeo.js';
 import type { NavButtonActivity } from '../src/types.js';
+import { getYouTubeVideoId } from '../src/utils/url.js';
 
 declare const HTMLRewriter: any;
 
@@ -235,11 +236,17 @@ async function buildToolsShellHtml(env: WorkerEnv, title: string, description: s
   return `<main><h1>${escapeHtml(shortTitle)}</h1><p>${escapeHtml(description)}</p>${listHtml}${buildSiteNavHtml()}</main>`;
 }
 
-/** /highlights 的靜態外殼：把影片說明文字放進初始 HTML（只放文字，不放影片網址） */
-async function buildHighlightsShellHtml(env: WorkerEnv, title: string, description: string): Promise<string> {
+/** /highlights 的靜態外殼 + 影片結構化資料：把影片標題、說明文字放進初始 HTML（只放文字，不放影片網址） */
+async function buildHighlightsShell(
+  env: WorkerEnv,
+  title: string,
+  description: string,
+  pageUrl: string
+): Promise<{ html: string; jsonLd: string }> {
   const shortTitle = title.split(' | ')[0].trim();
   let listHtml = '';
   let introHtml = '';
+  const videoNodes: Record<string, unknown>[] = [];
   try {
     const db = await loadDatabaseWorker(env);
     const hlBtn = (db.navButtons || []).find((b) => b.id === 'btn_highlights' || b.url === '/highlights');
@@ -247,17 +254,59 @@ async function buildHighlightsShellHtml(env: WorkerEnv, title: string, descripti
     if (intro) {
       introHtml = formatMultilineHtml(intro);
     }
-    const items = (db.highlights || [])
-      .filter((h) => h.enabled && (h.description || '').trim())
-      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
-      .map((h) => `<li>${escapeHtml((h.description || '').trim()).replace(/\n/g, '<br>')}</li>`)
+    const enabled = (db.highlights || [])
+      .filter((h) => h.enabled && ((h.title || '').trim() || (h.description || '').trim()))
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+
+    listHtml = enabled
+      .map((h) => {
+        const t = (h.title || '').trim();
+        const d = (h.description || '').trim();
+        const rel = (h.relatedUrl || '').trim();
+        const relOk = /^https?:\/\//i.test(rel) || rel.startsWith('/');
+        const headHtml = t ? `<h2>${escapeHtml(t)}</h2>` : '';
+        const descHtml = d ? formatMultilineHtml(d) : '';
+        const linkHtml = relOk
+          ? `<p><a href="${escapeHtml(rel)}">查看${t ? `「${escapeHtml(t)}」` : ''}行程介紹</a></p>`
+          : '';
+        return `<section>${headHtml}${descHtml}${linkHtml}</section>`;
+      })
       .join('');
-    if (items) listHtml = `<ul>${items}</ul>`;
+
+    // VideoObject：需要標題 + 日期 + 可解析的 YouTube 影片 ID 才輸出（避免產生不完整的結構化資料）
+    for (const h of enabled) {
+      const id = getYouTubeVideoId(h.youtubeUrl);
+      const t = (h.title || '').trim();
+      const date = (h.uploadDate || '').trim();
+      if (!id || !t || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+      videoNodes.push({
+        '@type': 'VideoObject',
+        name: t,
+        description: (h.description || '').trim() || t,
+        thumbnailUrl: [`https://i.ytimg.com/vi/${id}/hqdefault.jpg`],
+        uploadDate: date,
+        embedUrl: `https://www.youtube.com/embed/${id}`,
+      });
+    }
   } catch (err) {
     console.error('Error building highlights shell HTML:', err);
   }
   const leadHtml = introHtml || `<p>${escapeHtml(description)}</p>`;
-  return `<main><h1>${escapeHtml(shortTitle)}</h1>${leadHtml}${listHtml}${buildSiteNavHtml()}</main>`;
+  const html = `<main><h1>${escapeHtml(shortTitle)}</h1>${leadHtml}${listHtml}${buildSiteNavHtml()}</main>`;
+
+  const graph: Record<string, unknown>[] = [
+    {
+      '@type': 'BreadcrumbList',
+      '@id': `${pageUrl}#breadcrumb`,
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, name: '首頁', item: `${SITE_ORIGIN}/` },
+        { '@type': 'ListItem', position: 2, name: '活動花絮', item: pageUrl },
+      ],
+    },
+    ...videoNodes,
+  ];
+  const jsonLd = JSON.stringify({ '@context': 'https://schema.org', '@graph': graph }).replace(/</g, '\\u003c');
+  return { html, jsonLd };
 }
 
 /** /policies 的靜態外殼：把已啟用的政策條文放進初始 HTML */
@@ -324,7 +373,7 @@ const ROUTE_META_MAP: Record<string, RouteMetadata> = {
     description: '登山實用數位工具與氣象服務專區，即時整合高山氣象預報、國家公園入山入園線上申辦、步道路況通報及離線地圖軌跡等數位資源。',
   },
   '/highlights': {
-    title: '活動花絮影音專區 | 亞馬遜國家山岳協會',
+    title: '百岳登山影片與活動花絮 | 亞馬遜國家山岳協會',
     description: '亞馬遜國家山岳協會歷年登山行程精選花絮與影音專區，收錄百岳縱走記錄、山友精彩回顧、自然風光縮時與活動實況影片分享。',
   },
   '/policies': {
@@ -1033,7 +1082,9 @@ ${activityUrls}
             canonicalUrl
           );
         } else if (normalizedPath === '/highlights') {
-          rootHtml = await buildHighlightsShellHtml(env, routeMeta.title, routeMeta.description);
+          const hl = await buildHighlightsShell(env, routeMeta.title, routeMeta.description, canonicalUrl);
+          rootHtml = hl.html;
+          chapterJsonLd = hl.jsonLd;
         } else if (normalizedPath === '/policies') {
           rootHtml = await buildPoliciesShellHtml(env, routeMeta.title, routeMeta.description);
         } else if (!normalizedPath.startsWith('/intro/')) {

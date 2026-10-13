@@ -39,7 +39,7 @@ export const HighlightsView: React.FC<HighlightsViewProps> = ({ highlights, intr
           </div>
           <div>
             <h1 className="text-xl sm:text-2xl font-bold text-neutral-100">
-              活動花絮
+              百岳登山影片與活動花絮
             </h1>
             {introParagraphs.length === 0 && (
               <p className="text-xs text-neutral-400 mt-0.5">
@@ -69,6 +69,9 @@ export const HighlightsView: React.FC<HighlightsViewProps> = ({ highlights, intr
           {highlights.map((item) => {
             const videoId = getYouTubeVideoId(item.youtubeUrl);
             const originalUrl = normalizeUrl(item.youtubeUrl);
+            const itemTitle = (item.title || '').trim();
+            const relatedPath = (item.relatedUrl || '').trim();
+            const relatedHref = /^https?:\/\//i.test(relatedPath) || relatedPath.startsWith('/') ? relatedPath : '';
 
             return (
               <div
@@ -79,7 +82,8 @@ export const HighlightsView: React.FC<HighlightsViewProps> = ({ highlights, intr
                   <div className="aspect-video w-full bg-black">
                     <iframe
                       src={`https://www.youtube-nocookie.com/embed/${videoId}`}
-                      title={(item.description || '').split('\n')[0].trim().slice(0, 60) || 'YouTube video player'}
+                      title={itemTitle || (item.description || '').split('\n')[0].trim().slice(0, 60) || 'YouTube video player'}
+                      loading="lazy"
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                       allowFullScreen
                       className="w-full h-full border-0"
@@ -101,9 +105,23 @@ export const HighlightsView: React.FC<HighlightsViewProps> = ({ highlights, intr
                   </div>
                 )}
 
+                {itemTitle && (
+                  <h2 className="px-4 pt-3 text-base font-bold text-neutral-100">
+                    {itemTitle}
+                  </h2>
+                )}
+
                 {item.description && (
                   <p className="px-4 pt-3 text-sm text-neutral-200 leading-relaxed whitespace-pre-line">
                     {item.description}
+                  </p>
+                )}
+
+                {relatedHref && (
+                  <p className="px-4 pt-2 pb-3 text-xs">
+                    <a href={relatedHref} className="text-emerald-400 hover:text-emerald-300 underline">
+                      查看{itemTitle ? `「${itemTitle}」` : ''}行程介紹
+                    </a>
                   </p>
                 )}
 

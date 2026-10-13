@@ -428,6 +428,11 @@ export async function handleApiRequest(
           id: item.id || `hl_${Date.now()}`,
           youtubeUrl: item.youtubeUrl.trim(),
           description: String(item.description || '').replace(/\r\n?/g, '\n').trim().slice(0, 2000),
+          title: String(item.title || '').trim().slice(0, 100),
+          uploadDate: /^\d{4}-\d{2}-\d{2}$/.test(String(item.uploadDate || '').trim())
+            ? String(item.uploadDate).trim()
+            : '',
+          relatedUrl: String(item.relatedUrl || '').trim().slice(0, 300),
           enabled: item.enabled ?? true,
           sortOrder: Number(item.sortOrder) || 0,
         };

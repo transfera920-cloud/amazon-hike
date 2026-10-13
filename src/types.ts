@@ -34,6 +34,7 @@ export interface ToolItem {
 export interface HighlightItem {
   id: string;
   youtubeUrl: string;
+  description?: string; // 影片說明文字（後台輸入，前台顯示在影片下方）
   enabled: boolean;
   sortOrder: number;
 }

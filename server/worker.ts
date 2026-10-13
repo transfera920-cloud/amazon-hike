@@ -235,6 +235,24 @@ async function buildToolsShellHtml(env: WorkerEnv, title: string, description: s
   return `<main><h1>${escapeHtml(shortTitle)}</h1><p>${escapeHtml(description)}</p>${listHtml}${buildSiteNavHtml()}</main>`;
 }
 
+/** /highlights 的靜態外殼：把影片說明文字放進初始 HTML（只放文字，不放影片網址） */
+async function buildHighlightsShellHtml(env: WorkerEnv, title: string, description: string): Promise<string> {
+  const shortTitle = title.split(' | ')[0].trim();
+  let listHtml = '';
+  try {
+    const db = await loadDatabaseWorker(env);
+    const items = (db.highlights || [])
+      .filter((h) => h.enabled && (h.description || '').trim())
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+      .map((h) => `<li>${escapeHtml((h.description || '').trim()).replace(/\n/g, '<br>')}</li>`)
+      .join('');
+    if (items) listHtml = `<ul>${items}</ul>`;
+  } catch (err) {
+    console.error('Error building highlights shell HTML:', err);
+  }
+  return `<main><h1>${escapeHtml(shortTitle)}</h1><p>${escapeHtml(description)}</p>${listHtml}${buildSiteNavHtml()}</main>`;
+}
+
 /** /policies 的靜態外殼：把已啟用的政策條文放進初始 HTML */
 async function buildPoliciesShellHtml(env: WorkerEnv, title: string, description: string): Promise<string> {
   const shortTitle = title.split(' | ')[0].trim();
@@ -1007,6 +1025,8 @@ ${activityUrls}
             ],
             canonicalUrl
           );
+        } else if (normalizedPath === '/highlights') {
+          rootHtml = await buildHighlightsShellHtml(env, routeMeta.title, routeMeta.description);
         } else if (normalizedPath === '/policies') {
           rootHtml = await buildPoliciesShellHtml(env, routeMeta.title, routeMeta.description);
         } else if (!normalizedPath.startsWith('/intro/')) {

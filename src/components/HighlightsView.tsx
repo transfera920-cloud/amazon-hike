@@ -61,7 +61,7 @@ export const HighlightsView: React.FC<HighlightsViewProps> = ({ highlights, onBa
                   <div className="aspect-video w-full bg-black">
                     <iframe
                       src={`https://www.youtube-nocookie.com/embed/${videoId}`}
-                      title="YouTube video player"
+                      title={(item.description || '').split('\n')[0].trim().slice(0, 60) || 'YouTube video player'}
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                       allowFullScreen
                       className="w-full h-full border-0"
@@ -81,6 +81,12 @@ export const HighlightsView: React.FC<HighlightsViewProps> = ({ highlights, onBa
                       <ExternalLink size={12} />
                     </a>
                   </div>
+                )}
+
+                {item.description && (
+                  <p className="px-4 pt-3 text-sm text-neutral-200 leading-relaxed whitespace-pre-line">
+                    {item.description}
+                  </p>
                 )}
 
                 <div className="p-3 bg-neutral-900/80 border-t border-neutral-800 flex items-center justify-between text-xs">

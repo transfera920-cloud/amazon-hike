@@ -1889,6 +1889,25 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                   />
                 </div>
 
+                <div>
+                  <label className="block text-neutral-300 font-medium mb-1">
+                    影片說明文字（選填，顯示在影片下方）
+                  </label>
+                  <textarea
+                    rows={4}
+                    maxLength={2000}
+                    value={editingHighlight.description || ''}
+                    onChange={(e) =>
+                      setEditingHighlight({
+                        ...editingHighlight,
+                        description: e.target.value,
+                      })
+                    }
+                    placeholder="例如：2026 年 9 月 玉山主峰兩天一夜行程花絮。可換行分段。"
+                    className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 leading-relaxed"
+                  />
+                </div>
+
                 <div className="flex items-center gap-6 pt-1">
                   <div>
                     <label className="block text-neutral-300 font-medium mb-1">
@@ -1973,6 +1992,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                         </span>
                       )}
                     </div>
+                    {item.description && (
+                      <p className="text-xs text-neutral-400 whitespace-pre-line line-clamp-2">
+                        {item.description}
+                      </p>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">

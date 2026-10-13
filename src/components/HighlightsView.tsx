@@ -146,36 +146,43 @@ export const HighlightsView: React.FC<HighlightsViewProps> = ({ highlights, intr
                   </div>
                 )}
 
-                {itemTitle && (
-                  <h2 className="px-4 pt-3 text-base font-bold text-neutral-100">
-                    {itemTitle}
-                  </h2>
-                )}
-
-                {item.description && (
-                  <p className="px-4 pt-3 text-sm text-neutral-200 leading-relaxed whitespace-pre-line">
-                    {item.description}
-                  </p>
-                )}
-
-                {relatedHref && (
-                  <p className="px-4 pt-2 pb-3 text-xs">
-                    <a href={relatedHref} className="text-emerald-400 hover:text-emerald-300 underline">
-                      查看{itemTitle ? `「${itemTitle}」` : ''}行程介紹
+                <div className="relative pb-4">
+                  {videoId && (
+                    <a
+                      href={originalUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={`在 YouTube 觀看${itemTitle ? `「${itemTitle}」` : ''}`}
+                      aria-label={`在 YouTube 觀看${itemTitle ? `「${itemTitle}」` : ''}`}
+                      className="absolute top-3 right-4 p-1 text-neutral-400 hover:text-emerald-400 transition-colors"
+                    >
+                      <ExternalLink size={16} />
                     </a>
-                  </p>
-                )}
+                  )}
 
-                <div className="p-3 bg-neutral-900/80 border-t border-neutral-800 flex items-center justify-end text-xs">
-                  <a
-                    href={originalUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
-                  >
-                    <span>在 YouTube 觀看{itemTitle ? `「${itemTitle}」` : ''}</span>
-                    <ExternalLink size={12} />
-                  </a>
+                  {itemTitle && (
+                    <h2 className="px-4 pt-3 pr-12 text-base font-bold text-neutral-100">
+                      {itemTitle}
+                    </h2>
+                  )}
+
+                  {item.description && (
+                    <p
+                      className={`px-4 pt-3 text-sm text-neutral-200 leading-relaxed whitespace-pre-line ${
+                        itemTitle ? '' : 'pr-12'
+                      }`}
+                    >
+                      {item.description}
+                    </p>
+                  )}
+
+                  {relatedHref && (
+                    <p className="px-4 pt-2 text-xs">
+                      <a href={relatedHref} className="text-emerald-400 hover:text-emerald-300 underline">
+                        查看{itemTitle ? `「${itemTitle}」` : ''}行程介紹
+                      </a>
+                    </p>
+                  )}
                 </div>
               </div>
             );

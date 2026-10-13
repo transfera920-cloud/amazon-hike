@@ -327,7 +327,7 @@ export default function App() {
     const seoMap: Record<string, { title: string; description: string }> = {
       '/': {
         title: '亞馬遜國家山岳協會 | Amazon Alpine Association',
-        description: '亞馬遜國家山岳協會（Amazon Alpine Association）官方入口網站與活動行事曆，提倡全民運動、鍛鍊強健體魄、培養互助團隊精神，以及接觸大自然與山林相關知識及技能。',
+        description: '亞馬遜國家山岳協會（Amazon Alpine Association）官方入口網站與活動行事曆，提倡全民運動、團隊互助，並推廣山林知識與技能。',
       },
       '/intro': {
         title: '登山入門指南 | 亞馬遜國家山岳協會',
@@ -732,7 +732,7 @@ export default function App() {
       </div>
 
       {/* 3. 頁尾資訊列 (FOOT: 亞馬遜國家山岳協會 ｜ LINE 官方諮詢) */}
-      <Footer />
+      <Footer onNavigate={navigate} />
     </div>
   );
 }

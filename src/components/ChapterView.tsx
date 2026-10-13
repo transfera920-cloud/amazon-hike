@@ -1,6 +1,16 @@
 import React, { useEffect } from 'react';
 import { ArrowLeft, BookOpen, Calendar, ArrowRight } from 'lucide-react';
 import type { ChapterItem } from '../types.js';
+import { CHAPTER_SLUG_RE } from '../utils/activitySeo.js';
+
+const chapterHref = (slug: string) =>
+  CHAPTER_SLUG_RE.test(String(slug || '').toLowerCase()) ? `/${slug.toLowerCase()}/` : `/intro/${slug}`;
+
+const go = (e: React.MouseEvent<HTMLAnchorElement>, fn: () => void) => {
+  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+  e.preventDefault();
+  fn();
+};
 
 interface ChapterViewProps {
   chapter: ChapterItem;
@@ -35,15 +45,15 @@ export const ChapterView: React.FC<ChapterViewProps> = ({
     <main className="max-w-4xl mx-auto px-4 sm:px-6 py-6" aria-label={chapter.title}>
       {/* Breadcrumb Navigation */}
       <div className="flex items-center justify-between mb-4">
-        <button
-          type="button"
-          onClick={onBack}
+        <a
+          href="/intro"
+          onClick={(e) => go(e, onBack)}
           className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-400 hover:text-emerald-300 transition-colors py-1"
           id="chapter-back-btn"
         >
           <ArrowLeft size={14} />
           <span>返回登山入門章節目錄</span>
-        </button>
+        </a>
       </div>
 
       {/* Chapter Article Container */}
@@ -107,10 +117,10 @@ export const ChapterView: React.FC<ChapterViewProps> = ({
         <footer className="mt-10 pt-6 border-t border-neutral-800">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {prevChapter ? (
-              <button
-                type="button"
-                onClick={() => onNavigateChapter(prevChapter.slug)}
-                className="group p-4 border border-neutral-800 rounded bg-neutral-900/60 hover:border-neutral-700 hover:bg-neutral-900 text-left transition-all"
+              <a
+                href={chapterHref(prevChapter.slug)}
+                onClick={(e) => go(e, () => onNavigateChapter(prevChapter.slug))}
+                className="group block p-4 border border-neutral-800 rounded bg-neutral-900/60 hover:border-neutral-700 hover:bg-neutral-900 text-left transition-all"
                 id={`prev-chapter-${prevChapter.slug}`}
               >
                 <div className="text-xs text-neutral-400 flex items-center gap-1 mb-1">
@@ -120,16 +130,16 @@ export const ChapterView: React.FC<ChapterViewProps> = ({
                 <div className="text-sm font-semibold text-neutral-200 group-hover:text-emerald-400 transition-colors line-clamp-1">
                   {prevChapter.title}
                 </div>
-              </button>
+              </a>
             ) : (
               <div />
             )}
 
             {nextChapter && (
-              <button
-                type="button"
-                onClick={() => onNavigateChapter(nextChapter.slug)}
-                className="group p-4 border border-neutral-800 rounded bg-neutral-900/60 hover:border-neutral-700 hover:bg-neutral-900 text-right transition-all sm:col-start-2"
+              <a
+                href={chapterHref(nextChapter.slug)}
+                onClick={(e) => go(e, () => onNavigateChapter(nextChapter.slug))}
+                className="group block p-4 border border-neutral-800 rounded bg-neutral-900/60 hover:border-neutral-700 hover:bg-neutral-900 text-right transition-all sm:col-start-2"
                 id={`next-chapter-${nextChapter.slug}`}
               >
                 <div className="text-xs text-neutral-400 flex items-center justify-end gap-1 mb-1">
@@ -139,7 +149,7 @@ export const ChapterView: React.FC<ChapterViewProps> = ({
                 <div className="text-sm font-semibold text-neutral-200 group-hover:text-emerald-400 transition-colors line-clamp-1">
                   {nextChapter.title}
                 </div>
-              </button>
+              </a>
             )}
           </div>
         </footer>

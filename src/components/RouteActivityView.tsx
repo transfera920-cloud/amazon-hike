@@ -25,6 +25,12 @@ export const RouteActivityView: React.FC<RouteActivityViewProps> = ({
   onBack,
   onNavigateHome,
 }) => {
+  const go = (e: React.MouseEvent<HTMLAnchorElement>, fn: () => void) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+    e.preventDefault();
+    fn();
+  };
+
   // Update document title and meta description on client side for SPA navigation
   useEffect(() => {
     const pageTitle =
@@ -61,22 +67,22 @@ export const RouteActivityView: React.FC<RouteActivityViewProps> = ({
       {/* Breadcrumb Navigation */}
       <nav aria-label="活動導覽路徑" className="flex items-center justify-between mb-6 flex-wrap gap-2">
         <div className="flex items-center gap-2 text-xs text-neutral-400">
-          <button
-            type="button"
-            onClick={onNavigateHome}
+          <a
+            href="/"
+            onClick={(e) => go(e, onNavigateHome)}
             className="hover:text-emerald-400 transition-colors"
           >
             首頁
-          </button>
+          </a>
           <span>/</span>
           {parentButton ? (
-            <button
-              type="button"
-              onClick={onBack}
+            <a
+              href={parentButton.url && parentButton.url.startsWith('/nav/') ? parentButton.url : `/nav/${parentButton.id}`}
+              onClick={(e) => go(e, onBack)}
               className="hover:text-emerald-400 transition-colors"
             >
               {parentButton.title}
-            </button>
+            </a>
           ) : (
             <button
               type="button"

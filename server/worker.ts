@@ -163,6 +163,96 @@ function buildChapterJsonLd(
   return JSON.stringify(graph).replace(/</g, '\\u003c');
 }
 
+
+const SITE_ORIGIN = 'https://amazon-hike.com';
+
+/** 把工具網址整理成可放進 href 的字串（相對路徑、絕對網址皆可） */
+function resolveToolHref(raw: string | undefined | null): string {
+  const t = (raw || '').trim();
+  if (!t) return '';
+  if (/^https?:\/\//i.test(t) || t.startsWith('/')) return t;
+  return `https://${t}`;
+}
+
+/** 若網址屬於本站（amazon-hike.com），回傳站內路徑；否則回傳 null */
+function toInternalPath(href: string): string | null {
+  if (!href) return null;
+  if (href.startsWith('/')) return href;
+  try {
+    const u = new URL(href);
+    if (u.hostname === 'amazon-hike.com') return u.pathname + u.search;
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+/** 通用 BreadcrumbList 結構化資料 */
+function buildBreadcrumbJsonLd(items: { name: string; url: string }[], pageUrl: string): string {
+  const graph = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'BreadcrumbList',
+        '@id': `${pageUrl}#breadcrumb`,
+        itemListElement: items.map((it, idx) => ({
+          '@type': 'ListItem',
+          position: idx + 1,
+          name: it.name,
+          item: it.url,
+        })),
+      },
+    ],
+  };
+  return JSON.stringify(graph).replace(/</g, '\\u003c');
+}
+
+/**
+ * /tools 的靜態外殼：把已啟用的工具（子站）連結直接放進初始 HTML，
+ * 讓不執行 JS 的爬蟲也能從 /tools 找到每個子站。
+ */
+async function buildToolsShellHtml(env: WorkerEnv, title: string, description: string): Promise<string> {
+  const shortTitle = title.split(' | ')[0].trim();
+  let listHtml = '';
+  try {
+    const db = await loadDatabaseWorker(env);
+    const tools = (db.tools || [])
+      .filter((t) => t.enabled)
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+    const items = tools
+      .map((t) => {
+        const href = resolveToolHref(t.url);
+        if (!href) return '';
+        const desc = (t.description || '').trim() ? `：${escapeHtml(t.description)}` : '';
+        return `<li><a href="${escapeHtml(href)}">${escapeHtml(t.title)}</a>${desc}</li>`;
+      })
+      .filter(Boolean)
+      .join('');
+    if (items) listHtml = `<ul>${items}</ul>`;
+  } catch (err) {
+    console.error('Error building tools shell HTML:', err);
+  }
+  return `<main><h1>${escapeHtml(shortTitle)}</h1><p>${escapeHtml(description)}</p>${listHtml}${buildSiteNavHtml()}</main>`;
+}
+
+/** /policies 的靜態外殼：把已啟用的政策條文放進初始 HTML */
+async function buildPoliciesShellHtml(env: WorkerEnv, title: string, description: string): Promise<string> {
+  const shortTitle = title.split(' | ')[0].trim();
+  let bodyHtml = '';
+  try {
+    const db = await loadDatabaseWorker(env);
+    const policies = (db.policies || [])
+      .filter((p) => p.enabled)
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+    bodyHtml = policies
+      .map((p) => `<section><h2>${escapeHtml(p.title)}</h2>${formatMultilineHtml(p.content || '')}</section>`)
+      .join('');
+  } catch (err) {
+    console.error('Error building policies shell HTML:', err);
+  }
+  return `<main><h1>${escapeHtml(shortTitle)}</h1><p>${escapeHtml(description)}</p>${bodyHtml}${buildSiteNavHtml()}</main>`;
+}
+
 /**
  * 建立 /intro 頁面初始 HTML 的章節導覽清單
  * 注意：不要加入任何 <h1>、<h2> 或其他標題標籤，/intro 既有的 H1 維持由前端渲染，不要重新設計標題結構。
@@ -198,7 +288,7 @@ async function buildIntroLinksHtml(env: WorkerEnv): Promise<string> {
 const ROUTE_META_MAP: Record<string, RouteMetadata> = {
   '/': {
     title: '亞馬遜國家山岳協會 | Amazon Alpine Association',
-    description: '亞馬遜國家山岳協會（Amazon Alpine Association）官方入口網站與活動行事曆，提倡全民運動、鍛鍊強健體魄、培養互助團隊精神，以及接觸大自然與山林相關知識及技能。',
+    description: '亞馬遜國家山岳協會（Amazon Alpine Association）官方入口網站與活動行事曆，提倡全民運動、團隊互助，並推廣山林知識與技能。',
   },
   '/intro': {
     title: '登山入門指南 | 亞馬遜國家山岳協會',
@@ -461,6 +551,23 @@ Sitemap: https://amazon-hike.com/sitemap.xml
         })
         .join('\n');
 
+      const seenToolPaths = new Set<string>();
+      const toolUrls = (db.tools || [])
+        .filter((t) => t.enabled)
+        .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+        .map((t) => {
+          const p = toInternalPath(resolveToolHref(t.url));
+          if (!p || p === '/tools' || seenToolPaths.has(p)) return '';
+          seenToolPaths.add(p);
+          return `  <url>
+    <loc>${escapeHtml(SITE_ORIGIN + p)}</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>`;
+        })
+        .filter(Boolean)
+        .join('\n');
+
       const allEnabledActivities = (db.navButtonActivities || [])
         .filter((act) => {
           if (!act.enabled || !act.slug || !act.slug.trim()) return false;
@@ -539,6 +646,7 @@ Sitemap: https://amazon-hike.com/sitemap.xml
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
+${toolUrls}
 ${chapterUrls}
 ${navUrls}
 ${activityUrls}
@@ -556,13 +664,13 @@ ${activityUrls}
     const trimmed = pathname.replace(/\/+$/, '').toLowerCase();
     const introMatch = trimmed.match(INTRO_REDIRECT_RE);
     if (introMatch) {
-      return Response.redirect(`https://amazon-hike.com/${introMatch[1]}/`, 301);
+      return Response.redirect(`https://amazon-hike.com/${introMatch[1]}/${url.search}`, 301);
     }
 
     if (!pathname.endsWith('/')) {
       const chapterMatch = trimmed.match(CHAPTER_REDIRECT_RE);
       if (chapterMatch) {
-        return Response.redirect(`https://amazon-hike.com/${chapterMatch[1]}/`, 301);
+        return Response.redirect(`https://amazon-hike.com/${chapterMatch[1]}/${url.search}`, 301);
       }
 
       // Two-level route without trailing slash -> 301 redirect to /{catSlug}/{actSlug}/
@@ -575,7 +683,7 @@ ${activityUrls}
         !pathname.startsWith('/admin') &&
         !pathname.startsWith('/api/')
       ) {
-        return Response.redirect(`https://amazon-hike.com/${segs[0]}/${segs[1]}/`, 301);
+        return Response.redirect(`https://amazon-hike.com/${segs[0]}/${segs[1]}/${url.search}`, 301);
       }
     }
 
@@ -588,7 +696,7 @@ ${activityUrls}
         if (act) {
           const parentBtn = (db.navButtons || []).find((b) => b.id === act.navButtonId);
           const catSlug = parentBtn ? getCategorySlug(parentBtn) : 'activity';
-          return Response.redirect(`https://amazon-hike.com/${catSlug}/${act.slug}/`, 301);
+          return Response.redirect(`https://amazon-hike.com/${catSlug}/${act.slug}/${url.search}`, 301);
         }
       } catch (err) {
         // Fallback to route handler
@@ -604,7 +712,7 @@ ${activityUrls}
         withoutTrailing.startsWith('/intro/') ||
         withoutTrailing.startsWith('/nav/')
       ) {
-        return Response.redirect(`https://amazon-hike.com${withoutTrailing}`, 301);
+        return Response.redirect(`https://amazon-hike.com${withoutTrailing}${url.search}`, 301);
       }
     }
 
@@ -779,7 +887,14 @@ ${activityUrls}
       // 3-3. /admin 路由維持原行為（不注入額外外殼，回傳原始 index.html）
       if (normalizedPath === '/admin') {
         const spaRequest = new Request(new URL('/', request.url), request);
-        return env.ASSETS.fetch(spaRequest);
+        const adminRes = await env.ASSETS.fetch(spaRequest);
+        const adminHeaders = new Headers(adminRes.headers);
+        adminHeaders.set('X-Robots-Tag', 'noindex, nofollow');
+        return new Response(adminRes.body, {
+          status: adminRes.status,
+          statusText: adminRes.statusText,
+          headers: adminHeaders,
+        });
       }
 
       // 3-4. SPA Fallback 客戶端已知路由（/intro, /tools, /highlights, /policies, /surveys, /intro/:slug）
@@ -838,6 +953,15 @@ ${activityUrls}
               )
               .join('');
             rootHtml = `<main><h1>${escapeHtml(btn ? btn.title : '活動列表')}</h1><ul>${listHtml}</ul>${buildSiteNavHtml()}</main>`;
+            if (btn) {
+              chapterJsonLd = buildBreadcrumbJsonLd(
+                [
+                  { name: '首頁', url: `${SITE_ORIGIN}/` },
+                  { name: btn.title, url: canonicalUrl },
+                ],
+                canonicalUrl
+              );
+            }
           } catch (e) {
             rootHtml = buildSectionShellHtml(routeMeta.title, routeMeta.description);
           }
@@ -856,6 +980,14 @@ ${activityUrls}
               : null;
             if (act && parentBtn) {
               rootHtml = buildActivityShellHtml(act);
+              chapterJsonLd = buildBreadcrumbJsonLd(
+                [
+                  { name: '首頁', url: `${SITE_ORIGIN}/` },
+                  { name: parentBtn.title, url: `${SITE_ORIGIN}/nav/${parentBtn.id}` },
+                  { name: act.title, url: canonicalUrl },
+                ],
+                canonicalUrl
+              );
             } else {
               rootHtml = buildSectionShellHtml(routeMeta.title, routeMeta.description);
             }
@@ -865,6 +997,17 @@ ${activityUrls}
         } else if (matchedChapter && !isChapterNotFound) {
           rootHtml = buildChapterShellHtml(matchedChapter);
           chapterJsonLd = buildChapterJsonLd(matchedChapter, canonicalUrl);
+        } else if (normalizedPath === '/tools') {
+          rootHtml = await buildToolsShellHtml(env, routeMeta.title, routeMeta.description);
+          chapterJsonLd = buildBreadcrumbJsonLd(
+            [
+              { name: '首頁', url: `${SITE_ORIGIN}/` },
+              { name: '登山工具', url: canonicalUrl },
+            ],
+            canonicalUrl
+          );
+        } else if (normalizedPath === '/policies') {
+          rootHtml = await buildPoliciesShellHtml(env, routeMeta.title, routeMeta.description);
         } else if (!normalizedPath.startsWith('/intro/')) {
           rootHtml = buildSectionShellHtml(routeMeta.title, routeMeta.description);
         }

@@ -5,10 +5,17 @@ import { getYouTubeVideoId, normalizeUrl } from '../utils/url.js';
 
 interface HighlightsViewProps {
   highlights: HighlightItem[];
+  /** 後台「活動花絮」按鈕的列表頁導讀內容；沒填就顯示預設說明 */
+  introContent?: string;
   onBack: () => void;
 }
 
-export const HighlightsView: React.FC<HighlightsViewProps> = ({ highlights, onBack }) => {
+export const HighlightsView: React.FC<HighlightsViewProps> = ({ highlights, introContent, onBack }) => {
+  const introParagraphs = (introContent || '')
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+
   return (
     <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6" aria-label="活動花絮影音專區">
       {/* Breadcrumb / Back button */}
@@ -34,11 +41,22 @@ export const HighlightsView: React.FC<HighlightsViewProps> = ({ highlights, onBa
             <h1 className="text-xl sm:text-2xl font-bold text-neutral-100">
               活動花絮
             </h1>
-            <p className="text-xs text-neutral-400 mt-0.5">
-              協會各期高山縱走、攀登行程與戶外探索紀錄影音
-            </p>
+            {introParagraphs.length === 0 && (
+              <p className="text-xs text-neutral-400 mt-0.5">
+                協會各期高山縱走、攀登行程與戶外探索紀錄影音
+              </p>
+            )}
           </div>
         </div>
+        {introParagraphs.length > 0 && (
+          <div className="mt-4 space-y-3 text-sm text-neutral-300 leading-relaxed">
+            {introParagraphs.map((p, idx) => (
+              <p key={idx} className="whitespace-pre-line">
+                {p}
+              </p>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Videos List */}

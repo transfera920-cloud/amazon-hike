@@ -239,8 +239,14 @@ async function buildToolsShellHtml(env: WorkerEnv, title: string, description: s
 async function buildHighlightsShellHtml(env: WorkerEnv, title: string, description: string): Promise<string> {
   const shortTitle = title.split(' | ')[0].trim();
   let listHtml = '';
+  let introHtml = '';
   try {
     const db = await loadDatabaseWorker(env);
+    const hlBtn = (db.navButtons || []).find((b) => b.id === 'btn_highlights' || b.url === '/highlights');
+    const intro = (hlBtn?.introContent || '').trim();
+    if (intro) {
+      introHtml = formatMultilineHtml(intro);
+    }
     const items = (db.highlights || [])
       .filter((h) => h.enabled && (h.description || '').trim())
       .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
@@ -250,7 +256,8 @@ async function buildHighlightsShellHtml(env: WorkerEnv, title: string, descripti
   } catch (err) {
     console.error('Error building highlights shell HTML:', err);
   }
-  return `<main><h1>${escapeHtml(shortTitle)}</h1><p>${escapeHtml(description)}</p>${listHtml}${buildSiteNavHtml()}</main>`;
+  const leadHtml = introHtml || `<p>${escapeHtml(description)}</p>`;
+  return `<main><h1>${escapeHtml(shortTitle)}</h1>${leadHtml}${listHtml}${buildSiteNavHtml()}</main>`;
 }
 
 /** /policies 的靜態外殼：把已啟用的政策條文放進初始 HTML */

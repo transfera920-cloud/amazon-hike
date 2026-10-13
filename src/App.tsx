@@ -702,6 +702,13 @@ export default function App() {
         {!isUnknownPath && currentPath === '/highlights' && (
           <HighlightsView
             highlights={publicData.highlights}
+            introContent={
+              (
+                (publicData.navButtons || []).find(
+                  (b) => b.id === 'btn_highlights' || b.url === '/highlights'
+                )?.introContent || ''
+              ).trim()
+            }
             onBack={() => navigate('/')}
           />
         )}

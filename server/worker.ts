@@ -12,6 +12,7 @@ import {
   CHAPTER_SLUG_SOURCE,
   DEFAULT_OG_IMAGE,
   isThinMainChapter,
+  MAIN_WORKER_CHAPTER_SLUGS,
 } from '../src/utils/activitySeo.js';
 import type { NavButtonActivity } from '../src/types.js';
 import { getYouTubeVideoId } from '../src/utils/url.js';
@@ -628,6 +629,34 @@ Sitemap: https://amazon-hike.com/sitemap.xml
         })
         .join('\n');
 
+      // 章節若放在後台「入門導讀（intros）」而不是「章節專文管理（chapters）」，
+      // 連結會是 https://amazon-hike.com/chapterNN/（由獨立專案渲染），一樣要列進 sitemap。
+      // 仍由主站渲染的 chapter01～04 不在此收錄；已在 chapters 出現的 slug 不重複列。
+      const seenChapterSlugs = new Set<string>(
+        enabledChapters.map((c) => String(c.slug || '').toLowerCase())
+      );
+      const introChapterUrls = (db.intros || [])
+        .filter((i) => i.enabled)
+        .slice()
+        .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+        .map((i) => {
+          const p = toInternalPath(resolveToolHref(i.url));
+          const m = p ? p.match(/^\/(chapter[0-9]+)\/?$/i) : null;
+          if (!m) return '';
+          const slug = m[1].toLowerCase();
+          if (!CHAPTER_SLUG_RE.test(slug) || MAIN_WORKER_CHAPTER_SLUGS.has(slug) || seenChapterSlugs.has(slug)) {
+            return '';
+          }
+          seenChapterSlugs.add(slug);
+          return `  <url>
+    <loc>${SITE_ORIGIN}/${slug}/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>`;
+        })
+        .filter(Boolean)
+        .join('\n');
+
       const seenToolPaths = new Set<string>();
       const toolUrls = (db.tools || [])
         .filter((t) => t.enabled)
@@ -726,6 +755,7 @@ Sitemap: https://amazon-hike.com/sitemap.xml
   </url>
 ${toolUrls}
 ${chapterUrls}
+${introChapterUrls}
 ${navUrls}
 ${activityUrls}
 </urlset>`,

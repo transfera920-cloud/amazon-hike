@@ -1,0 +1,4248 @@
+import React, { useState, useEffect, useRef, useLayoutEffect, useCallback } from 'react';
+import {
+  Lock,
+  ArrowLeft,
+  Plus,
+  Edit2,
+  Save,
+  LogOut,
+  CheckCircle2,
+  AlertCircle,
+  BookOpen,
+  Wrench,
+  Video,
+  FileQuestion,
+  Shield,
+  Trash2,
+  LayoutGrid,
+  RotateCcw,
+  ExternalLink,
+  Globe,
+  ChevronDown,
+  ChevronRight,
+  CornerDownRight,
+  Compass,
+  Calendar
+} from 'lucide-react';
+import type {
+  IntroItem,
+  ChapterItem,
+  ToolItem,
+  HighlightItem,
+  PolicyItem,
+  SurveyItem,
+  NavButtonItem,
+  NavButtonEntry,
+  NavButtonActivity,
+  CalendarActivity,
+  AssociationDatabase,
+  TripItinerary
+} from '../types.js';
+import {
+  slugify,
+  RESERVED_SLUGS,
+  getCategorySlug,
+  isFormalChapterSlug,
+  processBatchImportActivities,
+  type BatchImportResult,
+} from '../utils/activitySeo.js';
+import { PEAK_INTRO_PARAGRAPHS } from '../utils/activitySeo.js';
+import { ImageUploadButton } from './ImageUploadButton.js';
+import InlineEditorPortal, { editSlotKey } from './InlineEditorPortal.js';
+import peaksTop100Data from '../../data/peaks-top100.json';
+import {
+  calculateDaysFromDates
+} from '../utils/itineraryHelper.js';
+
+interface AdminPageProps {
+  onBack: () => void;
+  onDataUpdated: () => void;
+}
+
+type AdminTab = 'chapters' | 'intro' | 'tools' | 'highlights' | 'survey' | 'policies' | 'buttons' | 'calendar';
+
+export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) => {
+  // Auth state
+  const [token, setToken] = useState<string>(() => {
+    return sessionStorage.getItem('amazon_admin_session_token') || '';
+  });
+  const [password, setPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
+
+  // Tab state
+  const [activeTab, setActiveTab] = useState<AdminTab>('chapters');
+
+  // Full admin data loaded from server
+  const [adminData, setAdminData] = useState<AssociationDatabase | null>(null);
+  const [loadingData, setLoadingData] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<{ text: string; isError: boolean } | null>(null);
+
+  // Edit / Form state
+  const [editingChapter, setEditingChapter] = useState<Partial<ChapterItem> | null>(null);
+  const [editingIntro, setEditingIntro] = useState<Partial<IntroItem> | null>(null);
+  const [editingTool, setEditingTool] = useState<Partial<ToolItem> | null>(null);
+  const [editingHighlight, setEditingHighlight] = useState<Partial<HighlightItem> | null>(null);
+  const [surveyUrlInput, setSurveyUrlInput] = useState('');
+  const [editingSurvey, setEditingSurvey] = useState<Partial<SurveyItem> | null>(null);
+  const [editingPolicy, setEditingPolicy] = useState<Partial<PolicyItem> | null>(null);
+  const [editingNavButton, setEditingNavButton] = useState<Partial<NavButtonItem> | null>(null);
+  const [categorySlugManuallyEdited, setCategorySlugManuallyEdited] = useState(false);
+  const [editingNavEntry, setEditingNavEntry] = useState<Partial<NavButtonEntry> | null>(null);
+  const [expandedButtonIds, setExpandedButtonIds] = useState<Record<string, boolean>>({});
+  const [editingNavButtonActivity, setEditingNavButtonActivity] = useState<Partial<NavButtonActivity> | null>(null);
+  const [activitySlugManuallyEdited, setActivitySlugManuallyEdited] = useState(false);
+  const [expandedActivityButtonId, setExpandedActivityButtonId] = useState<string | null>(null);
+  const [editingCalendarActivity, setEditingCalendarActivity] = useState<Partial<CalendarActivity> | null>(null);
+
+  // Batch Import state for navButtonActivities
+  const [batchImportButtonId, setBatchImportButtonId] = useState<string | null>(null);
+  const [batchImportJsonText, setBatchImportJsonText] = useState('');
+  const [batchImportItems, setBatchImportItems] = useState<any[] | null>(null);
+  const [batchImportPreview, setBatchImportPreview] = useState<BatchImportResult | null>(null);
+  const [batchImportParseError, setBatchImportParseError] = useState<string | null>(null);
+  const [batchImportExecuting, setBatchImportExecuting] = useState(false);
+  const [batchImportResult, setBatchImportResult] = useState<BatchImportResult | null>(null);
+
+  // Activity content auto-grow textarea ref & height calculation
+  const activityContentTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const adjustActivityContentTextareaHeight = useCallback(() => {
+    if (activityContentTextareaRef.current) {
+      activityContentTextareaRef.current.style.height = 'auto';
+      activityContentTextareaRef.current.style.height = `${activityContentTextareaRef.current.scrollHeight}px`;
+    }
+  }, []);
+
+  useLayoutEffect(() => {
+    if (editingNavButtonActivity) {
+      adjustActivityContentTextareaHeight();
+    }
+  }, [editingNavButtonActivity?.id, adjustActivityContentTextareaHeight]);
+
+  // In-app deletion modal
+  const [deleteTarget, setDeleteTarget] = useState<{
+    type: string;
+    id: string;
+    name: string;
+  } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const [showResetNavModal, setShowResetNavModal] = useState(false);
+  const [isResettingNav, setIsResettingNav] = useState(false);
+
+  // Fetch full data from server API
+  const fetchAdminData = async (authToken: string) => {
+    setLoadingData(true);
+    try {
+      const res = await fetch(`/api/admin/data?_t=${Date.now()}`, {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+        cache: 'no-store',
+      });
+
+      if (res.status === 401 || res.status === 403) {
+        setToken('');
+        sessionStorage.removeItem('amazon_admin_session_token');
+        setLoginError('認證已過期，請重新輸入密碼');
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error(`伺服器錯誤 (HTTP ${res.status})`);
+      }
+
+      const json = await res.json();
+      if (json.success) {
+        setAdminData(json.data);
+        setSurveyUrlInput(json.data.surveyUrl || '');
+      }
+    } catch (err: any) {
+      setStatusMessage({ text: err.message || '讀取資料庫失敗', isError: true });
+    } finally {
+      setLoadingData(false);
+    }
+  };
+
+  useEffect(() => {
+    if (token) {
+      fetchAdminData(token);
+    }
+  }, [token]);
+
+  // Login handler
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError('');
+    setLoginLoading(true);
+
+    try {
+      const res = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+
+      const json = await res.json();
+      if (json.success && json.token) {
+        setToken(json.token);
+        sessionStorage.setItem('amazon_admin_session_token', json.token);
+        setPassword('');
+      } else {
+        setLoginError(json.error || '密碼認證失敗');
+      }
+    } catch (err: any) {
+      setLoginError(err.message || '連線後端認證失敗');
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    setToken('');
+    sessionStorage.removeItem('amazon_admin_session_token');
+    setAdminData(null);
+  };
+
+  const showFeedback = (text: string, isError = false) => {
+    setStatusMessage({ text, isError });
+    setTimeout(() => {
+      setStatusMessage((prev) => (prev?.text === text ? null : prev));
+    }, 4000);
+  };
+
+  // ---------------------------------------------------------
+  // Chapter CRUD
+  // ---------------------------------------------------------
+  const handleSaveChapter = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingChapter || !editingChapter.title) return;
+
+    try {
+      const res = await fetch('/api/admin/save-chapter', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(editingChapter),
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        showFeedback('登山入門章節專文已成功寫入永久資料庫');
+        setEditingChapter(null);
+        await fetchAdminData(token);
+        onDataUpdated();
+      } else {
+        showFeedback(json.error || '儲存失敗', true);
+      }
+    } catch (err: any) {
+      showFeedback(err.message || '連線儲存失敗', true);
+    }
+  };
+
+  // ---------------------------------------------------------
+  // Intro CRUD
+  // ---------------------------------------------------------
+  const handleSaveIntro = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingIntro || !editingIntro.title) return;
+
+    try {
+      const res = await fetch('/api/admin/save-intro', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(editingIntro),
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        showFeedback('登山入門項目已成功寫入永久資料庫');
+        setEditingIntro(null);
+        await fetchAdminData(token);
+        onDataUpdated();
+      } else {
+        showFeedback(json.error || '儲存失敗', true);
+      }
+    } catch (err: any) {
+      showFeedback(err.message || '連線儲存失敗', true);
+    }
+  };
+
+  // ---------------------------------------------------------
+  // Tool CRUD
+  // ---------------------------------------------------------
+  const handleSaveTool = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTool || !editingTool.title) return;
+
+    try {
+      const res = await fetch('/api/admin/save-tool', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(editingTool),
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        showFeedback('登山工具已成功寫入永久資料庫');
+        setEditingTool(null);
+        await fetchAdminData(token);
+        onDataUpdated();
+      } else {
+        showFeedback(json.error || '儲存失敗', true);
+      }
+    } catch (err: any) {
+      showFeedback(err.message || '連線儲存失敗', true);
+    }
+  };
+
+  // ---------------------------------------------------------
+  // Calendar Activity CRUD
+  // ---------------------------------------------------------
+  const handleSaveCalendarActivity = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCalendarActivity || !editingCalendarActivity.title || !editingCalendarActivity.startDate || !editingCalendarActivity.url) return;
+
+    const startDate = editingCalendarActivity.startDate.trim();
+    const endDate = (editingCalendarActivity.endDate && editingCalendarActivity.endDate.trim())
+      ? editingCalendarActivity.endDate.trim()
+      : startDate;
+
+    const payload = {
+      ...editingCalendarActivity,
+      startDate,
+      endDate,
+    };
+
+    try {
+      const res = await fetch('/api/admin/save-calendar-activity', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        showFeedback('活動行事曆行程已成功儲存至資料庫');
+        setEditingCalendarActivity(null);
+        await fetchAdminData(token);
+        onDataUpdated();
+      } else {
+        showFeedback(json.error || '儲存失敗', true);
+      }
+    } catch (err: any) {
+      showFeedback(err.message || '連線儲存失敗', true);
+    }
+  };
+
+  // ---------------------------------------------------------
+  // Highlight CRUD
+  // ---------------------------------------------------------
+  const handleSaveHighlight = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingHighlight || !editingHighlight.youtubeUrl) return;
+
+    try {
+      const res = await fetch('/api/admin/save-highlight', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(editingHighlight),
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        showFeedback('活動花絮 YouTube 網址已成功寫入永久資料庫');
+        setEditingHighlight(null);
+        await fetchAdminData(token);
+        onDataUpdated();
+      } else {
+        showFeedback(json.error || '儲存失敗', true);
+      }
+    } catch (err: any) {
+      showFeedback(err.message || '連線儲存失敗', true);
+    }
+  };
+
+  // ---------------------------------------------------------
+  // Survey Save
+  // ---------------------------------------------------------
+  const handleSaveSurvey = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/admin/save-survey', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ surveyUrl: surveyUrlInput }),
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        showFeedback('問卷調查 Google Forms 網址已成功寫入永久資料庫');
+        await fetchAdminData(token);
+        onDataUpdated();
+      } else {
+        showFeedback(json.error || '儲存失敗', true);
+      }
+    } catch (err: any) {
+      showFeedback(err.message || '連線儲存失敗', true);
+    }
+  };
+
+  const handleSaveSurveyItem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingSurvey || !editingSurvey.title || !editingSurvey.url) return;
+
+    try {
+      const res = await fetch('/api/admin/save-survey-item', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(editingSurvey),
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        showFeedback('問卷調查項目已成功寫入永久資料庫');
+        setEditingSurvey(null);
+        await fetchAdminData(token);
+        onDataUpdated();
+      } else {
+        showFeedback(json.error || '儲存失敗', true);
+      }
+    } catch (err: any) {
+      showFeedback(err.message || '連線儲存失敗', true);
+    }
+  };
+
+  // ---------------------------------------------------------
+  // Front-end Navigation Buttons CRUD
+  // ---------------------------------------------------------
+  const handleSaveNavButton = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingNavButton || !editingNavButton.title) return;
+
+    const trimmedCatSlug = (editingNavButton.categorySlug || '').trim().toLowerCase();
+    if (trimmedCatSlug) {
+      if (RESERVED_SLUGS.has(trimmedCatSlug) || isFormalChapterSlug(trimmedCatSlug)) {
+        showFeedback('此代稱與系統既有路徑衝突，請更換', true);
+        return;
+      }
+    }
+
+    const effectiveSlug = getCategorySlug({
+      id: editingNavButton.id || 'new',
+      title: editingNavButton.title,
+      categorySlug: trimmedCatSlug,
+    });
+
+    const isDuplicate = (adminData?.navButtons || []).some(
+      (b) => b.id !== editingNavButton.id && getCategorySlug(b) === effectiveSlug
+    );
+    if (isDuplicate) {
+      showFeedback('此網址代稱已被其他分類使用，請更換', true);
+      return;
+    }
+
+    const payload = {
+      ...editingNavButton,
+      categorySlug: trimmedCatSlug || undefined,
+    };
+
+    try {
+      const res = await fetch('/api/admin/save-nav-button', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        showFeedback('前台按鈕設定已成功寫入永久資料庫');
+        setEditingNavButton(null);
+        await fetchAdminData(token);
+        onDataUpdated();
+      } else {
+        showFeedback(json.error || '儲存失敗', true);
+      }
+    } catch (err: any) {
+      showFeedback(err.message || '連線儲存失敗', true);
+    }
+  };
+
+  const handleResetNavButtons = () => {
+    setShowResetNavModal(true);
+  };
+
+  const toggleExpandButton = (btnId: string) => {
+    setExpandedButtonIds((prev) => ({
+      ...prev,
+      [btnId]: !prev[btnId],
+    }));
+  };
+
+  const toggleExpandActivityButton = (btnId: string) => {
+    setExpandedActivityButtonId((prev) => (prev === btnId ? null : btnId));
+  };
+
+  const handleSaveNavEntry = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingNavEntry || !editingNavEntry.title || !editingNavEntry.url || !editingNavEntry.navButtonId) return;
+
+    try {
+      const res = await fetch('/api/admin/save-nav-button-entry', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(editingNavEntry),
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        showFeedback('按鈕次層項目已成功儲存');
+        setEditingNavEntry(null);
+        await fetchAdminData(token);
+        onDataUpdated();
+      } else {
+        showFeedback(json.error || '儲存失敗', true);
+      }
+    } catch (err: any) {
+      showFeedback(err.message || '連線儲存失敗', true);
+    }
+  };
+
+  const handleSaveNavButtonActivity = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (
+      !editingNavButtonActivity ||
+      !editingNavButtonActivity.title ||
+      !editingNavButtonActivity.slug ||
+      !editingNavButtonActivity.navButtonId
+    )
+      return;
+
+    const targetSlug = editingNavButtonActivity.slug.trim().toLowerCase();
+    const isDuplicateSlug = (adminData?.navButtonActivities || []).some(
+      (a) =>
+        a.id !== editingNavButtonActivity.id &&
+        a.navButtonId === editingNavButtonActivity.navButtonId &&
+        a.slug.toLowerCase() === targetSlug
+    );
+    if (isDuplicateSlug) {
+      showFeedback('同一個分類底下已有相同代稱（slug）的活動，請更換', true);
+      return;
+    }
+
+    const payload = {
+      ...editingNavButtonActivity,
+      slug: targetSlug,
+      externalUrl: (editingNavButtonActivity.externalUrl || '').trim(),
+      nationalPark: (editingNavButtonActivity.nationalPark || '').trim() || undefined,
+    };
+
+    try {
+      const res = await fetch('/api/admin/save-nav-button-activity', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        showFeedback('活動資料已成功儲存');
+        setEditingNavButtonActivity(null);
+        await fetchAdminData(token);
+        onDataUpdated();
+      } else {
+        showFeedback(json.error || '儲存失敗', true);
+      }
+    } catch (err: any) {
+      showFeedback(err.message || '連線儲存失敗', true);
+    }
+  };
+
+  const handlePreviewBatchImport = (navButtonId: string, rawText?: string) => {
+    const textToParse = (rawText !== undefined ? rawText : batchImportJsonText).trim();
+    setBatchImportParseError(null);
+    setBatchImportResult(null);
+
+    if (!textToParse) {
+      setBatchImportParseError('請先選擇 JSON 檔案或貼上 JSON 內容');
+      setBatchImportItems(null);
+      setBatchImportPreview(null);
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(textToParse);
+      const arr = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray(parsed?.peaks)
+        ? parsed.peaks
+        : Array.isArray(parsed?.items)
+        ? parsed.items
+        : null;
+
+      if (!arr || !Array.isArray(arr) || arr.length === 0) {
+        setBatchImportParseError('JSON 格式必須為陣列 [...] 或包含 { peaks: [...] } 且至少有一筆資料');
+        setBatchImportItems(null);
+        setBatchImportPreview(null);
+        return;
+      }
+
+      const preview = processBatchImportActivities(
+        adminData?.navButtonActivities || [],
+        navButtonId,
+        arr,
+        false
+      );
+      setBatchImportItems(arr);
+      setBatchImportPreview(preview);
+    } catch (err: any) {
+      setBatchImportParseError(`JSON 解析失敗：${err.message || '格式不正確'}`);
+      setBatchImportItems(null);
+      setBatchImportPreview(null);
+    }
+  };
+
+  const handleConfirmBatchImport = async (navButtonId: string) => {
+    if (!batchImportItems || batchImportItems.length === 0 || batchImportExecuting) return;
+    setBatchImportExecuting(true);
+    setBatchImportParseError(null);
+
+    try {
+      const res = await fetch('/api/admin/import-nav-button-activities', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          navButtonId,
+          items: batchImportItems,
+        }),
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        const resSummary: BatchImportResult = {
+          created: json.created ?? 0,
+          updated: json.updated ?? 0,
+          skipped: json.skipped ?? 0,
+          errors: Array.isArray(json.errors) ? json.errors : [],
+        };
+        setBatchImportResult(resSummary);
+        setBatchImportPreview(null);
+        setBatchImportItems(null);
+        showFeedback(
+          `批次匯入完成：新增 ${resSummary.created} 筆、補齊國家公園 ${resSummary.updated} 筆、略過 ${resSummary.skipped} 筆`
+        );
+        await fetchAdminData(token);
+        onDataUpdated();
+      } else {
+        setBatchImportParseError(json.error || '批次匯入失敗');
+        showFeedback(json.error || '批次匯入失敗', true);
+      }
+    } catch (err: any) {
+      setBatchImportParseError(err.message || '連線匯入失敗');
+      showFeedback(err.message || '連線匯入失敗', true);
+    } finally {
+      setBatchImportExecuting(false);
+    }
+  };
+
+  const handleUpdateItineraryField = (field: keyof TripItinerary, value: any) => {
+    setEditingNavButtonActivity((prev) => {
+      if (!prev) return prev;
+      const currentItinerary = prev.itinerary || { enabled: true, days: [] };
+      return {
+        ...prev,
+        itinerary: {
+          ...currentItinerary,
+          [field]: value,
+        },
+      };
+    });
+  };
+
+
+
+  const handleConfirmResetNav = async () => {
+    if (isResettingNav) return;
+    setIsResettingNav(true);
+    try {
+      const res = await fetch('/api/admin/reset-nav-buttons', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        showFeedback('已成功恢復預設八大前台按鈕');
+        setShowResetNavModal(false);
+        await fetchAdminData(token);
+        onDataUpdated();
+      } else {
+        showFeedback(json.error || '重設失敗', true);
+      }
+    } catch (err: any) {
+      showFeedback(err.message || '連線失敗', true);
+    } finally {
+      setIsResettingNav(false);
+    }
+  };
+
+  // ---------------------------------------------------------
+  // Policy CRUD
+  // ---------------------------------------------------------
+  const handleSavePolicy = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPolicy || !editingPolicy.title) return;
+
+    try {
+      const res = await fetch('/api/admin/save-policy', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(editingPolicy),
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        showFeedback('政策與條款已成功寫入永久資料庫');
+        setEditingPolicy(null);
+        await fetchAdminData(token);
+        onDataUpdated();
+      } else {
+        showFeedback(json.error || '儲存失敗', true);
+      }
+    } catch (err: any) {
+      showFeedback(err.message || '連線儲存失敗', true);
+    }
+  };
+
+  // ---------------------------------------------------------
+  // Generic Delete (In-App Modal Confirmation)
+  // ---------------------------------------------------------
+  const handleDeleteItem = (type: string, id: string, name: string) => {
+    setDeleteTarget({ type, id, name });
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget || isDeleting) return;
+    setIsDeleting(true);
+
+    try {
+      // 1. Try POST /api/admin/delete-item first
+      let res = await fetch('/api/admin/delete-item', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        cache: 'no-store',
+        body: JSON.stringify({ type: deleteTarget.type, id: deleteTarget.id }),
+      });
+
+      // 2. Fallback to DELETE /api/admin/item/:type/:id if needed
+      if (!res.ok) {
+        res = await fetch(`/api/admin/item/${deleteTarget.type}/${deleteTarget.id}`, {
+          method: 'DELETE',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          cache: 'no-store',
+        });
+      }
+
+      let json: any = null;
+      try {
+        json = await res.json();
+      } catch {
+        throw new Error(`伺服器回應錯誤 (HTTP ${res.status})`);
+      }
+
+      if (json && json.success) {
+        showFeedback(`已成功自資料庫刪除「${deleteTarget.name}」`);
+
+        // Optimistically remove from local state immediately
+        const targetType = (deleteTarget.type || '').toLowerCase();
+        const targetId = String(deleteTarget.id);
+        setAdminData((prev) => {
+          if (!prev) return prev;
+          const next = { ...prev };
+          if (targetType === 'intro') {
+            next.intros = (next.intros || []).filter((i) => String(i.id) !== targetId);
+          } else if (targetType === 'tool') {
+            next.tools = (next.tools || []).filter((t) => String(t.id) !== targetId);
+          } else if (targetType === 'highlight') {
+            next.highlights = (next.highlights || []).filter((h) => String(h.id) !== targetId);
+          } else if (targetType === 'survey') {
+            next.surveys = (next.surveys || []).filter((s) => String(s.id) !== targetId);
+            const first = next.surveys.find((s) => s.enabled);
+            next.surveyUrl = first ? first.url : '';
+          } else if (targetType === 'policy') {
+            next.policies = (next.policies || []).filter((p) => String(p.id) !== targetId);
+          } else if (targetType === 'navbutton' || targetType === 'nav_button') {
+            next.navButtons = (next.navButtons || []).filter((b) => String(b.id) !== targetId);
+            next.navButtonActivities = (next.navButtonActivities || []).filter((a) => String(a.navButtonId) !== targetId);
+          } else if (
+            targetType === 'navbuttonentry' ||
+            targetType === 'nav_button_entry' ||
+            targetType === 'navbuttonentries'
+          ) {
+            next.navButtonEntries = (next.navButtonEntries || []).filter((e) => String(e.id) !== targetId);
+          } else if (
+            targetType === 'navbuttonactivity' ||
+            targetType === 'nav_button_activity' ||
+            targetType === 'navbuttonactivities'
+          ) {
+            next.navButtonActivities = (next.navButtonActivities || []).filter((a) => String(a.id) !== targetId);
+          } else if (
+            targetType === 'calendaractivity' ||
+            targetType === 'calendar_activity' ||
+            targetType === 'calendaractivities'
+          ) {
+            next.calendarActivities = (next.calendarActivities || []).filter((a) => String(a.id) !== targetId);
+          }
+          return next;
+        });
+
+        // Reset currently editing object if it matches the deleted id
+        if (editingIntro?.id === deleteTarget.id) setEditingIntro(null);
+        if (editingTool?.id === deleteTarget.id) setEditingTool(null);
+        if (editingHighlight?.id === deleteTarget.id) setEditingHighlight(null);
+        if (editingSurvey?.id === deleteTarget.id) setEditingSurvey(null);
+        if (editingPolicy?.id === deleteTarget.id) setEditingPolicy(null);
+        if (editingNavButton?.id === deleteTarget.id) setEditingNavButton(null);
+        if (editingNavEntry?.id === deleteTarget.id) setEditingNavEntry(null);
+        if (editingNavButtonActivity?.id === deleteTarget.id) setEditingNavButtonActivity(null);
+        if (editingCalendarActivity?.id === deleteTarget.id) setEditingCalendarActivity(null);
+
+        setDeleteTarget(null);
+        await fetchAdminData(token);
+        onDataUpdated();
+      } else {
+        showFeedback((json && json.error) || '刪除失敗', true);
+      }
+    } catch (err: any) {
+      showFeedback(err.message || '連線刪除失敗', true);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  // =========================================================
+  // Unauthenticated: Login Screen
+  // =========================================================
+  if (!token) {
+    return (
+      <main className="max-w-md mx-auto px-4 py-16" aria-label="後台管理登入">
+        <div className="mb-4">
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-400 hover:text-emerald-300 transition-colors"
+          >
+            <ArrowLeft size={14} />
+            <span>回到網站首頁</span>
+          </button>
+        </div>
+
+        <div className="border border-neutral-800 rounded-lg bg-neutral-900/70 p-6 shadow-2xl">
+          <div className="flex items-center gap-3 border-b border-neutral-800 pb-4 mb-6">
+            <div className="p-2.5 rounded-md bg-emerald-950 border border-emerald-800/80 text-emerald-400">
+              <Lock size={20} />
+            </div>
+            <div>
+              <h1 className="text-lg font-bold text-neutral-100">
+                後台管理系統
+              </h1>
+              <p className="text-xs text-neutral-400">
+                亞馬遜國家山岳協會 超級管理權限認證
+              </p>
+            </div>
+          </div>
+
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label
+                htmlFor="admin-password-input"
+                className="block text-xs font-medium text-neutral-300 mb-1.5"
+              >
+                管理認證密碼
+              </label>
+              <input
+                id="admin-password-input"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                autoComplete="current-password"
+                className="w-full px-3 py-2 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 text-sm focus:outline-none focus:border-emerald-500 transition-colors"
+                placeholder="請輸入後台管理密碼"
+              />
+            </div>
+
+            {loginError && (
+              <div className="p-2.5 rounded bg-rose-950/60 border border-rose-800 text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle size={14} className="shrink-0" />
+                <span>{loginError}</span>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loginLoading}
+              className="w-full py-2.5 px-4 rounded bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 text-white font-semibold text-xs transition-colors shadow"
+              id="admin-login-submit"
+            >
+              {loginLoading ? '驗證中...' : '登入後台'}
+            </button>
+          </form>
+        </div>
+      </main>
+    );
+  }
+
+  // =========================================================
+  // Authenticated: Admin Dashboard
+  // =========================================================
+  return (
+    <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6" aria-label="後台資料管理">
+      {/* Header bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-neutral-800 pb-4 mb-6">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onBack}
+            className="p-1.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition-colors"
+            title="返回網站前台"
+            id="admin-return-btn"
+          >
+            <ArrowLeft size={16} />
+          </button>
+          <div>
+            <h1 className="text-xl font-bold text-neutral-100 flex items-center gap-2">
+              協會網站後台管理
+              <span className="text-[11px] px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800/80 font-normal">
+                永久資料庫已連線
+              </span>
+            </h1>
+            <p className="text-xs text-neutral-400 mt-0.5">
+              所有修改直接儲存至後端永久資料庫，重新整理與跨裝置均保持最新狀態
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border border-neutral-800 bg-neutral-900 text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors"
+            id="admin-logout-btn"
+          >
+            <LogOut size={14} />
+            <span>登出</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Status feedback bar */}
+      {statusMessage && (
+        <div
+          className={`mb-4 p-3 rounded text-xs flex items-center gap-2 border ${
+            statusMessage.isError
+              ? 'bg-rose-950/70 border-rose-800 text-rose-300'
+              : 'bg-emerald-950/70 border-emerald-800 text-emerald-300'
+          }`}
+        >
+          {statusMessage.isError ? <AlertCircle size={15} /> : <CheckCircle2 size={15} />}
+          <span>{statusMessage.text}</span>
+        </div>
+      )}
+
+      {/* Tab Navigation */}
+      <div className="flex items-center border-b border-neutral-800 gap-1 overflow-x-auto text-xs font-medium mb-6">
+        <button
+          type="button"
+          onClick={() => setActiveTab('chapters')}
+          className={`px-3.5 py-2 border-b-2 transition-colors whitespace-nowrap flex items-center gap-1.5 ${
+            activeTab === 'chapters'
+              ? 'border-emerald-500 text-emerald-400 font-semibold'
+              : 'border-transparent text-neutral-400 hover:text-neutral-200'
+          }`}
+        >
+          <BookOpen size={14} />
+          <span>章節專文管理 ({adminData?.chapters?.length ?? 0})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('intro')}
+          className={`px-3.5 py-2 border-b-2 transition-colors whitespace-nowrap flex items-center gap-1.5 ${
+            activeTab === 'intro'
+              ? 'border-emerald-500 text-emerald-400 font-semibold'
+              : 'border-transparent text-neutral-400 hover:text-neutral-200'
+          }`}
+        >
+          <Globe size={14} />
+          <span>入門外部連結</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('tools')}
+          className={`px-3.5 py-2 border-b-2 transition-colors whitespace-nowrap flex items-center gap-1.5 ${
+            activeTab === 'tools'
+              ? 'border-emerald-500 text-emerald-400 font-semibold'
+              : 'border-transparent text-neutral-400 hover:text-neutral-200'
+          }`}
+        >
+          <Wrench size={14} />
+          <span>登山工具管理</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('highlights')}
+          className={`px-3.5 py-2 border-b-2 transition-colors whitespace-nowrap flex items-center gap-1.5 ${
+            activeTab === 'highlights'
+              ? 'border-emerald-500 text-emerald-400 font-semibold'
+              : 'border-transparent text-neutral-400 hover:text-neutral-200'
+          }`}
+        >
+          <Video size={14} />
+          <span>活動花絮管理</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('survey')}
+          className={`px-3.5 py-2 border-b-2 transition-colors whitespace-nowrap flex items-center gap-1.5 ${
+            activeTab === 'survey'
+              ? 'border-emerald-500 text-emerald-400 font-semibold'
+              : 'border-transparent text-neutral-400 hover:text-neutral-200'
+          }`}
+        >
+          <FileQuestion size={14} />
+          <span>問卷選單管理</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('policies')}
+          className={`px-3.5 py-2 border-b-2 transition-colors whitespace-nowrap flex items-center gap-1.5 ${
+            activeTab === 'policies'
+              ? 'border-emerald-500 text-emerald-400 font-semibold'
+              : 'border-transparent text-neutral-400 hover:text-neutral-200'
+          }`}
+        >
+          <Shield size={14} />
+          <span>政策與條款管理</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('buttons')}
+          className={`px-3.5 py-2 border-b-2 transition-colors whitespace-nowrap flex items-center gap-1.5 ${
+            activeTab === 'buttons'
+              ? 'border-emerald-500 text-emerald-400 font-semibold'
+              : 'border-transparent text-neutral-400 hover:text-neutral-200'
+          }`}
+        >
+          <LayoutGrid size={14} />
+          <span>前台按鈕管理</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('calendar')}
+          className={`px-3.5 py-2 border-b-2 transition-colors whitespace-nowrap flex items-center gap-1.5 ${
+            activeTab === 'calendar'
+              ? 'border-emerald-500 text-emerald-400 font-semibold'
+              : 'border-transparent text-neutral-400 hover:text-neutral-200'
+          }`}
+        >
+          <Calendar size={14} />
+          <span>活動行事曆管理</span>
+        </button>
+      </div>
+
+      {loadingData && (
+        <div className="py-8 text-center text-xs text-neutral-400">
+          讀取最新資料中...
+        </div>
+      )}
+
+      {/* =========================================================
+          TAB 0: 登山入門章節專文管理 (chapters)
+          Fields: id, slug, title, description, content, coverImage, sortOrder, enabled, updatedAt
+          ========================================================= */}
+      {activeTab === 'chapters' && adminData && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-bold text-neutral-200">
+                登山入門章節專文清單 ({(adminData.chapters || []).length})
+              </h2>
+              <p className="text-xs text-neutral-400 mt-0.5">
+                章節專文將自動產生獨立內容頁面（/intro/chapterXX）與動態 Sitemap
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                setEditingChapter({
+                  id: '',
+                  slug: `chapter${String(((adminData.chapters || []).length || 0) + 1).padStart(2, '0')}`,
+                  title: '',
+                  description: '',
+                  content: '',
+                  coverImage: '',
+                  enabled: true,
+                  sortOrder: ((adminData.chapters || []).length || 0) + 1,
+                })
+              }
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold bg-emerald-800 hover:bg-emerald-700 text-white transition-colors"
+              id="add-chapter-btn"
+            >
+              <Plus size={14} />
+              <span>新增章節專文</span>
+            </button>
+          </div>
+
+          {/* Edit / Create Form */}
+          {editingChapter && (
+            <InlineEditorPortal kind="chapter" editId={editingChapter.id}>
+            <div className="border border-emerald-700/80 rounded bg-neutral-900 p-5 space-y-4">
+              <h3 className="text-sm font-bold text-emerald-400">
+                {editingChapter.id ? '編輯章節專文' : '新增章節專文'}
+              </h3>
+              <form onSubmit={handleSaveChapter} className="space-y-3 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-neutral-300 font-medium mb-1">
+                      章節網址代稱 (Slug) *
+                    </label>
+                    <div className="flex items-center gap-1">
+                      <span className="text-neutral-500 font-mono text-xs">/intro/</span>
+                      <input
+                        type="text"
+                        required
+                        value={editingChapter.slug || ''}
+                        onChange={(e) =>
+                          setEditingChapter({ ...editingChapter, slug: e.target.value.trim().toLowerCase() })
+                        }
+                        placeholder="例如：chapter01"
+                        className="flex-1 px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-neutral-300 font-medium mb-1">
+                      文章標題 (Title) *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editingChapter.title || ''}
+                      onChange={(e) =>
+                        setEditingChapter({ ...editingChapter, title: e.target.value })
+                      }
+                      placeholder="例如：第一講：高山裝備挑選原則"
+                      className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-neutral-300 font-medium mb-1">
+                    摘要說明 (給 SEO Meta Description 與卡片使用)
+                  </label>
+                  <input
+                    type="text"
+                    value={editingChapter.description || ''}
+                    onChange={(e) =>
+                      setEditingChapter({ ...editingChapter, description: e.target.value })
+                    }
+                    placeholder="一至兩句文章摘要"
+                    className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-neutral-300 font-medium mb-1">
+                    文章正文 (支援空行分段)
+                  </label>
+                  <textarea
+                    rows={8}
+                    value={editingChapter.content || ''}
+                    onChange={(e) =>
+                      setEditingChapter({ ...editingChapter, content: e.target.value })
+                    }
+                    placeholder="請輸入專文內容，段落之間以空行分隔..."
+                    className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 leading-relaxed font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-neutral-300 font-medium mb-1">
+                    封面圖片網址 (選填)
+                  </label>
+                  <input
+                    type="text"
+                    value={editingChapter.coverImage || ''}
+                    onChange={(e) =>
+                      setEditingChapter({ ...editingChapter, coverImage: e.target.value })
+                    }
+                    placeholder="https://..."
+                    className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                  />
+                  <ImageUploadButton
+                    token={token}
+                    value={editingChapter.coverImage || ''}
+                    onUploaded={(url) =>
+                      setEditingChapter((prev) => (prev ? { ...prev, coverImage: url } : prev))
+                    }
+                  />
+                </div>
+
+                <div className="flex items-center gap-6 pt-1">
+                  <div>
+                    <label className="block text-neutral-300 font-medium mb-1">
+                      排序序號
+                    </label>
+                    <input
+                      type="number"
+                      value={editingChapter.sortOrder ?? 0}
+                      onChange={(e) =>
+                        setEditingChapter({
+                          ...editingChapter,
+                          sortOrder: parseInt(e.target.value) || 0,
+                        })
+                      }
+                      className="w-24 px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2 mt-5">
+                    <input
+                      type="checkbox"
+                      id="chapter-enabled"
+                      checked={editingChapter.enabled ?? true}
+                      onChange={(e) =>
+                        setEditingChapter({
+                          ...editingChapter,
+                          enabled: e.target.checked,
+                        })
+                      }
+                      className="rounded border-neutral-700 text-emerald-600 focus:ring-0"
+                    />
+                    <label
+                      htmlFor="chapter-enabled"
+                      className="text-neutral-300 font-medium"
+                    >
+                      啟用顯示與 Sitemap
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-3">
+                  <button
+                    type="submit"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-semibold transition-colors"
+                  >
+                    <Save size={14} />
+                    <span>儲存至永久資料庫</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingChapter(null)}
+                    className="px-3 py-2 rounded bg-neutral-800 text-neutral-300 hover:text-white transition-colors"
+                  >
+                    取消
+                  </button>
+                </div>
+              </form>
+            </div>
+            </InlineEditorPortal>
+          )}
+
+          {/* List Table */}
+          <div className="border border-neutral-800 rounded bg-neutral-900/40 overflow-hidden">
+            <div className="divide-y divide-neutral-800">
+              {((adminData.chapters || []).slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))).map((item) => (
+                <div key={item.id}>
+                  <div data-edit-slot={editSlotKey('chapter', item.id)} />
+                  <div
+                    className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                  >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 font-mono">
+                        #{item.sortOrder}
+                      </span>
+                      <span className="font-bold text-neutral-100">
+                        {item.title}
+                      </span>
+                      <span className="text-xs px-2 py-0.5 rounded bg-neutral-800 text-emerald-400 font-mono">
+                        /intro/{item.slug}
+                      </span>
+                      {!item.enabled && (
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-rose-950 text-rose-300 border border-rose-800">
+                          已停用
+                        </span>
+                      )}
+                    </div>
+                    {item.description && (
+                      <p className="text-xs text-neutral-400 line-clamp-1">
+                        {item.description}
+                      </p>
+                    )}
+                    {item.updatedAt && (
+                      <p className="text-[11px] text-neutral-500 font-mono">
+                        更新時間：{item.updatedAt}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <a
+                      href={`/intro/${item.slug}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-1.5 rounded text-neutral-400 hover:text-emerald-400 hover:bg-neutral-800 transition-colors"
+                      title="檢視前台頁面"
+                    >
+                      <ExternalLink size={15} />
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => setEditingChapter(item)}
+                      className="p-1.5 rounded text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors"
+                      title="編輯"
+                    >
+                      <Edit2 size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleDeleteItem('chapter', item.id, item.title)
+                      }
+                      className="p-1.5 rounded text-rose-400 hover:text-rose-300 hover:bg-neutral-800 transition-colors"
+                      title="刪除"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================
+          TAB 1: 登山入門管理
+          Fields strictly: title, description, content, url, enabled, sortOrder
+          ========================================================= */}
+      {activeTab === 'intro' && adminData && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-bold text-neutral-200">
+              登山入門項目清單 ({adminData.intros.length})
+            </h2>
+            <button
+              type="button"
+              onClick={() =>
+                setEditingIntro({
+                  id: '',
+                  title: '',
+                  description: '',
+                  content: '',
+                  url: '',
+                  enabled: true,
+                  sortOrder: (adminData.intros.length || 0) + 1,
+                })
+              }
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold bg-emerald-800 hover:bg-emerald-700 text-white transition-colors"
+            >
+              <Plus size={14} />
+              <span>新增入門專文</span>
+            </button>
+          </div>
+
+          {/* Edit / Create Form */}
+          {editingIntro && (
+            <InlineEditorPortal kind="intro" editId={editingIntro.id}>
+            <div className="border border-emerald-700/80 rounded bg-neutral-900 p-5 space-y-4">
+              <h3 className="text-sm font-bold text-emerald-400">
+                {editingIntro.id ? '編輯登山入門項目' : '新增登山入門項目'}
+              </h3>
+              <form onSubmit={handleSaveIntro} className="space-y-3 text-xs">
+                <div>
+                  <label className="block text-neutral-300 font-medium mb-1">
+                    名稱／標題 *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editingIntro.title || ''}
+                    onChange={(e) =>
+                      setEditingIntro({ ...editingIntro, title: e.target.value })
+                    }
+                    className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-neutral-300 font-medium mb-1">
+                    說明
+                  </label>
+                  <input
+                    type="text"
+                    value={editingIntro.description || ''}
+                    onChange={(e) =>
+                      setEditingIntro({ ...editingIntro, description: e.target.value })
+                    }
+                    className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-neutral-300 font-medium mb-1">
+                    內容
+                  </label>
+                  <textarea
+                    rows={editingIntro.pinned ? 14 : 4}
+                    value={editingIntro.content || ''}
+                    onChange={(e) =>
+                      setEditingIntro({ ...editingIntro, content: e.target.value })
+                    }
+                    className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                  />
+                  {editingIntro.pinned && (
+                    <p className="text-[11px] text-neutral-500 mt-1">
+                      導讀內文：空一行分段；連結寫法 [文字](/chapter02/)
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-neutral-300 font-medium mb-1">
+                    網址 (若設定網址，前台點擊「閱讀完整專文」將直接前往)
+                  </label>
+                  <input
+                    type="text"
+                    value={editingIntro.url || ''}
+                    onChange={(e) =>
+                      setEditingIntro({ ...editingIntro, url: e.target.value })
+                    }
+                    placeholder="例如：example.com/hiking-article"
+                    className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                  />
+                </div>
+
+                <div className="flex items-center gap-6 pt-1">
+                  <div>
+                    <label className="block text-neutral-300 font-medium mb-1">
+                      排序序號
+                    </label>
+                    <input
+                      type="number"
+                      value={editingIntro.sortOrder ?? 0}
+                      onChange={(e) =>
+                        setEditingIntro({
+                          ...editingIntro,
+                          sortOrder: parseInt(e.target.value) || 0,
+                        })
+                      }
+                      className="w-24 px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2 mt-5">
+                    <input
+                      type="checkbox"
+                      id="intro-enabled"
+                      checked={editingIntro.enabled ?? true}
+                      onChange={(e) =>
+                        setEditingIntro({
+                          ...editingIntro,
+                          enabled: e.target.checked,
+                        })
+                      }
+                      className="rounded border-neutral-700 text-emerald-600 focus:ring-0"
+                    />
+                    <label
+                      htmlFor="intro-enabled"
+                      className="text-neutral-300 font-medium"
+                    >
+                      啟用顯示
+                    </label>
+                  </div>
+
+                  <div className="flex items-center gap-2 mt-5">
+                    <input
+                      type="checkbox"
+                      id="intro-pinned"
+                      checked={editingIntro.pinned ?? false}
+                      onChange={(e) =>
+                        setEditingIntro({
+                          ...editingIntro,
+                          pinned: e.target.checked,
+                        })
+                      }
+                      className="rounded border-neutral-700 text-emerald-600 focus:ring-0"
+                    />
+                    <label
+                      htmlFor="intro-pinned"
+                      className="text-neutral-300 font-medium"
+                    >
+                      導讀置頂（顯示在頁面最上方）
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-3">
+                  <button
+                    type="submit"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-semibold transition-colors"
+                  >
+                    <Save size={14} />
+                    <span>儲存至永久資料庫</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingIntro(null)}
+                    className="px-3 py-2 rounded bg-neutral-800 text-neutral-300 hover:text-white transition-colors"
+                  >
+                    取消
+                  </button>
+                </div>
+              </form>
+            </div>
+            </InlineEditorPortal>
+          )}
+
+          {/* List Table */}
+          <div className="border border-neutral-800 rounded bg-neutral-900/40 overflow-hidden">
+            <div className="divide-y divide-neutral-800">
+              {((adminData.intros || []).slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))).map((item) => (
+                <div key={item.id}>
+                  <div data-edit-slot={editSlotKey('intro', item.id)} />
+                  <div
+                    className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                  >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 font-mono">
+                        #{item.sortOrder}
+                      </span>
+                      <span className="font-bold text-neutral-100">
+                        {item.title}
+                      </span>
+                      {item.pinned && (
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-300 border border-emerald-800">
+                          導讀置頂
+                        </span>
+                      )}
+                      {!item.enabled && (
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-rose-950 text-rose-300 border border-rose-800">
+                          已停用
+                        </span>
+                      )}
+                    </div>
+                    {item.description && (
+                      <p className="text-xs text-neutral-400 line-clamp-1">
+                        {item.description}
+                      </p>
+                    )}
+                    {item.url && (
+                      <p className="text-[11px] text-emerald-400 font-mono">
+                        網址: {item.url}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setEditingIntro(item)}
+                      className="p-1.5 rounded text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors"
+                      title="編輯"
+                    >
+                      <Edit2 size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleDeleteItem('intro', item.id, item.title)
+                      }
+                      className="p-1.5 rounded text-rose-400 hover:text-rose-300 hover:bg-neutral-800 transition-colors"
+                      title="刪除"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================
+          TAB 2: 登山工具管理
+          Fields strictly: title, description, url, enabled, sortOrder
+          ========================================================= */}
+      {activeTab === 'tools' && adminData && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-bold text-neutral-200">
+              登山工具清單 ({adminData.tools.length})
+            </h2>
+            <button
+              type="button"
+              onClick={() =>
+                setEditingTool({
+                  id: '',
+                  title: '',
+                  description: '',
+                  url: '',
+                  enabled: true,
+                  sortOrder: (adminData.tools.length || 0) + 1,
+                })
+              }
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold bg-emerald-800 hover:bg-emerald-700 text-white transition-colors"
+            >
+              <Plus size={14} />
+              <span>新增登山工具</span>
+            </button>
+          </div>
+
+          {/* Edit Tool Form */}
+          {editingTool && (
+            <InlineEditorPortal kind="tool" editId={editingTool.id}>
+            <div className="border border-emerald-700/80 rounded bg-neutral-900 p-5 space-y-4">
+              <h3 className="text-sm font-bold text-emerald-400">
+                {editingTool.id ? '編輯登山工具' : '新增登山工具'}
+              </h3>
+              <form onSubmit={handleSaveTool} className="space-y-3 text-xs">
+                <div>
+                  <label className="block text-neutral-300 font-medium mb-1">
+                    名稱／標題 *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editingTool.title || ''}
+                    onChange={(e) =>
+                      setEditingTool({ ...editingTool, title: e.target.value })
+                    }
+                    className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-neutral-300 font-medium mb-1">
+                    說明
+                  </label>
+                  <input
+                    type="text"
+                    value={editingTool.description || ''}
+                    onChange={(e) =>
+                      setEditingTool({
+                        ...editingTool,
+                        description: e.target.value,
+                      })
+                    }
+                    className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-neutral-300 font-medium mb-1">
+                    網址 * (點擊時自動補齊 HTTPS 並直接前往)
+                  </label>
+                  <input
+                    type="text"
+                    value={editingTool.url || ''}
+                    onChange={(e) =>
+                      setEditingTool({ ...editingTool, url: e.target.value })
+                    }
+                    placeholder="例如：www.cwa.gov.tw"
+                    className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                  />
+                </div>
+
+                <div className="flex items-center gap-6 pt-1">
+                  <div>
+                    <label className="block text-neutral-300 font-medium mb-1">
+                      排序序號
+                    </label>
+                    <input
+                      type="number"
+                      value={editingTool.sortOrder ?? 0}
+                      onChange={(e) =>
+                        setEditingTool({
+                          ...editingTool,
+                          sortOrder: parseInt(e.target.value) || 0,
+                        })
+                      }
+                      className="w-24 px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2 mt-5">
+                    <input
+                      type="checkbox"
+                      id="tool-enabled"
+                      checked={editingTool.enabled ?? true}
+                      onChange={(e) =>
+                        setEditingTool({
+                          ...editingTool,
+                          enabled: e.target.checked,
+                        })
+                      }
+                      className="rounded border-neutral-700 text-emerald-600 focus:ring-0"
+                    />
+                    <label
+                      htmlFor="tool-enabled"
+                      className="text-neutral-300 font-medium"
+                    >
+                      啟用顯示
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-3">
+                  <button
+                    type="submit"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-semibold transition-colors"
+                  >
+                    <Save size={14} />
+                    <span>儲存至永久資料庫</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingTool(null)}
+                    className="px-3 py-2 rounded bg-neutral-800 text-neutral-300 hover:text-white transition-colors"
+                  >
+                    取消
+                  </button>
+                </div>
+              </form>
+            </div>
+            </InlineEditorPortal>
+          )}
+
+          {/* Tools Table */}
+          <div className="border border-neutral-800 rounded bg-neutral-900/40 overflow-hidden">
+            <div className="divide-y divide-neutral-800">
+              {((adminData.tools || []).slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))).map((item) => (
+                <div key={item.id}>
+                  <div data-edit-slot={editSlotKey('tool', item.id)} />
+                  <div
+                    className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                  >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 font-mono">
+                        #{item.sortOrder}
+                      </span>
+                      <span className="font-bold text-neutral-100">
+                        {item.title}
+                      </span>
+                      {!item.enabled && (
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-rose-950 text-rose-300 border border-rose-800">
+                          已停用
+                        </span>
+                      )}
+                    </div>
+                    {item.description && (
+                      <p className="text-xs text-neutral-400">
+                        {item.description}
+                      </p>
+                    )}
+                    {item.url && (
+                      <p className="text-[11px] text-emerald-400 font-mono">
+                        {item.url}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setEditingTool(item)}
+                      className="p-1.5 rounded text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors"
+                      title="編輯"
+                    >
+                      <Edit2 size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleDeleteItem('tool', item.id, item.title)
+                      }
+                      className="p-1.5 rounded text-rose-400 hover:text-rose-300 hover:bg-neutral-800 transition-colors"
+                      title="刪除"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================
+          TAB 3: 活動花絮管理
+          Fields strictly: youtubeUrl, enabled, sortOrder
+          (Rule 二十二: 後台輸入 YouTube URL，不要另外建立活動名稱欄位)
+          ========================================================= */}
+      {activeTab === 'highlights' && adminData && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-bold text-neutral-200">
+              活動花絮 YouTube 影片清單 ({adminData.highlights.length})
+            </h2>
+            <button
+              type="button"
+              onClick={() =>
+                setEditingHighlight({
+                  id: '',
+                  youtubeUrl: '',
+                  enabled: true,
+                  sortOrder: (adminData.highlights.length || 0) + 1,
+                })
+              }
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold bg-emerald-800 hover:bg-emerald-700 text-white transition-colors"
+            >
+              <Plus size={14} />
+              <span>新增 YouTube 影片</span>
+            </button>
+          </div>
+
+          {/* Edit Highlight Form */}
+          {editingHighlight && (
+            <InlineEditorPortal kind="highlight" editId={editingHighlight.id}>
+            <div className="border border-emerald-700/80 rounded bg-neutral-900 p-5 space-y-4">
+              <h3 className="text-sm font-bold text-emerald-400">
+                {editingHighlight.id ? '編輯影片項目' : '新增影片項目'}
+              </h3>
+              <form onSubmit={handleSaveHighlight} className="space-y-3 text-xs">
+                <div>
+                  <label className="block text-neutral-300 font-medium mb-1">
+                    YouTube URL *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editingHighlight.youtubeUrl || ''}
+                    onChange={(e) =>
+                      setEditingHighlight({
+                        ...editingHighlight,
+                        youtubeUrl: e.target.value,
+                      })
+                    }
+                    placeholder="https://www.youtube.com/watch?v=... 或 https://youtu.be/..."
+                    className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-neutral-300 font-medium mb-1">
+                    影片標題（建議填寫，會成為 H2 標題，例如：2025 秀姑巒山三日縱走花絮）
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={100}
+                    value={editingHighlight.title || ''}
+                    onChange={(e) =>
+                      setEditingHighlight({
+                        ...editingHighlight,
+                        title: e.target.value,
+                      })
+                    }
+                    className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-neutral-300 font-medium mb-1">
+                      影片日期（選填，格式 2025-09-20；有填才會產生影片結構化資料）
+                    </label>
+                    <input
+                      type="date"
+                      value={editingHighlight.uploadDate || ''}
+                      onChange={(e) =>
+                        setEditingHighlight({
+                          ...editingHighlight,
+                          uploadDate: e.target.value,
+                        })
+                      }
+                      className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-neutral-300 font-medium mb-1">
+                      對應行程頁網址（選填，站內路徑）
+                    </label>
+                    <input
+                      type="text"
+                      value={editingHighlight.relatedUrl || ''}
+                      onChange={(e) =>
+                        setEditingHighlight({
+                          ...editingHighlight,
+                          relatedUrl: e.target.value,
+                        })
+                      }
+                      placeholder="/baiyue-traverse/xiuguluan/"
+                      className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-neutral-300 font-medium mb-1">
+                    影片說明文字（建議 80～150 字：山名、日期、天數、路線特色）
+                  </label>
+                  <textarea
+                    rows={4}
+                    maxLength={2000}
+                    value={editingHighlight.description || ''}
+                    onChange={(e) =>
+                      setEditingHighlight({
+                        ...editingHighlight,
+                        description: e.target.value,
+                      })
+                    }
+                    placeholder="例如：2026 年 9 月 玉山主峰兩天一夜行程花絮。可換行分段。"
+                    className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 leading-relaxed"
+                  />
+                </div>
+
+                <div className="flex items-center gap-6 pt-1">
+                  <div>
+                    <label className="block text-neutral-300 font-medium mb-1">
+                      排序序號
+                    </label>
+                    <input
+                      type="number"
+                      value={editingHighlight.sortOrder ?? 0}
+                      onChange={(e) =>
+                        setEditingHighlight({
+                          ...editingHighlight,
+                          sortOrder: parseInt(e.target.value) || 0,
+                        })
+                      }
+                      className="w-24 px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2 mt-5">
+                    <input
+                      type="checkbox"
+                      id="highlight-enabled"
+                      checked={editingHighlight.enabled ?? true}
+                      onChange={(e) =>
+                        setEditingHighlight({
+                          ...editingHighlight,
+                          enabled: e.target.checked,
+                        })
+                      }
+                      className="rounded border-neutral-700 text-emerald-600 focus:ring-0"
+                    />
+                    <label
+                      htmlFor="highlight-enabled"
+                      className="text-neutral-300 font-medium"
+                    >
+                      啟用顯示
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-3">
+                  <button
+                    type="submit"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-semibold transition-colors"
+                  >
+                    <Save size={14} />
+                    <span>儲存至永久資料庫</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingHighlight(null)}
+                    className="px-3 py-2 rounded bg-neutral-800 text-neutral-300 hover:text-white transition-colors"
+                  >
+                    取消
+                  </button>
+                </div>
+              </form>
+            </div>
+            </InlineEditorPortal>
+          )}
+
+          {/* Highlights Table */}
+          <div className="border border-neutral-800 rounded bg-neutral-900/40 overflow-hidden">
+            <div className="divide-y divide-neutral-800">
+              {((adminData.highlights || []).slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))).map((item) => (
+                <div key={item.id}>
+                  <div data-edit-slot={editSlotKey('highlight', item.id)} />
+                  <div
+                    className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                  >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 font-mono">
+                        #{item.sortOrder}
+                      </span>
+                      <span className="font-mono text-xs text-neutral-100 break-all">
+                        {item.youtubeUrl}
+                      </span>
+                      {!item.enabled && (
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-rose-950 text-rose-300 border border-rose-800">
+                          已停用
+                        </span>
+                      )}
+                    </div>
+                    {item.description && (
+                      <p className="text-xs text-neutral-400 whitespace-pre-line line-clamp-2">
+                        {item.description}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setEditingHighlight(item)}
+                      className="p-1.5 rounded text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors"
+                      title="編輯"
+                    >
+                      <Edit2 size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleDeleteItem('highlight', item.id, item.youtubeUrl)
+                      }
+                      className="p-1.5 rounded text-rose-400 hover:text-rose-300 hover:bg-neutral-800 transition-colors"
+                      title="刪除"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================
+          TAB 4: 問卷調查管理
+          Supports Adding, Editing, Deleting surveys & Quick URL sync
+          ========================================================= */}
+      {activeTab === 'survey' && adminData && (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-800 pb-4">
+            <div>
+              <h2 className="text-base font-bold text-neutral-100 flex items-center gap-2">
+                <FileQuestion size={18} className="text-emerald-400" />
+                <span>問卷選單項目管理 ({(adminData.surveys || []).length})</span>
+              </h2>
+              <p className="text-xs text-neutral-400 mt-1 leading-relaxed">
+                前台頂部「問卷調查」按鈕已導向至問卷選單專區。請在下方建立問卷標題與對應的問卷超連結，山友點擊標題後將直接前往填寫該問卷。
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                setEditingSurvey({
+                  id: '',
+                  title: '',
+                  url: '',
+                  description: '',
+                  enabled: true,
+                  sortOrder: ((adminData.surveys || []).length || 0) + 1,
+                })
+              }
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded text-xs font-semibold bg-emerald-700 hover:bg-emerald-600 text-white transition-colors shadow shrink-0"
+              id="btn-add-survey"
+            >
+              <Plus size={14} />
+              <span>新增問卷標題與超連結</span>
+            </button>
+          </div>
+
+          {/* Edit / Create Survey Form */}
+          {editingSurvey && (
+            <InlineEditorPortal kind="survey" editId={editingSurvey.id}>
+            <div className="border border-emerald-700/80 rounded-lg bg-neutral-900 p-5 space-y-4 shadow-xl">
+              <h3 className="text-sm font-bold text-emerald-400 flex items-center gap-1.5">
+                <Edit2 size={15} />
+                <span>{editingSurvey.id ? '編輯問卷項目（標題與超連結）' : '新增問卷項目（標題與超連結）'}</span>
+              </h3>
+              <form onSubmit={handleSaveSurveyItem} className="space-y-3.5 text-xs">
+                <div>
+                  <label className="block text-neutral-300 font-semibold mb-1">
+                    問卷標題（前台選單顯示之標題名稱） *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editingSurvey.title || ''}
+                    onChange={(e) =>
+                      setEditingSurvey({ ...editingSurvey, title: e.target.value })
+                    }
+                    placeholder="例如：2025年度登山活動滿意度調查"
+                    className="w-full px-3 py-2 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 placeholder:text-neutral-600 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-neutral-300 font-semibold mb-1">
+                    問卷超連結（Google 表單或外部線上問卷 URL） *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editingSurvey.url || ''}
+                    onChange={(e) =>
+                      setEditingSurvey({ ...editingSurvey, url: e.target.value })
+                    }
+                    placeholder="https://docs.google.com/forms/d/e/.../viewform"
+                    className="w-full px-3 py-2 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 font-mono text-xs placeholder:text-neutral-600 focus:outline-none focus:border-emerald-500"
+                  />
+                  <p className="text-[11px] text-neutral-500 mt-1">
+                    支援完整網址（http:// 或 https://），前台山友點擊標題後將直接以此超連結另開視窗填寫。
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-neutral-300 font-semibold mb-1">
+                    問卷說明／備註（選填，顯示於前台標題下方）
+                  </label>
+                  <input
+                    type="text"
+                    value={editingSurvey.description || ''}
+                    onChange={(e) =>
+                      setEditingSurvey({
+                        ...editingSurvey,
+                        description: e.target.value,
+                      })
+                    }
+                    placeholder="例如：收集山友對活動行程、餐食與嚮導安全之寶貴回饋"
+                    className="w-full px-3 py-2 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 placeholder:text-neutral-600 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div className="flex items-center gap-6 pt-1">
+                  <div>
+                    <label className="block text-neutral-300 font-semibold mb-1">
+                      排序序號
+                    </label>
+                    <input
+                      type="number"
+                      value={editingSurvey.sortOrder ?? 0}
+                      onChange={(e) =>
+                        setEditingSurvey({
+                          ...editingSurvey,
+                          sortOrder: parseInt(e.target.value) || 0,
+                        })
+                      }
+                      className="w-24 px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2 mt-5">
+                    <input
+                      type="checkbox"
+                      id="survey-enabled"
+                      checked={editingSurvey.enabled ?? true}
+                      onChange={(e) =>
+                        setEditingSurvey({
+                          ...editingSurvey,
+                          enabled: e.target.checked,
+                        })
+                      }
+                      className="rounded border-neutral-700 text-emerald-600 focus:ring-0 w-4 h-4 cursor-pointer"
+                    />
+                    <label
+                      htmlFor="survey-enabled"
+                      className="text-neutral-300 font-semibold cursor-pointer"
+                    >
+                      啟用顯示於前台
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-3 border-t border-neutral-800">
+                  <button
+                    type="submit"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-semibold transition-colors shadow"
+                  >
+                    <Save size={14} />
+                    <span>儲存至永久資料庫</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingSurvey(null)}
+                    className="px-3.5 py-2 rounded bg-neutral-800 text-neutral-300 hover:text-white transition-colors"
+                  >
+                    取消
+                  </button>
+                </div>
+              </form>
+            </div>
+            </InlineEditorPortal>
+          )}
+
+          {/* Surveys Table */}
+          <div className="border border-neutral-800 rounded-lg bg-neutral-900/40 overflow-hidden shadow">
+            <div className="divide-y divide-neutral-800">
+              {((adminData.surveys || []).slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))).map((item) => (
+                <div key={item.id}>
+                  <div data-edit-slot={editSlotKey('survey', item.id)} />
+                  <div
+                    className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-neutral-900/60 transition-colors"
+                  >
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 font-mono">
+                        #{item.sortOrder}
+                      </span>
+                      <span className="font-bold text-neutral-100 text-sm">
+                        {item.title}
+                      </span>
+                      {!item.enabled && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-950 text-rose-300 border border-rose-800">
+                          已停用
+                        </span>
+                      )}
+                    </div>
+                    {item.description && (
+                      <p className="text-xs text-neutral-400">
+                        {item.description}
+                      </p>
+                    )}
+                    {item.url && (
+                      <div className="flex items-center gap-2 pt-0.5">
+                        <span className="text-[11px] text-neutral-500">超連結：</span>
+                        <a
+                          href={item.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[11px] text-emerald-400 hover:underline font-mono inline-flex items-center gap-1 break-all"
+                        >
+                          <span>{item.url}</span>
+                          <ExternalLink size={12} className="shrink-0" />
+                        </a>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                    <a
+                      href={item.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2.5 py-1 rounded text-xs bg-neutral-800 hover:bg-neutral-700 text-neutral-300 inline-flex items-center gap-1 transition-colors"
+                      title="測試開啟超連結"
+                    >
+                      <ExternalLink size={12} />
+                      <span>測試連結</span>
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => setEditingSurvey(item)}
+                      className="p-1.5 rounded text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors"
+                      title="編輯"
+                    >
+                      <Edit2 size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleDeleteItem('survey', item.id, item.title)
+                      }
+                      className="p-1.5 rounded text-rose-400 hover:text-rose-300 hover:bg-neutral-800 transition-colors"
+                      title="刪除"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                  </div>
+                </div>
+              ))}
+              {(!adminData.surveys || adminData.surveys.length === 0) && (
+                <div className="p-8 text-xs text-neutral-500 text-center space-y-1">
+                  <p className="font-semibold text-neutral-400">目前尚無問卷選單項目</p>
+                  <p>請點擊上方「新增問卷標題與超連結」按鈕建立第一筆線上問卷。</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Optional Default Survey URL Setting */}
+          <div className="border border-neutral-800 rounded-lg bg-neutral-900/50 p-5 space-y-3 max-w-2xl mt-8">
+            <h3 className="text-sm font-bold text-neutral-200">
+              全域預設問卷超連結（選填備用）
+            </h3>
+            <p className="text-xs text-neutral-400 leading-relaxed">
+              此欄位記錄協會主辦活動之官方預設表單網址。在上方建立的「問卷選單項目」會完整呈現在前台問卷專區，山友可點擊不同問卷標題進入各個表單。
+            </p>
+
+            <form onSubmit={handleSaveSurvey} className="space-y-3 text-xs">
+              <div>
+                <label className="block text-neutral-300 font-medium mb-1">
+                  預設 Google Forms 或問卷網址
+                </label>
+                <input
+                  type="text"
+                  value={surveyUrlInput}
+                  onChange={(e) => setSurveyUrlInput(e.target.value)}
+                  placeholder="https://docs.google.com/forms/d/e/.../viewform"
+                  className="w-full px-3 py-2 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 text-xs font-mono"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-200 hover:text-white font-semibold transition-colors border border-neutral-700"
+              >
+                <Save size={14} />
+                <span>儲存預設問卷網址</span>
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================
+          TAB 5: 政策與條款管理
+          Fields strictly: title, content, enabled, sortOrder (Rule 二十四)
+          ========================================================= */}
+      {activeTab === 'policies' && adminData && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-bold text-neutral-200">
+              政策與條款清單 ({adminData.policies.length})
+            </h2>
+            <button
+              type="button"
+              onClick={() =>
+                setEditingPolicy({
+                  id: '',
+                  title: '',
+                  content: '',
+                  enabled: true,
+                  sortOrder: (adminData.policies.length || 0) + 1,
+                })
+              }
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold bg-emerald-800 hover:bg-emerald-700 text-white transition-colors"
+            >
+              <Plus size={14} />
+              <span>新增條款項目</span>
+            </button>
+          </div>
+
+          {/* Edit Policy Form */}
+          {editingPolicy && (
+            <InlineEditorPortal kind="policy" editId={editingPolicy.id}>
+            <div className="border border-emerald-700/80 rounded bg-neutral-900 p-5 space-y-4">
+              <h3 className="text-sm font-bold text-emerald-400">
+                {editingPolicy.id ? '編輯條款項目' : '新增條款項目'}
+              </h3>
+              <form onSubmit={handleSavePolicy} className="space-y-3 text-xs">
+                <div>
+                  <label className="block text-neutral-300 font-medium mb-1">
+                    標題 *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editingPolicy.title || ''}
+                    onChange={(e) =>
+                      setEditingPolicy({ ...editingPolicy, title: e.target.value })
+                    }
+                    className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-neutral-300 font-medium mb-1">
+                    文字內容 *
+                  </label>
+                  <textarea
+                    rows={6}
+                    required
+                    value={editingPolicy.content || ''}
+                    onChange={(e) =>
+                      setEditingPolicy({ ...editingPolicy, content: e.target.value })
+                    }
+                    className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                  />
+                </div>
+
+                <div className="flex items-center gap-6 pt-1">
+                  <div>
+                    <label className="block text-neutral-300 font-medium mb-1">
+                      排序序號
+                    </label>
+                    <input
+                      type="number"
+                      value={editingPolicy.sortOrder ?? 0}
+                      onChange={(e) =>
+                        setEditingPolicy({
+                          ...editingPolicy,
+                          sortOrder: parseInt(e.target.value) || 0,
+                        })
+                      }
+                      className="w-24 px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2 mt-5">
+                    <input
+                      type="checkbox"
+                      id="policy-enabled"
+                      checked={editingPolicy.enabled ?? true}
+                      onChange={(e) =>
+                        setEditingPolicy({
+                          ...editingPolicy,
+                          enabled: e.target.checked,
+                        })
+                      }
+                      className="rounded border-neutral-700 text-emerald-600 focus:ring-0"
+                    />
+                    <label
+                      htmlFor="policy-enabled"
+                      className="text-neutral-300 font-medium"
+                    >
+                      啟用顯示
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-3">
+                  <button
+                    type="submit"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-semibold transition-colors"
+                  >
+                    <Save size={14} />
+                    <span>儲存至永久資料庫</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingPolicy(null)}
+                    className="px-3 py-2 rounded bg-neutral-800 text-neutral-300 hover:text-white transition-colors"
+                  >
+                    取消
+                  </button>
+                </div>
+              </form>
+            </div>
+            </InlineEditorPortal>
+          )}
+
+          {/* Policies Table */}
+          <div className="border border-neutral-800 rounded bg-neutral-900/40 overflow-hidden">
+            <div className="divide-y divide-neutral-800">
+              {((adminData.policies || []).slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))).map((item) => (
+                <div key={item.id}>
+                  <div data-edit-slot={editSlotKey('policy', item.id)} />
+                  <div
+                    className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                  >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 font-mono">
+                        #{item.sortOrder}
+                      </span>
+                      <span className="font-bold text-neutral-100">
+                        {item.title}
+                      </span>
+                      {!item.enabled && (
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-rose-950 text-rose-300 border border-rose-800">
+                          已停用
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-neutral-400 line-clamp-2">
+                      {item.content}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setEditingPolicy(item)}
+                      className="p-1.5 rounded text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors"
+                      title="編輯"
+                    >
+                      <Edit2 size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleDeleteItem('policy', item.id, item.title)
+                      }
+                      className="p-1.5 rounded text-rose-400 hover:text-rose-300 hover:bg-neutral-800 transition-colors"
+                      title="刪除"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================
+          TAB 6: 前台按鈕管理 (Front-end Navigation Buttons Management)
+          Supports editing button title, target URL, external flag,
+          sort order, enabled state, adding & deleting buttons
+          ========================================================= */}
+      {activeTab === 'buttons' && adminData && (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-bold text-neutral-200">
+                前台導覽按鈕管理 ({(adminData.navButtons || []).length})
+              </h2>
+              <p className="text-xs text-neutral-400 mt-0.5">
+                可自由編輯前台八大入口按鈕之文字標題、連結路徑、另開分頁與順序。
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleResetNavButtons}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium bg-neutral-800 hover:bg-neutral-700 text-neutral-300 transition-colors border border-neutral-700"
+                title="恢復系統預設八大按鈕"
+              >
+                <RotateCcw size={13} />
+                <span>重設回預設八大按鈕</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCategorySlugManuallyEdited(false);
+                  setEditingNavButton({
+                    id: '',
+                    title: '',
+                    url: '',
+                    categorySlug: '',
+                    isExternal: false,
+                    enabled: true,
+                    sortOrder: ((adminData.navButtons || []).length || 0) + 1,
+                  });
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold bg-emerald-800 hover:bg-emerald-700 text-white transition-colors"
+              >
+                <Plus size={14} />
+                <span>新增前台按鈕</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Edit / Create Nav Button Form */}
+          {editingNavButton && (
+            <InlineEditorPortal kind="navButton" editId={editingNavButton.id}>
+            <div className="border border-emerald-700/80 rounded bg-neutral-900 p-5 space-y-4">
+              <h3 className="text-sm font-bold text-emerald-400">
+                {editingNavButton.id ? '編輯前台按鈕' : '新增前台按鈕'}
+              </h3>
+              <form onSubmit={handleSaveNavButton} className="space-y-3 text-xs">
+                <div>
+                  <label className="block text-neutral-300 font-medium mb-1">
+                    按鈕文字名稱 *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editingNavButton.title || ''}
+                    onChange={(e) => {
+                      const newTitle = e.target.value;
+                      let newCatSlug = editingNavButton.categorySlug || '';
+                      if (!categorySlugManuallyEdited) {
+                        const auto = slugify(newTitle);
+                        if (auto) {
+                          newCatSlug = auto;
+                        }
+                      }
+                      setEditingNavButton({
+                        ...editingNavButton,
+                        title: newTitle,
+                        categorySlug: newCatSlug,
+                      });
+                    }}
+                    placeholder="例如：活動行事曆、近期活動、入山須知"
+                    className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-neutral-300 font-medium mb-1">
+                    分類網址代稱 categorySlug（選填）
+                  </label>
+                  <input
+                    type="text"
+                    value={editingNavButton.categorySlug || ''}
+                    onChange={(e) => {
+                      setCategorySlugManuallyEdited(true);
+                      setEditingNavButton({
+                        ...editingNavButton,
+                        categorySlug: e.target.value.toLowerCase().trim(),
+                      });
+                    }}
+                    placeholder="例如：baiyue-beginner"
+                    className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 font-mono"
+                  />
+                  <p className="text-[11px] text-neutral-400 mt-1">
+                    此欄位用於組成行程活動網址的第一段（例如 /baiyue-beginner/活動代稱/），若此分類底下沒有建立任何活動，可以留空不影響現有功能。
+                  </p>
+                  {!categorySlugManuallyEdited && editingNavButton.title && !slugify(editingNavButton.title) && (
+                    <p className="text-[11px] text-amber-400 mt-1">
+                      無法由中文名稱自動產生網址代稱，若此分類底下會建立活動行程，請務必手動輸入英文/數字代稱，例如 baiyue-beginner，否則系統會退回使用內部編號當作網址（不美觀但仍可運作）。
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-neutral-300 font-medium mb-1">
+                    連結目標（內部路徑或外部網址）
+                  </label>
+                  <input
+                    type="text"
+                    value={editingNavButton.url || ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const isExt = val.startsWith('http://') || val.startsWith('https://');
+                      setEditingNavButton({
+                        ...editingNavButton,
+                        url: val,
+                        isExternal: isExt ? true : editingNavButton.isExternal,
+                      });
+                    }}
+                    placeholder="內部路徑如 / 或 /intro 或外部網址如 https://...（選填）"
+                    className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 font-mono"
+                  />
+                  <p className="text-[11px] text-neutral-400 mt-1">
+                    選填。若此按鈕底下有啟用中的活動，前台點擊將優先開啟活動列表；若無活動，則導向此處設定之網址或路徑。
+                  </p>
+                </div>
+
+                {/* 專屬導讀編輯區塊：顯示在此按鈕的列表頁標題下方 */}
+                <div className="rounded-lg border border-emerald-900/50 bg-emerald-950/10 p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <label
+                      htmlFor="button-intro-content"
+                      className="block text-emerald-400 font-semibold"
+                    >
+                      列表頁導讀內容（選填）
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (
+                          (editingNavButton.introContent || '').trim() &&
+                          !window.confirm('目前已有導讀內容，確定要用範例取代嗎？')
+                        ) {
+                          return;
+                        }
+                        setEditingNavButton({
+                          ...editingNavButton,
+                          introContent: PEAK_INTRO_PARAGRAPHS.join('\n\n'),
+                        });
+                      }}
+                      className="text-[11px] px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-300 border border-neutral-700 transition-colors"
+                    >
+                      帶入百岳範例導讀
+                    </button>
+                  </div>
+                  <textarea
+                    id="button-intro-content"
+                    rows={7}
+                    maxLength={3000}
+                    value={editingNavButton.introContent || ''}
+                    onChange={(e) =>
+                      setEditingNavButton({
+                        ...editingNavButton,
+                        introContent: e.target.value,
+                      })
+                    }
+                    placeholder={'例如：介紹這個專區是什麼、適合誰、如何使用。\n\n空一行即分成下一段。'}
+                    className="w-full px-3 py-2 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 leading-relaxed resize-y"
+                  />
+                  <div className="flex items-center justify-between text-[11px] text-neutral-400">
+                    <span>
+                      顯示在前台列表頁標題下方；空一行代表分段。標題含「百岳總表」的按鈕留空時，會使用系統預設導讀。
+                    </span>
+                    <span className="shrink-0 ml-3">
+                      {(editingNavButton.introContent || '').length} / 3000
+                    </span>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-neutral-800 bg-neutral-950/40 p-3 space-y-3">
+                  <div>
+                    <label htmlFor="button-seo-title" className="block text-neutral-300 font-medium mb-1">
+                      SEO 標題（選填）
+                    </label>
+                    <input
+                      id="button-seo-title"
+                      type="text"
+                      maxLength={120}
+                      value={editingNavButton.seoTitle || ''}
+                      onChange={(e) =>
+                        setEditingNavButton({ ...editingNavButton, seoTitle: e.target.value })
+                      }
+                      placeholder="留空則使用「按鈕標題 | 亞馬遜國家山岳協會」"
+                      className="w-full px-3 py-2 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="button-meta-description" className="block text-neutral-300 font-medium mb-1">
+                      SEO 描述 meta description（選填）
+                    </label>
+                    <textarea
+                      id="button-meta-description"
+                      rows={3}
+                      maxLength={200}
+                      value={editingNavButton.metaDescription || ''}
+                      onChange={(e) =>
+                        setEditingNavButton({ ...editingNavButton, metaDescription: e.target.value })
+                      }
+                      placeholder="建議 80–120 字、一段完整的話。留空則由導讀內容自動取完整句子。"
+                      className="w-full px-3 py-2 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 leading-relaxed resize-y"
+                    />
+                    <div className="text-[11px] text-neutral-400 mt-1 text-right">
+                      {(editingNavButton.metaDescription || '').length} / 200
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-6 pt-1">
+                  <div>
+                    <label className="block text-neutral-300 font-medium mb-1">
+                      排序序號
+                    </label>
+                    <input
+                      type="number"
+                      value={editingNavButton.sortOrder ?? 0}
+                      onChange={(e) =>
+                        setEditingNavButton({
+                          ...editingNavButton,
+                          sortOrder: parseInt(e.target.value) || 0,
+                        })
+                      }
+                      className="w-24 px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2 mt-5">
+                    <input
+                      type="checkbox"
+                      id="button-external"
+                      checked={editingNavButton.isExternal ?? false}
+                      onChange={(e) =>
+                        setEditingNavButton({
+                          ...editingNavButton,
+                          isExternal: e.target.checked,
+                        })
+                      }
+                      className="rounded border-neutral-700 text-emerald-600 focus:ring-0"
+                    />
+                    <label
+                      htmlFor="button-external"
+                      className="text-neutral-300 font-medium inline-flex items-center gap-1"
+                    >
+                      <ExternalLink size={12} className="text-neutral-400" />
+                      <span>另開新分頁 (外部連結)</span>
+                    </label>
+                  </div>
+
+                  <div className="flex items-center gap-2 mt-5">
+                    <input
+                      type="checkbox"
+                      id="button-enabled"
+                      checked={editingNavButton.enabled ?? true}
+                      onChange={(e) =>
+                        setEditingNavButton({
+                          ...editingNavButton,
+                          enabled: e.target.checked,
+                        })
+                      }
+                      className="rounded border-neutral-700 text-emerald-600 focus:ring-0"
+                    />
+                    <label
+                      htmlFor="button-enabled"
+                      className="text-neutral-300 font-medium"
+                    >
+                      啟用顯示在前台
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-3">
+                  <button
+                    type="submit"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-semibold transition-colors"
+                  >
+                    <Save size={14} />
+                    <span>儲存按鈕設定</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingNavButton(null)}
+                    className="px-3 py-2 rounded bg-neutral-800 text-neutral-300 hover:text-white transition-colors"
+                  >
+                    取消
+                  </button>
+                </div>
+              </form>
+            </div>
+            </InlineEditorPortal>
+          )}
+
+          {/* Navigation Buttons Table */}
+          <div className="border border-neutral-800 rounded bg-neutral-900/40 overflow-hidden">
+            <div className="divide-y divide-neutral-800">
+              {((adminData.navButtons || []).slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))).map((item) => {
+                const isExpanded = Boolean(expandedButtonIds[item.id]);
+                const isActivityExpanded = expandedActivityButtonId === item.id;
+                const buttonEntries = (adminData.navButtonEntries || [])
+                  .filter((e) => e.navButtonId === item.id)
+                  .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+                const buttonActivities = (adminData.navButtonActivities || [])
+                  .filter((a) => a.navButtonId === item.id)
+                  .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+
+                return (
+                  <div key={item.id} className="divide-y divide-neutral-800/60">
+                    <div data-edit-slot={editSlotKey('navButton', item.id)} />
+                    <div className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 font-mono">
+                            #{item.sortOrder}
+                          </span>
+                          <span className="font-bold text-neutral-100 text-sm">
+                            {item.title}
+                          </span>
+                          {item.isExternal ? (
+                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-sky-950 text-sky-300 border border-sky-800 inline-flex items-center gap-0.5">
+                              <ExternalLink size={10} />
+                              外部連結
+                            </span>
+                          ) : (
+                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-300 border border-emerald-800">
+                              內部專區
+                            </span>
+                          )}
+                          {!item.enabled && (
+                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-rose-950 text-rose-300 border border-rose-800">
+                              已隱藏
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-neutral-400 font-mono flex items-center gap-1">
+                          <Globe size={12} className="text-neutral-500 shrink-0" />
+                          <span className="break-all">{item.url}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => toggleExpandButton(item.id)}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium transition-colors border ${
+                            isExpanded
+                              ? 'bg-neutral-800 text-emerald-300 border-neutral-700'
+                              : 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:bg-neutral-800 hover:text-white'
+                          }`}
+                          title="展開或收合此按鈕的次層項目清單"
+                        >
+                          {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                          <span>次層項目 ({buttonEntries.length})</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => toggleExpandActivityButton(item.id)}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium transition-colors border ${
+                            isActivityExpanded
+                              ? 'bg-neutral-800 text-emerald-300 border-emerald-600/60'
+                              : 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:bg-neutral-800 hover:text-white'
+                          }`}
+                          title="管理活動清單"
+                        >
+                          <Compass size={14} />
+                          <span>管理活動 ({buttonActivities.length})</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCategorySlugManuallyEdited(Boolean(item.categorySlug));
+                            setEditingNavButton(item);
+                          }}
+                          className="p-1.5 rounded text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors"
+                          title="編輯按鈕"
+                        >
+                          <Edit2 size={15} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleDeleteItem('navButton', item.id, item.title)
+                          }
+                          className="p-1.5 rounded text-rose-400 hover:text-rose-300 hover:bg-neutral-800 transition-colors"
+                          title="刪除按鈕"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Expanded Sub-entries Management */}
+                    {isExpanded && (
+                      <div className="bg-neutral-950/70 p-4 border-t border-neutral-800/80 pl-6 sm:pl-10 space-y-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            <CornerDownRight size={14} className="text-emerald-500 shrink-0" />
+                            <span className="text-xs font-semibold text-neutral-300">
+                              「{item.title}」次層項目清單 ({buttonEntries.length})
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditingNavEntry({
+                                id: '',
+                                navButtonId: item.id,
+                                title: '',
+                                description: '',
+                                url: '',
+                                sortOrder: buttonEntries.length + 1,
+                              })
+                            }
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium bg-emerald-900/80 hover:bg-emerald-800 text-emerald-200 border border-emerald-700/60 transition-colors"
+                          >
+                            <Plus size={13} />
+                            <span>新增次層項目</span>
+                          </button>
+                        </div>
+
+                        {/* Add / Edit Entry Form */}
+                        {editingNavEntry && editingNavEntry.navButtonId === item.id && (
+                          <InlineEditorPortal kind="navEntry" editId={editingNavEntry.id}>
+                          <div className="border border-emerald-700/60 rounded bg-neutral-900/95 p-4 space-y-3">
+                            <h4 className="text-xs font-bold text-emerald-400">
+                              {editingNavEntry.id ? '編輯次層項目' : '新增次層項目'}（所屬按鈕：{item.title}）
+                            </h4>
+                            <form onSubmit={handleSaveNavEntry} className="space-y-3 text-xs">
+                              <div>
+                                <label className="block text-neutral-300 font-medium mb-1">
+                                  項目標題 *
+                                </label>
+                                <input
+                                  type="text"
+                                  required
+                                  value={editingNavEntry.title || ''}
+                                  onChange={(e) =>
+                                    setEditingNavEntry({
+                                      ...editingNavEntry,
+                                      title: e.target.value,
+                                    })
+                                  }
+                                  placeholder="例如：裝備檢查表、線上報名、常見問題"
+                                  className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 font-bold"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-neutral-300 font-medium mb-1">
+                                  項目描述
+                                </label>
+                                <input
+                                  type="text"
+                                  value={editingNavEntry.description || ''}
+                                  onChange={(e) =>
+                                    setEditingNavEntry({
+                                      ...editingNavEntry,
+                                      description: e.target.value,
+                                    })
+                                  }
+                                  placeholder="簡要描述此項目內容（選填）"
+                                  className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-neutral-300 font-medium mb-1">
+                                  連結網址 *
+                                </label>
+                                <input
+                                  type="text"
+                                  required
+                                  value={editingNavEntry.url || ''}
+                                  onChange={(e) =>
+                                    setEditingNavEntry({
+                                      ...editingNavEntry,
+                                      url: e.target.value,
+                                    })
+                                  }
+                                  placeholder="內部路徑如 /tools 或外部連結如 https://..."
+                                  className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 font-mono"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-neutral-300 font-medium mb-1">
+                                  排序序號
+                                </label>
+                                <input
+                                  type="number"
+                                  value={editingNavEntry.sortOrder ?? 0}
+                                  onChange={(e) =>
+                                    setEditingNavEntry({
+                                      ...editingNavEntry,
+                                      sortOrder: parseInt(e.target.value) || 0,
+                                    })
+                                  }
+                                  className="w-24 px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                                />
+                              </div>
+
+                              <div className="flex items-center gap-2 pt-2">
+                                <button
+                                  type="submit"
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-semibold transition-colors"
+                                >
+                                  <Save size={13} />
+                                  <span>儲存次層項目</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingNavEntry(null)}
+                                  className="px-3 py-1.5 rounded bg-neutral-800 text-neutral-300 hover:text-white transition-colors"
+                                >
+                                  取消
+                                </button>
+                              </div>
+                            </form>
+                          </div>
+                          </InlineEditorPortal>
+                        )}
+
+                        {/* Entries List */}
+                        {buttonEntries.length > 0 ? (
+                          <div className="divide-y divide-neutral-800 border border-neutral-800 rounded bg-neutral-900/60 overflow-hidden">
+                            {buttonEntries.map((entry) => (
+                              <div key={entry.id}>
+                                <div data-edit-slot={editSlotKey('navEntry', entry.id)} />
+                                <div
+                                  className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs"
+                                >
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[11px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 font-mono">
+                                      #{entry.sortOrder}
+                                    </span>
+                                    <span className="font-bold text-neutral-200">
+                                      {entry.title}
+                                    </span>
+                                  </div>
+                                  {entry.description && (
+                                    <p className="text-[11px] text-neutral-400">
+                                      {entry.description}
+                                    </p>
+                                  )}
+                                  <div className="text-[11px] text-neutral-400 font-mono flex items-center gap-1">
+                                    <Globe size={11} className="text-neutral-500 shrink-0" />
+                                    <span className="break-all">{entry.url}</span>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingNavEntry(entry)}
+                                    className="p-1 rounded text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors"
+                                    title="編輯次層項目"
+                                  >
+                                    <Edit2 size={13} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleDeleteItem('navButtonEntry', entry.id, entry.title)
+                                    }
+                                    className="p-1 rounded text-rose-400 hover:text-rose-300 hover:bg-neutral-800 transition-colors"
+                                    title="刪除次層項目"
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="p-3 rounded border border-dashed border-neutral-800 text-xs text-neutral-500 text-center">
+                            此按鈕尚無次層項目，可點擊上方「新增次層項目」建立。
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Expanded Activities Management */}
+                    {isActivityExpanded && (
+                      <div className="bg-neutral-950/70 p-4 border-t border-neutral-800/80 pl-6 sm:pl-10 space-y-4">
+                        <div className="flex items-center justify-between gap-3 flex-wrap">
+                          <div className="flex items-center gap-2">
+                            <Compass size={14} className="text-emerald-500 shrink-0" />
+                            <span className="text-xs font-semibold text-neutral-300">
+                              「{item.title}」活動行程清單 ({buttonActivities.length})
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (batchImportButtonId === item.id) {
+                                  setBatchImportButtonId(null);
+                                } else {
+                                  setBatchImportButtonId(item.id);
+                                  setBatchImportJsonText('');
+                                  setBatchImportItems(null);
+                                  setBatchImportPreview(null);
+                                  setBatchImportParseError(null);
+                                  setBatchImportResult(null);
+                                }
+                              }}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 transition-colors"
+                            >
+                              <span>{batchImportButtonId === item.id ? '收起批次匯入' : '批次匯入'}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActivitySlugManuallyEdited(false);
+                                setEditingNavButtonActivity({
+                                  id: '',
+                                  navButtonId: item.id,
+                                  title: '',
+                                  slug: '',
+                                  description: '',
+                                  externalUrl: '',
+                                  nationalPark: '',
+                                  sortOrder: buttonActivities.length + 1,
+                                  enabled: true,
+                                });
+                              }}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium bg-emerald-900/80 hover:bg-emerald-800 text-emerald-200 border border-emerald-700/60 transition-colors"
+                            >
+                              <Plus size={13} />
+                              <span>新增活動</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Batch Import Panel */}
+                        {batchImportButtonId === item.id && (
+                          <div className="p-4 rounded border border-emerald-800/60 bg-neutral-900/95 space-y-3 text-xs">
+                            <div className="flex items-center justify-between gap-2 flex-wrap">
+                              <div className="font-bold text-emerald-400">
+                                批次匯入活動（所屬按鈕：{item.title}）
+                              </div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <label className="cursor-pointer px-2.5 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 transition-colors">
+                                  <span>選擇 JSON 檔案</span>
+                                  <input
+                                    type="file"
+                                    accept=".json,application/json"
+                                    className="hidden"
+                                    onChange={(e) => {
+                                      const file = e.target.files?.[0];
+                                      if (!file) return;
+                                      const reader = new FileReader();
+                                      reader.onload = () => {
+                                        const text = String(reader.result || '');
+                                        setBatchImportJsonText(text);
+                                        handlePreviewBatchImport(item.id, text);
+                                      };
+                                      reader.readAsText(file);
+                                      e.target.value = '';
+                                    }}
+                                  />
+                                </label>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const text = JSON.stringify(peaksTop100Data, null, 2);
+                                    setBatchImportJsonText(text);
+                                    handlePreviewBatchImport(item.id, text);
+                                  }}
+                                  className="px-2.5 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-emerald-300 border border-neutral-700 transition-colors"
+                                >
+                                  載入內建 peaks-top100.json
+                                </button>
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="block text-neutral-400 mb-1">
+                                貼上 JSON 內容（支援 <code>{'{ peaks: [...] }'}</code> 或直接陣列 <code>{'[...]'}</code>）
+                              </label>
+                              <textarea
+                                rows={6}
+                                value={batchImportJsonText}
+                                onChange={(e) => {
+                                  setBatchImportJsonText(e.target.value);
+                                  setBatchImportPreview(null);
+                                  setBatchImportItems(null);
+                                }}
+                                placeholder={'{\n  "peaks": [\n    { "no": 1, "name": "玉山", "elevation": 3952, "nationalPark": "玉山國家公園", "group": "五岳-1", "note": "...", "title": "001 玉山 3952 五岳-1", "slug": "peak-001", "sortOrder": 1 }\n  ]\n}'}
+                                className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 font-mono text-[11px] focus:outline-none focus:border-emerald-500 resize-y"
+                              />
+                            </div>
+
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <button
+                                type="button"
+                                onClick={() => handlePreviewBatchImport(item.id)}
+                                className="px-3 py-1.5 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-100 border border-neutral-700 font-semibold transition-colors"
+                              >
+                                預覽匯入內容
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setBatchImportButtonId(null);
+                                  setBatchImportPreview(null);
+                                  setBatchImportItems(null);
+                                  setBatchImportParseError(null);
+                                }}
+                                className="px-3 py-1.5 rounded bg-neutral-800 text-neutral-400 hover:text-white transition-colors"
+                              >
+                                關閉
+                              </button>
+                            </div>
+
+                            {batchImportParseError && (
+                              <div className="p-2.5 rounded border border-rose-800 bg-rose-950/40 text-rose-300">
+                                {batchImportParseError}
+                              </div>
+                            )}
+
+                            {batchImportPreview && batchImportItems && (
+                              <div className="p-3 rounded border border-emerald-700/60 bg-emerald-950/20 space-y-2.5">
+                                <div className="font-bold text-emerald-300">
+                                  匯入前預覽（共解析 {batchImportItems.length} 筆資料）
+                                </div>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                                  <div className="p-2 rounded bg-neutral-900/90 border border-neutral-800">
+                                    <div className="text-neutral-400 text-[11px]">將新增</div>
+                                    <div className="text-base font-extrabold text-emerald-400">
+                                      {batchImportPreview.created} 筆
+                                    </div>
+                                  </div>
+                                  <div className="p-2 rounded bg-neutral-900/90 border border-neutral-800">
+                                    <div className="text-neutral-400 text-[11px]">補齊國家公園</div>
+                                    <div className="text-base font-extrabold text-amber-400">
+                                      {batchImportPreview.updated} 筆
+                                    </div>
+                                  </div>
+                                  <div className="p-2 rounded bg-neutral-900/90 border border-neutral-800">
+                                    <div className="text-neutral-400 text-[11px]">已存在略過</div>
+                                    <div className="text-base font-extrabold text-neutral-300">
+                                      {batchImportPreview.skipped} 筆
+                                    </div>
+                                  </div>
+                                  <div className="p-2 rounded bg-neutral-900/90 border border-neutral-800">
+                                    <div className="text-neutral-400 text-[11px]">格式異常</div>
+                                    <div className="text-base font-extrabold text-rose-400">
+                                      {batchImportPreview.errors.length} 筆
+                                    </div>
+                                  </div>
+                                </div>
+                                <p className="text-[11px] text-neutral-400">
+                                  說明：同按鈕底下若編號（1～3 位數）或山名相同，不會覆蓋既有標題、內文與報名網址，僅在「所屬國家公園」為空時自動補齊。
+                                </p>
+                                {batchImportPreview.errors.length > 0 && (
+                                  <div className="text-[11px] text-rose-300 space-y-0.5">
+                                    {batchImportPreview.errors.slice(0, 5).map((err, i) => (
+                                      <div key={i}>• {err}</div>
+                                    ))}
+                                  </div>
+                                )}
+                                <div className="pt-1 flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    disabled={batchImportExecuting}
+                                    onClick={() => handleConfirmBatchImport(item.id)}
+                                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-semibold transition-colors"
+                                  >
+                                    <CheckCircle2 size={13} />
+                                    <span>{batchImportExecuting ? '匯入處理中...' : '確認執行匯入'}</span>
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {batchImportResult && (
+                              <div className="p-3 rounded border border-emerald-700/60 bg-emerald-950/30 text-emerald-200 space-y-1">
+                                <div className="font-bold">
+                                  ✅ 匯入完成：新增 {batchImportResult.created} 筆、更新補齊 {batchImportResult.updated} 筆、略過 {batchImportResult.skipped} 筆
+                                </div>
+                                {batchImportResult.errors.length > 0 && (
+                                  <div className="text-rose-300 text-[11px]">
+                                    錯誤 ({batchImportResult.errors.length})：{batchImportResult.errors.join('；')}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Add / Edit Activity Form */}
+                        {editingNavButtonActivity && editingNavButtonActivity.navButtonId === item.id && (
+                          <InlineEditorPortal kind="navButtonActivity" editId={editingNavButtonActivity.id}>
+                          <div className="p-4 rounded border border-neutral-700 bg-neutral-900/90 space-y-3">
+                            <div className="text-xs font-bold text-emerald-400">
+                              {editingNavButtonActivity.id ? '編輯活動' : '新增活動'}
+                            </div>
+
+                            <form onSubmit={handleSaveNavButtonActivity} className="space-y-3 text-xs">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                  <label className="block text-neutral-400 mb-1">
+                                    活動名稱 <span className="text-rose-500">*</span>
+                                  </label>
+                                  <input
+                                    type="text"
+                                    required
+                                    value={editingNavButtonActivity.title || ''}
+                                    onChange={(e) => {
+                                      const newTitle = e.target.value;
+                                      let newSlug = editingNavButtonActivity.slug || '';
+                                      if (!activitySlugManuallyEdited) {
+                                        const auto = slugify(newTitle);
+                                        if (auto) newSlug = auto;
+                                      }
+                                      setEditingNavButtonActivity((prev) => ({
+                                        ...prev,
+                                        title: newTitle,
+                                        slug: newSlug,
+                                      }));
+                                    }}
+                                    placeholder="例如：畢羊縱走、合歡群峰"
+                                    className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500"
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className="block text-neutral-400 mb-1">
+                                    主站內部路徑代稱 slug <span className="text-rose-500">*</span>
+                                  </label>
+                                  <input
+                                    type="text"
+                                    required
+                                    value={editingNavButtonActivity.slug || ''}
+                                    onChange={(e) => {
+                                      setActivitySlugManuallyEdited(true);
+                                      setEditingNavButtonActivity((prev) => ({
+                                        ...prev,
+                                        slug: e.target.value,
+                                      }));
+                                    }}
+                                    placeholder="例如：biyang"
+                                    className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 font-mono text-xs focus:outline-none focus:border-emerald-500"
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                  <label className="block text-neutral-400 mb-1">
+                                    完整行程／報名外部網址（選填）
+                                  </label>
+                                  <input
+                                    type="url"
+                                    value={editingNavButtonActivity.externalUrl || ''}
+                                    onChange={(e) =>
+                                      setEditingNavButtonActivity((prev) => ({
+                                        ...prev,
+                                        externalUrl: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="https://...（留空則前台不顯示「查看行程」按鈕）"
+                                    className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 font-mono text-[11px]"
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className="block text-neutral-400 mb-1">
+                                    所屬國家公園（選填）
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={editingNavButtonActivity.nationalPark || ''}
+                                    onChange={(e) =>
+                                      setEditingNavButtonActivity((prev) => ({
+                                        ...prev,
+                                        nationalPark: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="例如：玉山國家公園、雪霸國家公園、太魯閣國家公園"
+                                    className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 text-xs"
+                                  />
+                                </div>
+                              </div>
+
+                              <div>
+                                <label className="block text-neutral-400 mb-1">活動簡短說明</label>
+                                <textarea
+                                  rows={2}
+                                  value={editingNavButtonActivity.description || ''}
+                                  onChange={(e) =>
+                                    setEditingNavButtonActivity((prev) => ({
+                                      ...prev,
+                                      description: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="填寫活動簡介或摘要說明..."
+                                  className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 resize-y"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-neutral-400 mb-1">封面圖片網址（選填）</label>
+                                <input
+                                  type="url"
+                                  value={editingNavButtonActivity.coverImage || ''}
+                                  onChange={(e) =>
+                                    setEditingNavButtonActivity((prev) => ({
+                                      ...prev,
+                                      coverImage: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="https://images.unsplash.com/... 或相片網址"
+                                  className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 font-mono text-[11px]"
+                                />
+                                <ImageUploadButton
+                                  token={token}
+                                  value={editingNavButtonActivity.coverImage || ''}
+                                  onUploaded={(url) =>
+                                    setEditingNavButtonActivity((prev) =>
+                                      prev ? { ...prev, coverImage: url } : prev
+                                    )
+                                  }
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-neutral-400 mb-1">完整活動詳細介紹（選填，支援分段）</label>
+                                <textarea
+                                  ref={activityContentTextareaRef}
+                                  rows={14}
+                                  value={editingNavButtonActivity.content || ''}
+                                  onChange={(e) => {
+                                    setEditingNavButtonActivity((prev) => ({
+                                      ...prev,
+                                      content: e.target.value,
+                                    }));
+                                    adjustActivityContentTextareaHeight();
+                                  }}
+                                  placeholder="填寫每日行程、路線難度、裝備建議與注意事項..."
+                                  className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 resize-y min-h-[320px] max-h-[70vh] text-sm leading-relaxed overflow-y-auto"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-neutral-400 mb-1">YouTube 介紹影片網址（選填）</label>
+                                <input
+                                  type="url"
+                                  value={editingNavButtonActivity.youtubeUrl || ''}
+                                  onChange={(e) =>
+                                    setEditingNavButtonActivity((prev) => ({
+                                      ...prev,
+                                      youtubeUrl: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="https://www.youtube.com/watch?v=..."
+                                  className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 font-mono text-[11px]"
+                                />
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                  <label className="block text-neutral-400 mb-1">自訂 SEO 標題（選填）</label>
+                                  <input
+                                    type="text"
+                                    value={editingNavButtonActivity.seoTitle || ''}
+                                    onChange={(e) =>
+                                      setEditingNavButtonActivity((prev) => ({
+                                        ...prev,
+                                        seoTitle: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="留空則自動套用活動標題"
+                                    className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 text-xs"
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className="block text-neutral-400 mb-1">自訂 SEO 描述（選填）</label>
+                                  <textarea
+                                    rows={3}
+                                    value={editingNavButtonActivity.metaDescription || ''}
+                                    onChange={(e) =>
+                                      setEditingNavButtonActivity((prev) => ({
+                                        ...prev,
+                                        metaDescription: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="建議 80～120 字；留空則使用活動簡短說明"
+                                    className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 text-xs resize-y"
+                                  />
+                                  <div className="flex justify-end mt-1">
+                                    <span
+                                      className={`text-[11px] ${
+                                        (editingNavButtonActivity.metaDescription || '').length > 160
+                                          ? 'text-amber-400 font-medium'
+                                          : 'text-neutral-500'
+                                      }`}
+                                    >
+                                      已輸入 {(editingNavButtonActivity.metaDescription || '').length} 字
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* ================= 內嵌式登山行程 (Trip Itinerary) ================= */}
+                              <div className="border border-neutral-800 rounded bg-neutral-950/60 p-3.5 space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <label className="inline-flex items-center gap-2 cursor-pointer font-bold text-emerald-400">
+                                    <input
+                                      type="checkbox"
+                                      checked={Boolean(editingNavButtonActivity.itinerary?.enabled)}
+                                      onChange={(e) => {
+                                        const isChecked = e.target.checked;
+                                        setEditingNavButtonActivity((prev) => {
+                                          if (!prev) return prev;
+                                          const currentItinerary = prev.itinerary || {
+                                            enabled: false,
+                                            days: [],
+                                          };
+                                          return {
+                                            ...prev,
+                                            itinerary: {
+                                              ...currentItinerary,
+                                              enabled: isChecked,
+                                            },
+                                          };
+                                        });
+                                      }}
+                                      className="rounded bg-neutral-900 border-neutral-700 text-emerald-600 focus:ring-emerald-500"
+                                    />
+                                    <span>啟用內嵌式登山行程</span>
+                                  </label>
+                                  <span className="text-[11px] text-neutral-400">
+                                    {editingNavButtonActivity.itinerary?.enabled
+                                      ? '已展開行程編輯器'
+                                      : '勾選後展開行程結構與每日節點'}
+                                  </span>
+                                </div>
+
+                                {editingNavButtonActivity.itinerary?.enabled && (
+                                  <div className="space-y-4 pt-2 border-t border-neutral-800/80">
+                                    {/* 宣傳亮點／副標題 */}
+                                    <div>
+                                      <label className="block text-neutral-400 mb-1">
+                                        副標題／宣傳亮點（選填）
+                                      </label>
+                                      <input
+                                        type="text"
+                                        value={editingNavButtonActivity.itinerary?.subtitle || ''}
+                                        onChange={(e) => handleUpdateItineraryField('subtitle', e.target.value)}
+                                        placeholder="例如：百岳入門經典縱走・視野壯闊百岳群峰"
+                                        className="w-full px-2.5 py-1.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 text-xs"
+                                      />
+                                    </div>
+
+                                    {/* 開始日期 / 結束日期 */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                      <div>
+                                        <label className="block text-neutral-400 mb-1">開始日期（選填）</label>
+                                        <input
+                                          type="date"
+                                          value={editingNavButtonActivity.itinerary?.startDate || ''}
+                                          onChange={(e) => handleUpdateItineraryField('startDate', e.target.value || undefined)}
+                                          className="w-full px-2.5 py-1.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 font-mono text-xs"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="block text-neutral-400 mb-1">結束日期（選填）</label>
+                                        <input
+                                          type="date"
+                                          value={editingNavButtonActivity.itinerary?.endDate || ''}
+                                          onChange={(e) => handleUpdateItineraryField('endDate', e.target.value || undefined)}
+                                          className="w-full px-2.5 py-1.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 font-mono text-xs"
+                                        />
+                                      </div>
+                                    </div>
+
+                                    {/* 行程天數 */}
+                                    <div>
+                                      <label className="block text-neutral-400 mb-1">
+                                        行程天數 (天)
+                                      </label>
+                                      <div className="flex items-center gap-2">
+                                        <div className="px-2.5 py-1.5 rounded bg-neutral-900/80 border border-neutral-800 text-emerald-400 font-mono text-xs font-semibold shrink-0">
+                                          自動計算: {calculateDaysFromDates(
+                                            editingNavButtonActivity.itinerary?.startDate,
+                                            editingNavButtonActivity.itinerary?.endDate,
+                                            editingNavButtonActivity.itinerary?.days?.length || 0
+                                          )} 天
+                                        </div>
+                                        <input
+                                          type="number"
+                                          min={1}
+                                          value={editingNavButtonActivity.itinerary?.daysOverride ?? ''}
+                                          onChange={(e) => {
+                                            const val = e.target.value === '' ? undefined : parseInt(e.target.value, 10);
+                                            handleUpdateItineraryField('daysOverride', val);
+                                          }}
+                                          placeholder="手動調整(留空自動)"
+                                          className="w-full px-2.5 py-1.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 text-xs"
+                                        />
+                                      </div>
+                                    </div>
+
+                                    {/* 里程、海拔、爬升、下降 */}
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                      <div>
+                                        <label className="block text-neutral-400 mb-1">預計里程 (km)</label>
+                                        <input
+                                          type="number"
+                                          step="0.1"
+                                          value={editingNavButtonActivity.itinerary?.totalDistanceKm ?? ''}
+                                          onChange={(e) => handleUpdateItineraryField('totalDistanceKm', e.target.value === '' ? undefined : parseFloat(e.target.value))}
+                                          placeholder="例如：21.5"
+                                          className="w-full px-2.5 py-1.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 text-xs"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="block text-neutral-400 mb-1">最高海拔 (m)</label>
+                                        <input
+                                          type="number"
+                                          value={editingNavButtonActivity.itinerary?.maxElevationM ?? ''}
+                                          onChange={(e) => handleUpdateItineraryField('maxElevationM', e.target.value === '' ? undefined : parseInt(e.target.value, 10))}
+                                          placeholder="例如：3341"
+                                          className="w-full px-2.5 py-1.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 text-xs"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="block text-neutral-400 mb-1">累積爬升 (m)</label>
+                                        <input
+                                          type="number"
+                                          value={editingNavButtonActivity.itinerary?.elevationGainM ?? ''}
+                                          onChange={(e) => handleUpdateItineraryField('elevationGainM', e.target.value === '' ? undefined : parseInt(e.target.value, 10))}
+                                          placeholder="例如：1420"
+                                          className="w-full px-2.5 py-1.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 text-xs"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="block text-neutral-400 mb-1">累積下降 (m)</label>
+                                        <input
+                                          type="number"
+                                          value={editingNavButtonActivity.itinerary?.elevationLossM ?? ''}
+                                          onChange={(e) => handleUpdateItineraryField('elevationLossM', e.target.value === '' ? undefined : parseInt(e.target.value, 10))}
+                                          placeholder="例如：1380"
+                                          className="w-full px-2.5 py-1.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 text-xs"
+                                        />
+                                      </div>
+                                    </div>
+
+                                    {/* 難度等級 */}
+                                    <div>
+                                      <label className="block text-neutral-400 mb-1">難度等級</label>
+                                      <input
+                                        type="text"
+                                        value={editingNavButtonActivity.itinerary?.difficulty || ''}
+                                        onChange={(e) => handleUpdateItineraryField('difficulty', e.target.value)}
+                                        placeholder="例如：入門／中級／中高／高難度"
+                                        className="w-full px-2.5 py-1.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 text-xs"
+                                      />
+                                    </div>
+
+                                    {/* 行前必備裝備 */}
+                                    <div>
+                                      <label className="block text-neutral-400 mb-1">行前必備裝備（支援多行段落）</label>
+                                      <textarea
+                                        rows={3}
+                                        value={editingNavButtonActivity.itinerary?.requiredGear || ''}
+                                        onChange={(e) => handleUpdateItineraryField('requiredGear', e.target.value)}
+                                        placeholder="請條列或分段說明必備裝備，例如：登山鞋、雨衣雨褲、頭燈、保暖衣物、個人藥品..."
+                                        className="w-full px-2.5 py-1.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 resize-y text-xs"
+                                      />
+                                    </div>
+
+                                    {/* 安全須知 */}
+                                    <div>
+                                      <label className="block text-neutral-400 mb-1">安全須知（支援多行段落）</label>
+                                      <textarea
+                                        rows={3}
+                                        value={editingNavButtonActivity.itinerary?.safetyNotes || ''}
+                                        onChange={(e) => handleUpdateItineraryField('safetyNotes', e.target.value)}
+                                        placeholder="請填寫路線風險、氣候注意事項、撤退點或入山入園法規提醒..."
+                                        className="w-full px-2.5 py-1.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 resize-y text-xs"
+                                      />
+                                    </div>
+
+
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+                                <div>
+                                  <label className="block text-neutral-400 mb-1">排序 (數字越小越靠前)</label>
+                                  <input
+                                    type="number"
+                                    value={editingNavButtonActivity.sortOrder ?? 0}
+                                    onChange={(e) =>
+                                      setEditingNavButtonActivity((prev) => ({
+                                        ...prev,
+                                        sortOrder: parseInt(e.target.value, 10) || 0,
+                                      }))
+                                    }
+                                    className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500"
+                                  />
+                                </div>
+
+                                <div className="pt-4 flex flex-wrap items-center gap-4">
+                                  <label className="inline-flex items-center gap-2 cursor-pointer text-neutral-300">
+                                    <input
+                                      type="checkbox"
+                                      checked={editingNavButtonActivity.enabled ?? true}
+                                      onChange={(e) =>
+                                        setEditingNavButtonActivity((prev) => ({
+                                          ...prev,
+                                          enabled: e.target.checked,
+                                        }))
+                                      }
+                                      className="rounded bg-neutral-950 border-neutral-700 text-emerald-600 focus:ring-emerald-500"
+                                    />
+                                    <span>啟用此活動 (前台顯示)</span>
+                                  </label>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2 pt-2">
+                                <button
+                                  type="submit"
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-semibold transition-colors"
+                                >
+                                  <Save size={13} />
+                                  <span>儲存活動</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingNavButtonActivity(null)}
+                                  className="px-3 py-1.5 rounded bg-neutral-800 text-neutral-300 hover:text-white transition-colors"
+                                >
+                                  取消
+                                </button>
+                              </div>
+                            </form>
+                          </div>
+                          </InlineEditorPortal>
+                        )}
+
+                        {/* Activities List */}
+                        {buttonActivities.length > 0 ? (
+                          <div className="divide-y divide-neutral-800 border border-neutral-800 rounded bg-neutral-900/60 overflow-hidden">
+                            {buttonActivities.map((act) => (
+                              <div key={act.id}>
+                                <div data-edit-slot={editSlotKey('navButtonActivity', act.id)} />
+                                <div
+                                  className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs"
+                                >
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-[11px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 font-mono">
+                                      #{act.sortOrder}
+                                    </span>
+                                    <span className="font-bold text-neutral-200">{act.title}</span>
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-neutral-800 text-emerald-400 border border-neutral-700">
+                                      /{getCategorySlug(item)}/{act.slug}/
+                                    </span>
+                                    {act.enabled ? (
+                                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-300 border border-emerald-800">
+                                        已啟用
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-rose-950 text-rose-300 border border-rose-800">
+                                        已停用
+                                      </span>
+                                    )}
+                                  </div>
+                                  {act.description && (
+                                    <p className="text-[11px] text-neutral-400 line-clamp-1">
+                                      {act.description}
+                                    </p>
+                                  )}
+                                  <div className="text-[11px] text-neutral-400 font-mono flex items-center gap-1">
+                                    <ExternalLink size={11} className="text-neutral-500 shrink-0" />
+                                    <span className="break-all">{act.externalUrl}</span>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActivitySlugManuallyEdited(Boolean(act.slug));
+                                      setEditingNavButtonActivity(act);
+                                    }}
+                                    className="p-1 rounded text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors"
+                                    title="編輯活動"
+                                  >
+                                    <Edit2 size={13} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleDeleteItem('navButtonActivity', act.id, act.title)
+                                    }
+                                    className="p-1 rounded text-rose-400 hover:text-rose-300 hover:bg-neutral-800 transition-colors"
+                                    title="刪除活動"
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="p-3 rounded border border-dashed border-neutral-800 text-xs text-neutral-500 text-center">
+                            此按鈕尚無活動，可點擊上方「新增活動」建立。
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {(!adminData.navButtons || adminData.navButtons.length === 0) && (
+                <div className="p-4 text-xs text-neutral-500 text-center">
+                  目前沒有設定前台按鈕，請點擊上方按鈕新增，或點擊「重設回預設八大按鈕」。
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================
+          TAB 7: 活動行事曆管理 (calendarActivities)
+          Fields: title, startDate, endDate, url, enabled, sortOrder
+          ========================================================= */}
+      {activeTab === 'calendar' && adminData && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-bold text-neutral-200">
+                活動行事曆清單 ({(adminData.calendarActivities || []).length})
+              </h2>
+              <p className="text-xs text-neutral-400 mt-0.5">
+                在此建立與維護協會活動行事曆行程，前台首頁月曆與列表將即時顯示。
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                setEditingCalendarActivity({
+                  id: '',
+                  title: '',
+                  startDate: new Date().toISOString().split('T')[0],
+                  endDate: '',
+                  url: '',
+                  enabled: true,
+                  sortOrder: ((adminData.calendarActivities || []).length || 0) + 1,
+                })
+              }
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold bg-emerald-800 hover:bg-emerald-700 text-white transition-colors"
+            >
+              <Plus size={14} />
+              <span>新增活動行程</span>
+            </button>
+          </div>
+
+          {/* Edit Calendar Activity Form */}
+          {editingCalendarActivity && (
+            <InlineEditorPortal kind="calendarActivity" editId={editingCalendarActivity.id}>
+            <div className="border border-emerald-700/80 rounded bg-neutral-900 p-5 space-y-4">
+              <h3 className="text-sm font-bold text-emerald-400">
+                {editingCalendarActivity.id ? '編輯活動行程' : '新增活動行程'}
+              </h3>
+              <form onSubmit={handleSaveCalendarActivity} className="space-y-3 text-xs">
+                <div>
+                  <label className="block text-neutral-300 font-medium mb-1">
+                    活動行程名稱 *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editingCalendarActivity.title || ''}
+                    onChange={(e) =>
+                      setEditingCalendarActivity({
+                        ...editingCalendarActivity,
+                        title: e.target.value,
+                      })
+                    }
+                    placeholder="例如：玉山主峰單攻、雪山主東峰兩日行"
+                    className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-neutral-300 font-medium mb-1">
+                      開始日期 *
+                    </label>
+                    <input
+                      type="date"
+                      required
+                      value={editingCalendarActivity.startDate || ''}
+                      onChange={(e) =>
+                        setEditingCalendarActivity({
+                          ...editingCalendarActivity,
+                          startDate: e.target.value,
+                        })
+                      }
+                      className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 focus:outline-none focus:border-emerald-500 font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-neutral-300 font-medium mb-1">
+                      結束日期 (留空則預設等於開始日期)
+                    </label>
+                    <input
+                      type="date"
+                      value={editingCalendarActivity.endDate || ''}
+                      onChange={(e) =>
+                        setEditingCalendarActivity({
+                          ...editingCalendarActivity,
+                          endDate: e.target.value,
+                        })
+                      }
+                      className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 focus:outline-none focus:border-emerald-500 font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-neutral-300 font-medium mb-1">
+                    活動超連結 * (點擊時直接導向外部報名或活動說明)
+                  </label>
+                  <input
+                    type="url"
+                    required
+                    value={editingCalendarActivity.url || ''}
+                    onChange={(e) =>
+                      setEditingCalendarActivity({
+                        ...editingCalendarActivity,
+                        url: e.target.value,
+                      })
+                    }
+                    placeholder="https://..."
+                    className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 focus:outline-none focus:border-emerald-500 font-mono"
+                  />
+                </div>
+
+                <div className="flex items-center gap-6 pt-1">
+                  <div>
+                    <label className="block text-neutral-300 font-medium mb-1">
+                      排序序號
+                    </label>
+                    <input
+                      type="number"
+                      value={editingCalendarActivity.sortOrder ?? 0}
+                      onChange={(e) =>
+                        setEditingCalendarActivity({
+                          ...editingCalendarActivity,
+                          sortOrder: parseInt(e.target.value) || 0,
+                        })
+                      }
+                      className="w-24 px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2 mt-5">
+                    <input
+                      type="checkbox"
+                      id="calendar-activity-enabled"
+                      checked={editingCalendarActivity.enabled ?? true}
+                      onChange={(e) =>
+                        setEditingCalendarActivity({
+                          ...editingCalendarActivity,
+                          enabled: e.target.checked,
+                        })
+                      }
+                      className="rounded border-neutral-700 text-emerald-600 focus:ring-0"
+                    />
+                    <label
+                      htmlFor="calendar-activity-enabled"
+                      className="text-neutral-300 font-medium cursor-pointer"
+                    >
+                      啟用顯示 (前台可見)
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-3">
+                  <button
+                    type="submit"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-semibold transition-colors"
+                  >
+                    <Save size={14} />
+                    <span>儲存活動行程</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingCalendarActivity(null)}
+                    className="px-3 py-2 rounded bg-neutral-800 text-neutral-300 hover:text-white transition-colors"
+                  >
+                    取消
+                  </button>
+                </div>
+              </form>
+            </div>
+            </InlineEditorPortal>
+          )}
+
+          {/* Calendar Activities Table */}
+          <div className="border border-neutral-800 rounded bg-neutral-900/40 overflow-hidden">
+            {((adminData.calendarActivities || [])
+              .slice()
+              .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))).length > 0 ? (
+              <div className="divide-y divide-neutral-800">
+                {((adminData.calendarActivities || [])
+                  .slice()
+                  .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))).map((item) => {
+                  const isMultiDay = item.endDate && item.endDate !== item.startDate;
+                  return (
+                    <div key={item.id}>
+                      <div data-edit-slot={editSlotKey('calendarActivity', item.id)} />
+                      <div
+                        className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                      >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 font-mono">
+                            #{item.sortOrder}
+                          </span>
+                          <span className="font-bold text-neutral-100 text-sm">
+                            {item.title}
+                          </span>
+                          <span className="text-xs px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-mono">
+                            {item.startDate}{isMultiDay ? ` ~ ${item.endDate}` : ''}
+                          </span>
+                          {!item.enabled && (
+                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-rose-950 text-rose-300 border border-rose-800">
+                              已停用
+                            </span>
+                          )}
+                        </div>
+                        {item.url && (
+                          <div className="flex items-center gap-1 text-[11px] text-neutral-400 font-mono break-all">
+                            <ExternalLink size={12} className="text-neutral-500 shrink-0" />
+                            <span>{item.url}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setEditingCalendarActivity(item)}
+                          className="p-1.5 rounded text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors"
+                          title="編輯"
+                        >
+                          <Edit2 size={15} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleDeleteItem('calendarActivity', item.id, item.title)
+                          }
+                          className="p-1.5 rounded text-rose-400 hover:text-rose-300 hover:bg-neutral-800 transition-colors"
+                          title="刪除"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="p-8 text-center text-xs text-neutral-500">
+                目前沒有任何活動行程，請點擊右上角「新增活動行程」建立。
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal (In-App Dialog, no window.confirm dependency) */}
+      {deleteTarget && (
+        <div
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn"
+          id="delete-confirm-modal"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="max-w-md w-full bg-neutral-900 border border-rose-900/60 rounded-xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-full bg-rose-950/80 border border-rose-800 text-rose-400 shrink-0">
+                <Trash2 size={22} />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-neutral-100">確認永久刪除此項目？</h3>
+                <p className="text-xs text-neutral-400 leading-relaxed">
+                  您即將自永久資料庫刪除以下項目：
+                </p>
+                <div className="mt-2 p-2.5 rounded bg-neutral-950 border border-neutral-800 text-xs font-semibold text-rose-300 break-all">
+                  {deleteTarget.name}
+                </div>
+                <p className="text-[11px] text-neutral-500 pt-1">
+                  注意：此刪除操作將直接寫入資料庫並同步至前台，確定要繼續嗎？
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-neutral-800">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                disabled={isDeleting}
+                className="px-4 py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-semibold transition-colors disabled:opacity-50"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={isDeleting}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-colors disabled:opacity-50 shadow-lg shadow-rose-950/50"
+                id="btn-confirm-delete"
+              >
+                <Trash2 size={14} />
+                <span>{isDeleting ? '正在刪除...' : '確認永久刪除'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reset Nav Buttons Modal (In-App Dialog) */}
+      {showResetNavModal && (
+        <div
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn"
+          id="reset-nav-modal"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="max-w-md w-full bg-neutral-900 border border-neutral-700 rounded-xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-full bg-amber-950/80 border border-amber-800 text-amber-400 shrink-0">
+                <RotateCcw size={22} />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-neutral-100">恢復預設八大前台按鈕？</h3>
+                <p className="text-xs text-neutral-400 leading-relaxed">
+                  確定要將前台導覽按鈕恢復為官方預設的 8 個主要按鈕嗎？此操作將覆蓋目前自訂的按鈕清單。
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-neutral-800">
+              <button
+                type="button"
+                onClick={() => setShowResetNavModal(false)}
+                disabled={isResettingNav}
+                className="px-4 py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-semibold transition-colors disabled:opacity-50"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmResetNav}
+                disabled={isResettingNav}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition-colors disabled:opacity-50"
+                id="btn-confirm-reset-nav"
+              >
+                <RotateCcw size={14} />
+                <span>{isResettingNav ? '正在恢復...' : '確認恢復預設'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </main>
+  );
+};

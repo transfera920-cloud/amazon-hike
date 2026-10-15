@@ -1,0 +1,1328 @@
+import fs from 'fs';
+import path from 'path';
+import worker from './server/worker.ts';
+import { getDefaultChapters } from './server/default-chapters.ts';
+import baselineData from './data/association_db.json';
+
+// In-memory KV mock for simulation and verification
+class MockKV {
+  private store = new Map<string, string>();
+
+  async get(key: string, type?: string) {
+    const val = this.store.get(key);
+    if (!val) return null;
+    if (type === 'json') {
+      try {
+        return JSON.parse(val);
+      } catch {
+        return null;
+      }
+    }
+    return val;
+  }
+
+  async put(key: string, value: string) {
+    this.store.set(key, value);
+  }
+
+  async delete(key: string) {
+    this.store.delete(key);
+  }
+
+  has(key: string) {
+    return this.store.has(key);
+  }
+}
+
+// Mock ASSETS fetcher that simulates Cloudflare Workers Assets behavior:
+// For certain non-static SPA paths, Cloudflare Workers Assets may return 307 Temporary Redirect (Location: /).
+// Static files return 200, missing static paths return 404 or 307.
+const mockAssets = {
+  async fetch(req: Request | string): Promise<Response> {
+    const requestUrl = typeof req === 'string' ? new URL(req, 'http://localhost') : new URL(req.url);
+    const p = requestUrl.pathname;
+
+    // Simulate Cloudflare Workers Assets returning 307 on SPA directory-like paths when queried directly
+    if (p === '/intro' || p === '/tools' || p === '/highlights' || p === '/surveys') {
+      return new Response(null, {
+        status: 307,
+        headers: { Location: '/' },
+      });
+    }
+
+    let filePath = path.join(process.cwd(), 'dist', p);
+
+    // If directory, try index.html
+    if (fs.existsSync(filePath) && fs.statSync(filePath).isDirectory()) {
+      filePath = path.join(filePath, 'index.html');
+    }
+
+    if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+      const content = fs.readFileSync(filePath);
+      const ext = path.extname(filePath);
+      const mimeMap: Record<string, string> = {
+        '.html': 'text/html; charset=utf-8',
+        '.js': 'application/javascript; charset=utf-8',
+        '.css': 'text/css; charset=utf-8',
+        '.json': 'application/json; charset=utf-8',
+        '.png': 'image/png',
+        '.svg': 'image/svg+xml',
+      };
+      return new Response(content, {
+        status: 200,
+        headers: { 'Content-Type': mimeMap[ext] || 'application/octet-stream' },
+      });
+    }
+
+    return new Response('Not Found', { status: 404 });
+  },
+};
+
+async function runTests() {
+  console.log('=== STARTING WORKER INTEGRATION SUITE ===\n');
+  const mockKV = new MockKV();
+  const env = {
+    ASSOCIATION_DB: mockKV,
+    ASSETS: mockAssets,
+    ADMIN_TOKEN: 'amazon-alpine-secure-token-2026',
+    ADMIN_PASSWORD: 'yy661003',
+  };
+
+  let allPassed = true;
+  function assert(condition: boolean, msg: string) {
+    if (condition) {
+      console.log(`✅ [PASS] ${msg}`);
+    } else {
+      console.error(`❌ [FAIL] ${msg}`);
+      allPassed = false;
+    }
+  }
+
+  // 1. GET /api/health
+  {
+    const res = await worker.fetch(new Request('http://localhost/api/health'), env, {});
+    const json: any = await res.json();
+    assert(res.status === 200, '/api/health status is 200');
+    assert(res.headers.get('content-type')?.includes('application/json') === true, '/api/health content-type is json');
+    assert(json.status === 'ok' && json.service === 'api', '/api/health returns correct payload');
+  }
+
+  // 2. GET /api/public-data (Baseline from JSON when KV empty)
+  {
+    const res = await worker.fetch(new Request('http://localhost/api/public-data'), env, {});
+    const json: any = await res.json();
+    assert(res.status === 200, '/api/public-data status is 200');
+    assert(json.success === true, '/api/public-data success is true');
+    assert(Array.isArray(json.data.tools), '/api/public-data tools is array');
+    assert(Array.isArray(json.data.policies) && json.data.policies.length >= 1, '/api/public-data policies has items');
+    assert(Array.isArray(json.data.highlights), '/api/public-data highlights is array');
+    assert(Array.isArray(json.data.navButtons) && json.data.navButtons.length >= 1, '/api/public-data navButtons has items');
+    assert(Array.isArray(json.data.navButtonEntries), '/api/public-data navButtonEntries is array');
+  }
+
+  // 3. GET /api/content
+  {
+    const res = await worker.fetch(new Request('http://localhost/api/content'), env, {});
+    const json: any = await res.json();
+    assert(res.status === 200, '/api/content status is 200');
+    assert(json.success === true && Array.isArray(json.data.navButtons), '/api/content matches public-data');
+  }
+
+  // 4. GET /api/calendar-activities
+  {
+    const res = await worker.fetch(new Request('http://localhost/api/calendar-activities'), env, {});
+    assert(res.status === 200 || res.status === 502, `/api/calendar-activities responded with ${res.status}`);
+    assert(res.headers.get('content-type')?.includes('application/json') === true, 'calendar-activities content-type is json');
+  }
+
+  // 5. GET /api/activities
+  {
+    const res = await worker.fetch(new Request('http://localhost/api/activities'), env, {});
+    assert(res.status === 200 || res.status === 502, `/api/activities responded with ${res.status}`);
+    assert(res.headers.get('content-type')?.includes('application/json') === true, 'activities content-type is json');
+  }
+
+  // 6. Unknown /api/* route: MUST be JSON 404, NEVER HTML!
+  {
+    const res = await worker.fetch(new Request('http://localhost/api/__test_not_found__'), env, {});
+    const json: any = await res.json();
+    assert(res.status === 404, 'Unknown /api route returns 404');
+    assert(res.headers.get('content-type')?.includes('application/json') === true, 'Unknown /api route content-type is json');
+    assert(json.success === false && json.error.includes('404 Not Found'), 'Unknown /api route returns proper error structure');
+  }
+
+  // 7. GET / (Frontend root via Static Assets)
+  {
+    const res = await worker.fetch(new Request('http://localhost/'), env, {});
+    const text = await res.text();
+    assert(res.status === 200, 'Root / status is 200');
+    assert(res.headers.get('content-type')?.includes('text/html') === true, 'Root / content-type is text/html');
+    assert(text.includes('亞馬遜國家山岳協會 | Amazon Alpine Association'), 'Root / returns front-end title');
+    assert(text.includes('href="https://amazon-hike.com/"'), 'Root / canonical points to https://amazon-hike.com/');
+    assert(text.includes('content="https://amazon-hike.com/"'), 'Root / og:url points to https://amazon-hike.com/');
+  }
+
+  // 8. GET /intro, /tools, /highlights, /policies, /surveys (Frontend SPA client routes via dynamic SEO SPA fallback)
+  {
+    const resIntro = await worker.fetch(new Request('http://localhost/intro'), env, {});
+    const textIntro = await resIntro.text();
+    assert(resIntro.status === 200, 'Frontend SPA route /intro status is 200');
+    assert(resIntro.headers.get('content-type')?.includes('text/html') === true, '/intro content-type is text/html');
+    assert(textIntro.includes('<div id="root"'), '/intro returns SPA root element');
+    assert(textIntro.includes('登山入門指南 | 亞馬遜國家山岳協會'), '/intro has custom SEO title');
+    assert(textIntro.includes('href="https://amazon-hike.com/intro"'), '/intro has custom canonical link');
+    assert(textIntro.includes('content="https://amazon-hike.com/intro"'), '/intro has custom og:url');
+
+    const resTools = await worker.fetch(new Request('http://localhost/tools'), env, {});
+    const textTools = await resTools.text();
+    assert(resTools.status === 200, 'Frontend SPA route /tools status is 200');
+    assert(textTools.includes('登山工具與氣象服務 | 亞馬遜國家山岳協會'), '/tools has custom SEO title');
+    assert(textTools.includes('href="https://amazon-hike.com/tools"'), '/tools has custom canonical link');
+    assert(textTools.includes('content="https://amazon-hike.com/tools"'), '/tools has custom og:url');
+
+    const resHighlights = await worker.fetch(new Request('http://localhost/highlights'), env, {});
+    const textHighlights = await resHighlights.text();
+    assert(resHighlights.status === 200, 'Frontend SPA route /highlights status is 200');
+    assert(textHighlights.includes('活動花絮影音專區 | 亞馬遜國家山岳協會'), '/highlights has custom SEO title');
+    assert(textHighlights.includes('href="https://amazon-hike.com/highlights"'), '/highlights has custom canonical link');
+    assert(textHighlights.includes('content="https://amazon-hike.com/highlights"'), '/highlights has custom og:url');
+
+    const resPolicies = await worker.fetch(new Request('http://localhost/policies'), env, {});
+    const textPolicies = await resPolicies.text();
+    assert(resPolicies.status === 200, 'Frontend SPA route /policies status is 200');
+    assert(textPolicies.includes('政策與章程條款 | 亞馬遜國家山岳協會'), '/policies has custom SEO title');
+    assert(textPolicies.includes('href="https://amazon-hike.com/policies"'), '/policies has custom canonical link');
+    assert(textPolicies.includes('content="https://amazon-hike.com/policies"'), '/policies has custom og:url');
+
+    const resSurveys = await worker.fetch(new Request('http://localhost/surveys'), env, {});
+    const textSurveys = await resSurveys.text();
+    assert(resSurveys.status === 200, 'Frontend SPA route /surveys status is 200');
+    assert(textSurveys.includes('問卷調查專區 | 亞馬遜國家山岳協會'), '/surveys has custom SEO title');
+    assert(textSurveys.includes('href="https://amazon-hike.com/surveys"'), '/surveys has custom canonical link');
+    assert(textSurveys.includes('content="https://amazon-hike.com/surveys"'), '/surveys has custom og:url');
+
+    // Unmatched route like /admin should NOT be replaced
+    const resAdmin = await worker.fetch(new Request('http://localhost/admin'), env, {});
+    const textAdmin = await resAdmin.text();
+    assert(resAdmin.status === 200, 'Frontend SPA route /admin status is 200');
+    assert(!textAdmin.includes('href="https://amazon-hike.com/admin"'), '/admin keeps default root index.html');
+  }
+
+  // 9. SEO Endpoints
+  {
+    // Ensure mockKV has the 15 default chapters plus chapter22 and chapter26 so sitemap and intro links can reflect them
+    const currentDb = await env.ASSOCIATION_DB.get('association_data', 'json') || baselineData;
+    const chapters = [
+      ...getDefaultChapters(),
+      {
+        id: 'chap_22',
+        slug: 'chapter22',
+        title: '第二十二篇：進階登山嚮導實務',
+        description: '進階登山嚮導實務說明',
+        content: '進階登山嚮導實務內容',
+        updatedAt: '2026-03-20',
+        enabled: true,
+      },
+      {
+        id: 'chap_26',
+        slug: 'chapter26',
+        title: '第二十六篇：高山生態觀察指南',
+        description: '高山生態觀察指南說明',
+        content: '高山生態觀察指南內容',
+        updatedAt: '2026-03-25',
+        enabled: true,
+      },
+    ];
+    await env.ASSOCIATION_DB.put('association_data', JSON.stringify({ ...currentDb, chapters }));
+
+    const resRobots = await worker.fetch(new Request('http://localhost/robots.txt'), env, {});
+    const textRobots = await resRobots.text();
+    assert(resRobots.status === 200, '/robots.txt status is 200');
+    assert(textRobots.includes('Sitemap: https://amazon-hike.com/sitemap.xml'), '/robots.txt contains sitemap directive');
+
+    const resSitemap = await worker.fetch(new Request('http://localhost/sitemap.xml'), env, {});
+    const textSitemap = await resSitemap.text();
+    assert(resSitemap.status === 200, '/sitemap.xml status is 200');
+    assert(textSitemap.includes('<urlset') && textSitemap.includes('<loc>https://amazon-hike.com/intro</loc>'), '/sitemap.xml contains URL list');
+    assert(textSitemap.includes('<loc>https://amazon-hike.com/surveys</loc>'), '/sitemap.xml includes /surveys');
+    // 主站自己渲染、內容仍是預設樣板的章節（chapter01~04）視為薄內容頁，不進 sitemap
+    assert(!textSitemap.includes('<loc>https://amazon-hike.com/chapter01/</loc>'), '/sitemap.xml excludes thin main-worker chapter01');
+    assert(!textSitemap.includes('<loc>https://amazon-hike.com/chapter04/</loc>'), '/sitemap.xml excludes thin main-worker chapter04');
+    // chapter05 以後由獨立 Worker 渲染，主站資料只是占位，不能被誤排除
+    assert(textSitemap.includes('<loc>https://amazon-hike.com/chapter05/</loc>'), '/sitemap.xml still includes separately-served chapter05');
+    assert(textSitemap.includes('<loc>https://amazon-hike.com/chapter15/</loc>'), '/sitemap.xml includes /chapter15/');
+    assert(textSitemap.includes('<loc>https://amazon-hike.com/chapter22/</loc>'), '/sitemap.xml includes /chapter22/');
+    assert(textSitemap.includes('<loc>https://amazon-hike.com/chapter26/</loc>'), '/sitemap.xml includes /chapter26/');
+    assert(!textSitemap.includes('/intro/chapter01'), '/sitemap.xml does not contain /intro/chapter01');
+    // 靜態頁不再帶不準確的 lastmod
+    const introBlock = textSitemap.split('<loc>https://amazon-hike.com/intro</loc>')[1].split('</url>')[0];
+    assert(!introBlock.includes('<lastmod>'), '/sitemap.xml static page /intro has no fake lastmod');
+    const homeBlock = textSitemap.split('<loc>https://amazon-hike.com/</loc>')[1].split('</url>')[0];
+    assert(!homeBlock.includes('<lastmod>'), '/sitemap.xml home has no fake lastmod');
+    // 章節本身有真實更新時間的仍保留 lastmod
+    const ch22Block = textSitemap.split('<loc>https://amazon-hike.com/chapter22/</loc>')[1].split('</url>')[0];
+    assert(ch22Block.includes('<lastmod>2026-03-20</lastmod>'), '/sitemap.xml keeps real lastmod for chapter22');
+  }
+
+  // 9-1. Chapter 301 Redirects and /intro Injected Links
+  {
+    const resIntroRedirect = await worker.fetch(new Request('http://localhost/intro/chapter01', { redirect: 'manual' }), env, {});
+    assert(resIntroRedirect.status === 301, '/intro/chapter01 returns 301 redirect');
+    assert(resIntroRedirect.headers.get('location') === 'https://amazon-hike.com/chapter01/', '/intro/chapter01 redirects to https://amazon-hike.com/chapter01/');
+
+    const resChapterRedirect = await worker.fetch(new Request('http://localhost/chapter01', { redirect: 'manual' }), env, {});
+    assert(resChapterRedirect.status === 301, 'GET /chapter01 returns 301 redirect');
+    assert(resChapterRedirect.headers.get('location') === 'https://amazon-hike.com/chapter01/', 'GET /chapter01 redirects to https://amazon-hike.com/chapter01/');
+
+    const resIntroRedirect22 = await worker.fetch(new Request('http://localhost/intro/chapter22', { redirect: 'manual' }), env, {});
+    assert(resIntroRedirect22.status === 301, '/intro/chapter22 returns 301 redirect');
+    assert(resIntroRedirect22.headers.get('location') === 'https://amazon-hike.com/chapter22/', '/intro/chapter22 redirects to https://amazon-hike.com/chapter22/');
+
+    const resChapterRedirect22 = await worker.fetch(new Request('http://localhost/chapter22', { redirect: 'manual' }), env, {});
+    assert(resChapterRedirect22.status === 301, 'GET /chapter22 returns 301 redirect');
+    assert(resChapterRedirect22.headers.get('location') === 'https://amazon-hike.com/chapter22/', 'GET /chapter22 redirects to https://amazon-hike.com/chapter22/');
+
+    const resIntro = await worker.fetch(new Request('http://localhost/intro'), env, {});
+    const htmlIntro = await resIntro.text();
+    assert(resIntro.status === 200, '/intro status is 200');
+    assert(htmlIntro.includes('href="/chapter01/"'), '/intro HTML includes href="/chapter01/"');
+    assert(htmlIntro.includes('href="/chapter15/"'), '/intro HTML includes href="/chapter15/"');
+    assert(htmlIntro.includes('href="/chapter22/"'), '/intro HTML includes href="/chapter22/"');
+    assert(htmlIntro.includes('href="/chapter26/"'), '/intro HTML includes href="/chapter26/"');
+    assert(!htmlIntro.includes('<h1'), '/intro HTML does not contain <h1');
+  }
+
+  // 9-2. Dynamic Chapter SPA Route 404 on Missing or Disabled Chapter, and 200 on Valid Chapter
+  {
+    // A nonexistent slug
+    const res404 = await worker.fetch(new Request('http://localhost/intro/nonexistent-chapter'), env, {});
+    const html404 = await res404.text();
+    assert(res404.status === 404, '/intro/nonexistent-chapter returns HTTP 404 status');
+    assert(html404.includes('<title>找不到此章節 | 亞馬遜國家山岳協會</title>'), '/intro/nonexistent-chapter sets 404 title');
+    assert(html404.includes('找不到此章節'), '/intro/nonexistent-chapter includes 404 meta content in HTML');
+
+    // /chapter26/ in KV returns 200 with article shell and canonical
+    const resChapter26 = await worker.fetch(new Request('http://localhost/chapter26/'), env, {});
+    const htmlChapter26 = await resChapter26.text();
+    assert(resChapter26.status === 200, '/chapter26/ status is 200 when enabled in KV');
+    assert(htmlChapter26.includes('第二十六篇：高山生態觀察指南'), '/chapter26/ HTML includes chapter title');
+    assert(htmlChapter26.includes('href="https://amazon-hike.com/chapter26/"'), '/chapter26/ has canonical pointing to https://amazon-hike.com/chapter26/');
+
+    // 薄內容章節（主站渲染 + 預設樣板內容）：200，但 noindex, follow
+    const resChapter01 = await worker.fetch(new Request('http://localhost/chapter01/'), env, {});
+    const htmlChapter01 = await resChapter01.text();
+    assert(resChapter01.status === 200, '/chapter01/ (thin) still returns 200');
+    assert(htmlChapter01.includes('content="noindex, follow"'), '/chapter01/ (thin template content) has noindex, follow');
+    // 有真實內容的章節維持可索引
+    assert(!htmlChapter26.includes('content="noindex, follow"'), '/chapter26/ (real content) stays indexable');
+    // 沒有專屬圖片時使用全站預設分享圖
+    assert(htmlChapter26.includes('property="og:image" content="https://amazon-hike.com/og-default.png"'), '/chapter26/ falls back to default og:image');
+    assert(htmlChapter26.includes('name="twitter:image" content="https://amazon-hike.com/og-default.png"'), '/chapter26/ falls back to default twitter:image');
+
+    // /chapter999/ absent from KV returns 404 with noindex, follow and canonical to home
+    const resChapter999 = await worker.fetch(new Request('http://localhost/chapter999/'), env, {});
+    const htmlChapter999 = await resChapter999.text();
+    assert(resChapter999.status === 404, '/chapter999/ returns HTTP 404 status when absent from KV');
+    assert(htmlChapter999.includes('content="noindex, follow"'), '/chapter999/ has noindex, follow robots meta');
+    assert(htmlChapter999.includes('href="https://amazon-hike.com/"'), '/chapter999/ canonical points to home');
+  }
+
+  // 9-3. SEO Shell, Trailing Slash 301, Unknown Route 404, and Index.html Static Links
+  {
+    // 1. /tools 外殼 (buildSectionShellHtml 注入 <main><h1>登山工具...</h1> 與 site nav)
+    const resTools = await worker.fetch(new Request('http://localhost/tools'), env, {});
+    const htmlTools = await resTools.text();
+    assert(resTools.status === 200, '/tools returns 200');
+    assert(htmlTools.includes('<main><h1>登山工具與氣象服務'), '/tools includes static section shell with <h1>');
+    assert(htmlTools.includes('<nav aria-label="主要導覽">'), '/tools includes site nav shell');
+
+    // 2. /intro/ 帶結尾斜線 301 導向無斜線版本 /intro
+    const resIntroSlash = await worker.fetch(new Request('http://localhost/intro/', { redirect: 'manual' }), env, {});
+    assert(resIntroSlash.status === 301, '/intro/ returns 301 redirect');
+    assert(resIntroSlash.headers.get('location') === 'https://amazon-hike.com/intro', '/intro/ redirects to https://amazon-hike.com/intro');
+
+    // 3. 未知路徑 404 (例如 /unknown-route)
+    const resUnknown = await worker.fetch(new Request('http://localhost/unknown-route'), env, {});
+    const htmlUnknown = await resUnknown.text();
+    assert(resUnknown.status === 404, 'Unknown path returns HTTP 404 status');
+    assert(htmlUnknown.includes('<title>找不到此頁面 | 亞馬遜國家山岳協會</title>'), 'Unknown path sets 404 title');
+    assert(htmlUnknown.includes('content="noindex, follow"'), 'Unknown path has noindex, follow robots meta');
+    assert(htmlUnknown.includes('href="https://amazon-hike.com/"'), 'Unknown path canonical points to home');
+
+    // 4. index.html 靜態連結（未執行 JS 時首頁包含的靜態導覽與簡介）
+    const resHome = await worker.fetch(new Request('http://localhost/'), env, {});
+    const htmlHome = await resHome.text();
+    assert(htmlHome.includes('<h1>亞馬遜國家山岳協會</h1>'), 'index.html includes static <h1> title');
+    assert(htmlHome.includes('href="/intro"'), 'index.html includes static link to /intro');
+    assert(htmlHome.includes('href="/tools"'), 'index.html includes static link to /tools');
+    assert(htmlHome.includes('href="/highlights"'), 'index.html includes static link to /highlights');
+    assert(htmlHome.includes('href="/surveys"'), 'index.html includes static link to /surveys');
+    assert(htmlHome.includes('href="/policies"'), 'index.html includes static link to /policies');
+  }
+
+  // 10. Admin Auth & KV Write / Delete Cycle
+  {
+    // Login
+    const loginRes = await worker.fetch(
+      new Request('http://localhost/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: 'yy661003' }),
+      }),
+      env,
+      {}
+    );
+    const loginJson: any = await loginRes.json();
+    assert(loginJson.success === true && loginJson.token, 'Admin login succeeded and issued token');
+    const token = loginJson.token;
+
+    // Test /api/admin/save-chapter updatedAt overwrite behavior
+    {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const testChapId = 'chap_test_updatedat';
+
+      // 1. Initial creation with an older updatedAt
+      const initChapRes = await worker.fetch(
+        new Request('http://localhost/api/admin/save-chapter', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            id: testChapId,
+            slug: 'test-updatedat',
+            title: '測試章節初始標題',
+            description: '初始摘要',
+            content: '初始內容',
+            enabled: true,
+            sortOrder: 1,
+            updatedAt: '2020-01-01',
+          }),
+        }),
+        env,
+        {}
+      );
+      const initJson: any = await initChapRes.json();
+      assert(initJson.success === true, 'Initial chapter creation succeeded');
+      assert(initJson.item.updatedAt === todayStr, 'New chapter updatedAt is set to today regardless of frontend input');
+
+      // 2. No content change (only sortOrder changed) with old updatedAt passed
+      const noChangeRes = await worker.fetch(
+        new Request('http://localhost/api/admin/save-chapter', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            id: testChapId,
+            slug: 'test-updatedat',
+            title: '測試章節初始標題',
+            description: '初始摘要',
+            content: '初始內容',
+            enabled: true,
+            sortOrder: 2, // only sortOrder changed
+            updatedAt: '1999-01-01', // old string
+          }),
+        }),
+        env,
+        {}
+      );
+      const noChangeJson: any = await noChangeRes.json();
+      assert(noChangeJson.item.updatedAt === todayStr, 'When content is untouched, previous updatedAt is preserved (not overridden by 1999-01-01)');
+
+      // 3. Content changed (title modified)
+      const contentChangeRes = await worker.fetch(
+        new Request('http://localhost/api/admin/save-chapter', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            id: testChapId,
+            slug: 'test-updatedat',
+            title: '測試章節已修改之新標題', // changed!
+            description: '初始摘要',
+            content: '初始內容',
+            enabled: true,
+            sortOrder: 2,
+            updatedAt: '2015-05-05', // old date passed from frontend
+          }),
+        }),
+        env,
+        {}
+      );
+      const contentChangeJson: any = await contentChangeRes.json();
+      assert(contentChangeJson.item.updatedAt === todayStr, 'When content changes, updatedAt is strictly overwritten to today');
+
+      // 4. Disable chapter and verify worker returns 404
+      await worker.fetch(
+        new Request('http://localhost/api/admin/save-chapter', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            id: testChapId,
+            slug: 'test-updatedat',
+            title: '測試章節已修改之新標題',
+            description: '初始摘要',
+            content: '初始內容',
+            enabled: false, // disabled!
+            sortOrder: 2,
+          }),
+        }),
+        env,
+        {}
+      );
+
+      const disabledRes = await worker.fetch(new Request('http://localhost/intro/test-updatedat'), env, {});
+      assert(disabledRes.status === 404, 'Disabled chapter returns HTTP 404 status');
+
+      // Clean up test chapter
+      await worker.fetch(
+        new Request('http://localhost/api/admin/delete-item', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            type: 'chapter',
+            id: testChapId,
+          }),
+        }),
+        env,
+        {}
+      );
+    }
+
+    // Add a marked test tool item
+    const addRes = await worker.fetch(
+      new Request('http://localhost/api/admin/save-tool', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          id: 'tool_test_verify',
+          title: '[TEST_VERIFY] 測試用登山工具',
+          description: '僅供相容性驗證',
+          url: 'https://example.com/test',
+          enabled: true,
+          sortOrder: 99,
+        }),
+      }),
+      env,
+      {}
+    );
+    assert(addRes.status === 200, 'Admin save-tool succeeded');
+    assert(mockKV.has('association_data') || mockKV.has('association_db'), 'KV was successfully written with updated database');
+
+    // Read back via public API
+    const verifyRes = await worker.fetch(new Request('http://localhost/api/public-data'), env, {});
+    const verifyJson: any = await verifyRes.json();
+    const found = verifyJson.data.tools.find((t: any) => t.id === 'tool_test_verify');
+    assert(Boolean(found), 'Verified test item is now readable from KV');
+
+    // Delete the marked test item
+    const delRes = await worker.fetch(
+      new Request('http://localhost/api/admin/delete-item', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          type: 'tool',
+          id: 'tool_test_verify',
+        }),
+      }),
+      env,
+      {}
+    );
+    assert(delRes.status === 200, 'Admin delete-item succeeded');
+
+    // Re-verify it is gone
+    const afterDelRes = await worker.fetch(new Request('http://localhost/api/public-data'), env, {});
+    const afterDelJson: any = await afterDelRes.json();
+    const stillThere = afterDelJson.data.tools.find((t: any) => t.id === 'tool_test_verify');
+    assert(!stillThere, 'Verified test item was cleanly deleted');
+    assert(Array.isArray(afterDelJson.data.tools), 'Tools collection remains valid');
+
+    // Test save-nav-button-entry API
+    const addEntryRes = await worker.fetch(
+      new Request('http://localhost/api/admin/save-nav-button-entry', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          id: 'entry_test_verify',
+          navButtonId: 'btn_calendar',
+          title: '[TEST_ENTRY] 測試次層項目',
+          description: '僅供相容性驗證',
+          url: 'https://example.com/test-sub',
+          sortOrder: 1,
+        }),
+      }),
+      env,
+      {}
+    );
+    assert(addEntryRes.status === 200, 'Admin save-nav-button-entry succeeded');
+
+    // Verify entry in public-data
+    const verifyEntryRes = await worker.fetch(new Request('http://localhost/api/public-data'), env, {});
+    const verifyEntryJson: any = await verifyEntryRes.json();
+    const foundEntry = verifyEntryJson.data.navButtonEntries.find((e: any) => e.id === 'entry_test_verify');
+    assert(Boolean(foundEntry) && foundEntry.navButtonId === 'btn_calendar', 'Verified test navButtonEntry is readable from public-data');
+
+    // Delete test navButtonEntry
+    const delEntryRes = await worker.fetch(
+      new Request('http://localhost/api/admin/delete-item', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          type: 'navButtonEntry',
+          id: 'entry_test_verify',
+        }),
+      }),
+      env,
+      {}
+    );
+    assert(delEntryRes.status === 200, 'Admin delete navButtonEntry succeeded');
+
+    // Re-verify entry is deleted
+    const afterDelEntryRes = await worker.fetch(new Request('http://localhost/api/public-data'), env, {});
+    const afterDelEntryJson: any = await afterDelEntryRes.json();
+    const entryStillThere = afterDelEntryJson.data.navButtonEntries.find((e: any) => e.id === 'entry_test_verify');
+    assert(!entryStillThere, 'Verified test navButtonEntry was cleanly deleted');
+
+    // 11. Category Slug, Scoped Activity Slugs, Two-Level Routing & Sitemap Tests
+    {
+      const testBtnId1 = 'btn_test_cat1';
+      const testBtnId2 = 'btn_test_cat2';
+      const testActId1 = 'act_test_yushan';
+      const testActId2 = 'act_test_yushan2';
+
+      // 11-1. Reserved categorySlug rejected with 400
+      const resReservedCat = await worker.fetch(
+        new Request('http://localhost/api/admin/save-nav-button', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            id: testBtnId1,
+            title: '百岳入門',
+            categorySlug: 'intro', // reserved!
+            url: '',
+            sortOrder: 1,
+            enabled: true,
+          }),
+        }),
+        env,
+        {}
+      );
+      assert(resReservedCat.status === 400, 'Reserved categorySlug returns HTTP 400');
+
+      // 11-1b. Reserved categorySlug chapter26 rejected with 400
+      const resReservedCat26 = await worker.fetch(
+        new Request('http://localhost/api/admin/save-nav-button', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            id: 'btn_test_chap26_cat',
+            title: '章節26衝突分類',
+            categorySlug: 'chapter26',
+            url: '',
+            sortOrder: 1,
+            enabled: true,
+          }),
+        }),
+        env,
+        {}
+      );
+      assert(resReservedCat26.status === 400, 'Reserved categorySlug chapter26 returns HTTP 400');
+
+      // 11-2. Valid categorySlug saved successfully
+      const resSaveCat1 = await worker.fetch(
+        new Request('http://localhost/api/admin/save-nav-button', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            id: testBtnId1,
+            title: '百岳初階',
+            categorySlug: 'baiyue-beginner',
+            url: '',
+            sortOrder: 1,
+            enabled: true,
+          }),
+        }),
+        env,
+        {}
+      );
+      const jsonSaveCat1: any = await resSaveCat1.json();
+      assert(resSaveCat1.status === 200 && jsonSaveCat1.item.categorySlug === 'baiyue-beginner', 'Valid categorySlug saved');
+
+      // 11-3. Duplicate categorySlug rejected with 400
+      const resDupCat = await worker.fetch(
+        new Request('http://localhost/api/admin/save-nav-button', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            id: testBtnId2,
+            title: '另一個百岳',
+            categorySlug: 'baiyue-beginner', // duplicate!
+            url: '',
+            sortOrder: 2,
+            enabled: true,
+          }),
+        }),
+        env,
+        {}
+      );
+      assert(resDupCat.status === 400, 'Duplicate categorySlug returns HTTP 400');
+
+      // Save category 2 with unique slug
+      await worker.fetch(
+        new Request('http://localhost/api/admin/save-nav-button', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            id: testBtnId2,
+            title: '中級山行程',
+            categorySlug: 'mid-mountains',
+            url: '',
+            sortOrder: 2,
+            enabled: true,
+          }),
+        }),
+        env,
+        {}
+      );
+
+      // 11-4. Save activity under category 1 (with content so it is indexed in sitemap)
+      const resSaveAct1 = await worker.fetch(
+        new Request('http://localhost/api/admin/save-nav-button-activity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            id: testActId1,
+            navButtonId: testBtnId1,
+            slug: 'yushan-main-peak',
+            title: '玉山主峰單攻',
+            description: '台灣最高峰登頂健行體驗',
+            content: '玉山主峰海拔 3952 公尺，完整登山行程與行前準備說明。',
+            externalUrl: 'https://example.com/yushan-register',
+            sortOrder: 1,
+            enabled: true,
+          }),
+        }),
+        env,
+        {}
+      );
+      assert(resSaveAct1.status === 200, 'Activity under category 1 saved successfully');
+
+      // 11-5. Duplicate slug under same category rejected with 400
+      const resDupActSameCat = await worker.fetch(
+        new Request('http://localhost/api/admin/save-nav-button-activity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            id: 'act_test_yushan_dup',
+            navButtonId: testBtnId1, // same parent
+            slug: 'yushan-main-peak', // duplicate!
+            title: '玉山主峰兩天一夜',
+            description: '另一團',
+            externalUrl: 'https://example.com/yushan-register2',
+            sortOrder: 2,
+            enabled: true,
+          }),
+        }),
+        env,
+        {}
+      );
+      assert(resDupActSameCat.status === 400, 'Duplicate activity slug under same category returns HTTP 400');
+
+      // 11-6. Same slug under DIFFERENT category is allowed (scoped uniqueness), without content (thin page)
+      const resSameActDiffCat = await worker.fetch(
+        new Request('http://localhost/api/admin/save-nav-button-activity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            id: testActId2,
+            navButtonId: testBtnId2, // different category!
+            slug: 'yushan-main-peak', // same slug
+            title: '中級山特訓：玉山前置訓練',
+            description: '前哨站訓練',
+            externalUrl: 'https://example.com/yushan-training',
+            sortOrder: 1,
+            enabled: true,
+          }),
+        }),
+        env,
+        {}
+      );
+      assert(resSameActDiffCat.status === 200, 'Same activity slug across different categories is permitted');
+
+      // 11-7. Sitemap contains two-level activity URL with content, and excludes thin activity without content
+      const resSitemap2 = await worker.fetch(new Request('http://localhost/sitemap.xml'), env, {});
+      const textSitemap2 = await resSitemap2.text();
+      assert(textSitemap2.includes('<loc>https://amazon-hike.com/baiyue-beginner/yushan-main-peak/</loc>'), 'Sitemap includes two-level activity URL with content');
+      assert(!textSitemap2.includes('<loc>https://amazon-hike.com/mid-mountains/yushan-main-peak/</loc>'), 'Sitemap excludes thin activity without content');
+      assert(textSitemap2.includes(`<loc>https://amazon-hike.com/nav/${testBtnId2}</loc>`), 'Sitemap still includes /nav/:id even if its activities have no content');
+      assert(!textSitemap2.includes('/route/yushan-main-peak'), 'Sitemap does not include /route/ for activities');
+
+      // 11-8. GET /baiyue-beginner/yushan-main-peak/ (Two-Level SSR Route with content)
+      const resTwoLevel = await worker.fetch(new Request('http://localhost/baiyue-beginner/yushan-main-peak/'), env, {});
+      const htmlTwoLevel = await resTwoLevel.text();
+      assert(resTwoLevel.status === 200, 'Two-level activity route returns HTTP 200');
+      assert(htmlTwoLevel.includes('玉山主峰單攻'), 'Two-level activity route includes activity title');
+      assert(htmlTwoLevel.includes('https://example.com/yushan-register'), 'Two-level activity route includes external link');
+      assert(htmlTwoLevel.includes('href="https://amazon-hike.com/baiyue-beginner/yushan-main-peak/"'), 'Canonical points to two-level URL');
+
+      // Thin activity page sets noindex, follow
+      const resThinPage = await worker.fetch(new Request('http://localhost/mid-mountains/yushan-main-peak/'), env, {});
+      const htmlThinPage = await resThinPage.text();
+      assert(resThinPage.status === 200, 'Thin activity route still returns HTTP 200');
+      assert(htmlThinPage.includes('content="noindex, follow"'), 'Thin activity route has noindex, follow robots meta');
+
+      // 11-9. GET /baiyue-beginner/yushan-main-peak (no trailing slash) -> 301 Redirect
+      const resNoSlash = await worker.fetch(
+        new Request('http://localhost/baiyue-beginner/yushan-main-peak', { redirect: 'manual' }),
+        env,
+        {}
+      );
+      assert(resNoSlash.status === 301, 'Activity route without trailing slash returns 301');
+      assert(resNoSlash.headers.get('location') === 'https://amazon-hike.com/baiyue-beginner/yushan-main-peak/', 'Redirects to trailing slash version');
+
+      // 11-10. GET /route/yushan-main-peak -> 301 Redirect to canonical two-level route
+      const resLegacyRoute = await worker.fetch(
+        new Request('http://localhost/route/yushan-main-peak', { redirect: 'manual' }),
+        env,
+        {}
+      );
+      assert(resLegacyRoute.status === 301, 'Legacy /route/:slug returns 301 redirect');
+      assert(resLegacyRoute.headers.get('location') === 'https://amazon-hike.com/baiyue-beginner/yushan-main-peak/', 'Legacy /route/:slug redirects to canonical two-level route');
+
+      // 11-11. Non-existent activity under valid category -> 404
+      const res404Act = await worker.fetch(new Request('http://localhost/baiyue-beginner/non-existent-peak/'), env, {});
+      assert(res404Act.status === 404, 'Non-existent activity returns HTTP 404');
+
+      // Clean up test items
+      await worker.fetch(new Request('http://localhost/api/admin/delete-item', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ type: 'navButtonActivity', id: testActId1 }),
+      }), env, {});
+      await worker.fetch(new Request('http://localhost/api/admin/delete-item', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ type: 'navButtonActivity', id: testActId2 }),
+      }), env, {});
+      await worker.fetch(new Request('http://localhost/api/admin/delete-item', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ type: 'navButton', id: testBtnId1 }),
+      }), env, {});
+      await worker.fetch(new Request('http://localhost/api/admin/delete-item', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ type: 'navButton', id: testBtnId2 }),
+      }), env, {});
+    }
+
+    // 12. Manual Calendar Activities CRUD & Endpoint Tests
+    {
+      const testCalId = 'cal_test_event_1';
+
+      // 12-1. Required fields validation
+      const resMissingTitle = await worker.fetch(
+        new Request('http://localhost/api/admin/save-calendar-activity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            startDate: '2026-10-01',
+            url: 'https://example.com/event',
+          }),
+        }),
+        env,
+        {}
+      );
+      assert(resMissingTitle.status === 400, 'save-calendar-activity requires title');
+
+      const resMissingDate = await worker.fetch(
+        new Request('http://localhost/api/admin/save-calendar-activity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            title: '合歡山主東峰',
+            url: 'https://example.com/event',
+          }),
+        }),
+        env,
+        {}
+      );
+      assert(resMissingDate.status === 400, 'save-calendar-activity requires startDate');
+
+      // 12-2. Valid save-calendar-activity (endDate defaults to startDate if omitted)
+      const resSaveCal = await worker.fetch(
+        new Request('http://localhost/api/admin/save-calendar-activity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            id: testCalId,
+            title: '合歡山秋季賞景健行',
+            startDate: '2026-10-15',
+            endDate: '', // empty -> should default to startDate
+            url: 'https://example.com/hehuan-autumn',
+            enabled: true,
+            sortOrder: 1,
+          }),
+        }),
+        env,
+        {}
+      );
+      const jsonSaveCal: any = await resSaveCal.json();
+      assert(resSaveCal.status === 200, 'save-calendar-activity succeeded');
+      assert(jsonSaveCal.item.endDate === '2026-10-15', 'endDate defaulted to startDate');
+
+      // 12-3. GET /api/calendar-activities returns source: 'db' and contains our saved item
+      const resCalList = await worker.fetch(new Request('http://localhost/api/calendar-activities'), env, {});
+      const jsonCalList: any = await resCalList.json();
+      assert(resCalList.status === 200, 'GET /api/calendar-activities status 200');
+      assert(jsonCalList.source === 'db', 'GET /api/calendar-activities source is "db"');
+      const foundCal = jsonCalList.activities.find((a: any) => a.id === testCalId);
+      assert(Boolean(foundCal), 'Saved calendar activity is present in /api/calendar-activities');
+      assert(foundCal.title === '合歡山秋季賞景健行', 'Calendar activity title matches');
+
+      // 12-4. GET /api/activities also returns the same db-sourced list
+      const resActList = await worker.fetch(new Request('http://localhost/api/activities'), env, {});
+      const jsonActList: any = await resActList.json();
+      assert(resActList.status === 200 && jsonActList.source === 'db', 'GET /api/activities also returns db source');
+
+      // 12-5. Delete item with type 'calendarActivity'
+      const resDelCal = await worker.fetch(
+        new Request('http://localhost/api/admin/delete-item', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            type: 'calendarActivity',
+            id: testCalId,
+          }),
+        }),
+        env,
+        {}
+      );
+      assert(resDelCal.status === 200, 'delete-item with calendarActivity succeeded');
+
+      // Re-verify deletion
+      const resCalAfterDel = await worker.fetch(new Request('http://localhost/api/calendar-activities'), env, {});
+      const jsonCalAfterDel: any = await resCalAfterDel.json();
+      const stillThere = jsonCalAfterDel.activities.find((a: any) => a.id === testCalId);
+      assert(!stillThere, 'Deleted calendar activity is cleanly removed from /api/calendar-activities');
+    }
+
+    // 13. Embedded Hiking Itinerary Tests (TripItinerary in NavButtonActivity)
+    {
+      const testBtnItin = 'btn_test_itin_cat';
+      await worker.fetch(
+        new Request('http://localhost/api/admin/save-nav-button', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            id: testBtnItin,
+            title: '健行行程專區',
+            categorySlug: 'hiking',
+            url: '',
+            sortOrder: 1,
+            enabled: true,
+          }),
+        }),
+        env,
+        {}
+      );
+
+      const testActIdWithItin = 'act_itin_test_01';
+      const resSaveItin = await worker.fetch(
+        new Request('http://localhost/api/admin/save-nav-button-activity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            id: testActIdWithItin,
+            navButtonId: testBtnItin,
+            title: '合歡主東峰兩日經典健行',
+            slug: 'hehuan-2days-test',
+            description: '合歡山主峰、東峰經典健行行程',
+            externalUrl: 'https://example.com/signup/hehuan',
+            sortOrder: 1,
+            enabled: true,
+            itinerary: {
+              enabled: true,
+              subtitle: '高山百岳初體驗・群峰雲海之美',
+              startDate: '2026-10-10',
+              endDate: '2026-10-11',
+              totalDistanceKm: 14.5,
+              maxElevationM: 3422,
+              elevationGainM: 850,
+              elevationLossM: 820,
+              difficulty: '入門',
+              requiredGear: '雙肩背包\n登山鞋\n保暖外套與雨具',
+              safetyNotes: '高海拔地區注意保暖防風與高山反應\n午後常有濃霧或雷陣雨',
+              days: [
+                {
+                  id: 'day_custom_1',
+                  dayNumber: 99, // Should be overridden to 1 by backend
+                  sortOrder: 99, // Should be overridden to 1 by backend
+                  estimatedHours: 4.5,
+                  timePoints: [
+                    {
+                      id: 'tp_1',
+                      time: '08:30',
+                      location: '松雪樓出發',
+                      description: '整理裝備出發',
+                      sortOrder: 0,
+                      link: {
+                        name: '松雪樓',
+                        type: 'hut',
+                        url: 'https://example.com/songxuelou',
+                        showOnFrontend: true,
+                      },
+                    },
+                    {
+                      id: 'tp_invalid',
+                      time: '09:30',
+                      location: '', // Missing location should be filtered out!
+                      sortOrder: 1,
+                    },
+                    {
+                      id: 'tp_2',
+                      time: '11:00',
+                      location: '合歡東峰三角點',
+                      description: '展望奇萊連峰',
+                      sortOrder: 2,
+                      link: {
+                        name: '合歡東峰',
+                        type: 'invalid_type_should_fallback_to_other',
+                        url: 'https://example.com/dongfeng',
+                        showOnFrontend: true,
+                      },
+                    },
+                  ],
+                },
+                {
+                  id: 'day_custom_2',
+                  dayNumber: 88, // Should be overridden to 2
+                  sortOrder: 88, // Should be overridden to 2
+                  estimatedHours: 3.5,
+                  timePoints: [
+                    {
+                      id: 'tp_3',
+                      time: '07:00',
+                      location: '合歡主峰登山口',
+                      sortOrder: 0,
+                      link: {
+                        name: '主峰登山口',
+                        type: 'trailhead',
+                        url: '/intro',
+                        showOnFrontend: true,
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          }),
+        }),
+        env,
+        {}
+      );
+
+      const jsonSaveItin: any = await resSaveItin.json();
+      assert(resSaveItin.status === 200, 'save-nav-button-activity with itinerary responded 200');
+      assert(jsonSaveItin.success === true, 'save-nav-button-activity success is true');
+      const savedItin = jsonSaveItin.item.itinerary;
+      assert(Boolean(savedItin), 'Saved activity includes itinerary');
+      assert(savedItin.enabled === true, 'Itinerary enabled is true');
+      assert(savedItin.subtitle === '高山百岳初體驗・群峰雲海之美', 'Itinerary subtitle matches');
+      assert(savedItin.totalDistanceKm === 14.5, 'totalDistanceKm matches');
+      assert(savedItin.maxElevationM === 3422, 'maxElevationM matches');
+      assert(savedItin.difficulty === '入門', 'difficulty matches');
+      assert(Array.isArray(savedItin.days) && savedItin.days.length === 2, 'Itinerary has 2 days');
+      
+      // Verify day numbering was re-indexed safely
+      assert(savedItin.days[0].dayNumber === 1 && savedItin.days[0].sortOrder === 1, 'Day 1 indexed to 1');
+      assert(savedItin.days[1].dayNumber === 2 && savedItin.days[1].sortOrder === 2, 'Day 2 indexed to 2');
+      assert(savedItin.days[0].estimatedHours === 4.5, 'Day 1 estimatedHours is 4.5');
+      assert(savedItin.days[1].estimatedHours === 3.5, 'Day 2 estimatedHours is 3.5');
+
+      // Verify timepoint validation
+      const d1TimePoints = savedItin.days[0].timePoints;
+      assert(d1TimePoints.length === 2, 'Invalid timepoint without location was filtered out');
+      assert(d1TimePoints[0].location === '松雪樓出發', 'First timepoint location matches');
+      assert(d1TimePoints[0].link?.type === 'hut', 'Valid link type hut preserved');
+      assert(d1TimePoints[1].link?.type === 'other', 'Invalid link type fell back to other');
+
+      // Verify NO independent total hours field exists in DB
+      assert(!('totalEstimatedHours' in savedItin), 'No independent totalEstimatedHours field stored in DB');
+      assert(!('estimatedTotalHours' in savedItin), 'No independent estimatedTotalHours field stored in DB');
+
+      // Verify public-data serves the itinerary
+      const resPubData = await worker.fetch(new Request('http://localhost/api/public-data'), env, {});
+      const jsonPubData: any = await resPubData.json();
+      const pubAct = jsonPubData.data.navButtonActivities.find((a: any) => a.id === testActIdWithItin);
+      assert(Boolean(pubAct && pubAct.itinerary), 'Public data serves activity with itinerary');
+      assert(pubAct.itinerary.days.length === 2, 'Public data itinerary days count is 2');
+
+      // Verify that itinerary dates were automatically synced to calendarActivities
+      const resCalSync = await worker.fetch(new Request('http://localhost/api/calendar-activities'), env, {});
+      const jsonCalSync: any = await resCalSync.json();
+      assert(jsonCalSync.success === true, 'GET /api/calendar-activities returns 200');
+      const syncedCalItem = jsonCalSync.activities.find((c: any) => c.sourceActivityId === testActIdWithItin);
+      assert(Boolean(syncedCalItem), 'CalendarActivity was automatically synced from itinerary');
+      assert(syncedCalItem.startDate === '2026-10-10', 'Synced calendar startDate matches');
+      assert(syncedCalItem.endDate === '2026-10-11', 'Synced calendar endDate matches');
+      assert(syncedCalItem.days === 2, 'Synced calendar days matches display count');
+      assert(syncedCalItem.title.includes('高山百岳初體驗'), 'Synced calendar title includes subtitle');
+      assert(syncedCalItem.url === '/hiking/hehuan-2days-test/', 'Synced calendar url matches category slug and activity slug');
+
+      // Verify backwards compatibility for activity without itinerary
+      const testActNoItin = 'act_no_itin_test';
+      const resSaveNoItin = await worker.fetch(
+        new Request('http://localhost/api/admin/save-nav-button-activity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            id: testActNoItin,
+            navButtonId: testBtnItin,
+            title: '活動無行程測試',
+            slug: 'no-itin-test',
+            description: '一般活動',
+            externalUrl: 'https://example.com/signup',
+            sortOrder: 2,
+            enabled: true,
+          }),
+        }),
+        env,
+        {}
+      );
+      const jsonSaveNoItin: any = await resSaveNoItin.json();
+      assert(resSaveNoItin.status === 200, 'Activity without itinerary saved successfully');
+      assert(jsonSaveNoItin.item.itinerary === undefined, 'Activity without itinerary has undefined itinerary');
+
+      // Clean up test activities
+      await worker.fetch(
+        new Request('http://localhost/api/admin/delete-item', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ type: 'navButtonActivity', id: testActIdWithItin }),
+        }),
+        env,
+        {}
+      );
+      // Verify calendar activity was cleanly removed on activity deletion
+      const resCalAfterDelete = await worker.fetch(new Request('http://localhost/api/calendar-activities'), env, {});
+      const jsonCalAfterDelete: any = await resCalAfterDelete.json();
+      const syncedDeleted = (jsonCalAfterDelete.activities || []).find((c: any) => c.sourceActivityId === testActIdWithItin);
+      assert(!syncedDeleted, 'Synced calendar activity was removed when parent activity was deleted');
+
+      await worker.fetch(
+        new Request('http://localhost/api/admin/delete-item', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ type: 'navButtonActivity', id: testActNoItin }),
+        }),
+        env,
+        {}
+      );
+
+      await worker.fetch(
+        new Request('http://localhost/api/admin/delete-item', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ type: 'navButton', id: testBtnItin }),
+        }),
+        env,
+        {}
+      );
+    }
+
+    // 14. Peaks Batch Import, nationalPark, Optional externalUrl, and introContent SEO Tests
+    {
+      const testPeakBtnId = 'btn_test_peaks_100';
+      await worker.fetch(
+        new Request('http://localhost/api/admin/save-nav-button', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            id: testPeakBtnId,
+            title: '台灣百岳總表',
+            categorySlug: 'baiyue-peaks',
+            introContent: '台灣百岳是由林文安等人於 1970 年代選定的一百座三千公尺以上高山。\n\n本表提供完整百岳資訊。',
+            url: '',
+            sortOrder: 9,
+            enabled: true,
+          }),
+        }),
+        env,
+        {}
+      );
+
+      // Pre-create peak #1 without nationalPark and with custom externalUrl & content
+      const preExistId = 'act_preexist_peak1';
+      const resPre = await worker.fetch(
+        new Request('http://localhost/api/admin/save-nav-button-activity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            id: preExistId,
+            navButtonId: testPeakBtnId,
+            title: '001 玉山 3952 五岳-1',
+            slug: 'peak-001',
+            description: '自訂玉山備註不應被覆蓋',
+            externalUrl: 'https://example.com/yushan-custom',
+            content: '玉山主峰自訂詳細介紹內文',
+            nationalPark: '', // empty -> should be filled by batch import
+            sortOrder: 1,
+            enabled: true,
+          }),
+        }),
+        env,
+        {}
+      );
+      assert(resPre.status === 200, 'Pre-existing peak #1 saved without nationalPark');
+
+      // Batch import 3 items: #1 (existing, fills nationalPark), #2 (new, empty externalUrl), #3 (slug conflict with peak-002 -> auto suffix peak-002-2)
+      const resImport = await worker.fetch(
+        new Request('http://localhost/api/admin/import-nav-button-activities', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            navButtonId: testPeakBtnId,
+            items: [
+              {
+                no: 1,
+                name: '玉山',
+                elevation: 3952,
+                nationalPark: '玉山國家公園',
+                group: '五岳-1',
+                note: '匯入備註不應覆蓋既有備註',
+                title: '001 玉山 3952 五岳-1',
+                slug: 'peak-001',
+                sortOrder: 1,
+              },
+              {
+                no: 2,
+                name: '雪山',
+                elevation: 3886,
+                nationalPark: '雪霸國家公園',
+                group: '五岳-2',
+                note: '台灣第二高峰',
+                title: '002 雪山 3886 五岳-2',
+                slug: 'peak-002',
+                sortOrder: 2,
+              },
+              {
+                no: 3,
+                name: '玉山東峰',
+                elevation: 3869,
+                nationalPark: '玉山國家公園',
+                group: '十峻-1',
+                note: '百岳十峻之首',
+                title: '003 玉山東峰 3869 十峻-1',
+                slug: 'peak-002', // intentional duplicate slug -> should become peak-002-2
+                sortOrder: 3,
+              },
+            ],
+          }),
+        }),
+        env,
+        {}
+      );
+      const jsonImport: any = await resImport.json();
+      assert(resImport.status === 200 && jsonImport.success === true, 'Batch import API succeeded');
+      assert(jsonImport.created === 2, 'Batch import created 2 new peaks');
+      assert(jsonImport.updated === 1, 'Batch import updated 1 existing peak (filled nationalPark)');
+      assert(jsonImport.skipped === 0, 'Batch import skipped 0 peaks');
+
+      // Re-run same batch import -> all 3 should now be skipped
+      const resImportAgain = await worker.fetch(
+        new Request('http://localhost/api/admin/import-nav-button-activities', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            navButtonId: testPeakBtnId,
+            items: [
+              {
+                no: 1,
+                name: '玉山',
+                nationalPark: '其他公園不應覆蓋',
+                title: '001 玉山 3952 五岳-1',
+                slug: 'peak-001',
+                sortOrder: 1,
+              },
+              {
+                no: 2,
+                name: '雪山',
+                nationalPark: '雪霸國家公園',
+                title: '002 雪山 3886 五岳-2',
+                slug: 'peak-002',
+                sortOrder: 2,
+              },
+            ],
+          }),
+        }),
+        env,
+        {}
+      );
+      const jsonImportAgain: any = await resImportAgain.json();
+      assert(jsonImportAgain.created === 0 && jsonImportAgain.updated === 0 && jsonImportAgain.skipped === 2, 'Second batch import skips already populated peaks');
+
+      // Verify public-data and SSR output
+      const resPubPeaks = await worker.fetch(new Request('http://localhost/api/public-data'), env, {});
+      const jsonPubPeaks: any = await resPubPeaks.json();
+      const peakActs = jsonPubPeaks.data.navButtonActivities.filter((a: any) => a.navButtonId === testPeakBtnId);
+      const p1 = peakActs.find((a: any) => a.slug === 'peak-001');
+      const p2 = peakActs.find((a: any) => a.slug === 'peak-002');
+      const p3 = peakActs.find((a: any) => a.slug === 'peak-002-2');
+      assert(p1 && p1.nationalPark === '玉山國家公園' && p1.description === '自訂玉山備註不應被覆蓋', 'Existing peak kept custom fields and filled nationalPark');
+      assert(p2 && p2.nationalPark === '雪霸國家公園' && p2.externalUrl === '', 'New peak #2 has nationalPark and empty externalUrl');
+      assert(Boolean(p3), 'Slug conflict automatically resolved with -2 suffix (peak-002-2)');
+
+      // Verify /nav/:id SSR uses introContent for meta description and only links activities with content
+      const resNavPeak = await worker.fetch(new Request(`http://localhost/nav/${testPeakBtnId}`), env, {});
+      const htmlNavPeak = await resNavPeak.text();
+      assert(htmlNavPeak.includes('台灣百岳是由林文安等人於 1970 年代選定的一百座三千公尺以上高山。 本表提供完整百岳資訊。'), '/nav/:id uses introContent without newlines for meta description');
+      assert(htmlNavPeak.includes('<li><a href="/baiyue-peaks/peak-001/">001 玉山 3952 五岳-1</a></li>'), '/nav/:id SSR renders <a href> for activity with content');
+      assert(htmlNavPeak.includes('<li>002 雪山 3886 五岳-2</li>'), '/nav/:id SSR renders plain <li> without link for activity without content');
+
+      // Clean up test button (also deletes its activities)
+      await worker.fetch(
+        new Request('http://localhost/api/admin/delete-item', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ type: 'navButton', id: testPeakBtnId }),
+        }),
+        env,
+        {}
+      );
+    }
+  }
+
+  console.log(`\n=== TEST SUITE COMPLETE: ${allPassed ? 'ALL TESTS PASSED' : 'SOME TESTS FAILED'} ===`);
+  if (!allPassed) {
+    process.exit(1);
+  }
+}
+
+runTests().catch((err) => {
+  console.error('Fatal test error:', err);
+  process.exit(1);
+});

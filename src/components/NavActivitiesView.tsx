@@ -1,5 +1,4 @@
 import React, { useMemo, useState } from 'react';
-import { PageTextBlock } from './PageTextBlock.js';
 import {
   ArrowLeft,
   Compass,
@@ -194,6 +193,10 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
     [button.introContent]
   );
   const introParagraphs = customIntro.length > 0 ? customIntro : PEAK_INTRO_PARAGRAPHS;
+  const footerParagraphs = useMemo(
+    () => (button.footerContent || '').split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean),
+    [button.footerContent]
+  );
 
   const detailHref = (slug: string) => `/${getCategorySlug(button)}/${slug}/`;
 
@@ -616,7 +619,17 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
         </>
       )}
 
-      <PageTextBlock text={button.bottomContent} position="bottom" />
+      {/* 後台「下方說明」：顯示在列表內容下方；空白行分段，留空不顯示 */}
+      {footerParagraphs.length > 0 && (
+        <section
+          aria-label={`${button.title}說明`}
+          className="mt-10 border-t border-neutral-800 pt-6 space-y-3 text-sm text-neutral-300 leading-relaxed"
+        >
+          {footerParagraphs.map((p, idx) => (
+            <p key={idx} className="whitespace-pre-line">{p}</p>
+          ))}
+        </section>
+      )}
     </main>
   );
 };

@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { PageTextBlock } from './PageTextBlock.js';
 import { ArrowLeft, Video, ExternalLink, Play } from 'lucide-react';
 import type { HighlightItem } from '../types.js';
 import { getYouTubeVideoId, normalizeUrl } from '../utils/url.js';
@@ -8,8 +7,8 @@ interface HighlightsViewProps {
   highlights: HighlightItem[];
   /** 後台「活動花絮」按鈕的列表頁導讀內容；沒填就顯示預設說明 */
   introContent?: string;
-  /** 後台「活動花絮」按鈕的下方說明 */
-  bottomContent?: string;
+  /** 後台「活動花絮」按鈕的下方說明；沒填就不顯示 */
+  footerContent?: string;
   onBack: () => void;
 }
 
@@ -58,8 +57,12 @@ const LazyYouTube: React.FC<{ videoId: string; title: string }> = ({ videoId, ti
   );
 };
 
-export const HighlightsView: React.FC<HighlightsViewProps> = ({ highlights, introContent, bottomContent, onBack }) => {
+export const HighlightsView: React.FC<HighlightsViewProps> = ({ highlights, introContent, footerContent, onBack }) => {
   const introParagraphs = (introContent || '')
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const footerParagraphs = (footerContent || '')
     .split(/\n\s*\n/)
     .map((p) => p.trim())
     .filter(Boolean);
@@ -193,7 +196,18 @@ export const HighlightsView: React.FC<HighlightsViewProps> = ({ highlights, intr
         </div>
       )}
 
-      <PageTextBlock text={bottomContent} position="bottom" />
+      {footerParagraphs.length > 0 && (
+        <section
+          aria-label="活動花絮說明"
+          className="mt-10 border-t border-neutral-800 pt-6 space-y-3 text-sm text-neutral-300 leading-relaxed"
+        >
+          {footerParagraphs.map((p, idx) => (
+            <p key={idx} className="whitespace-pre-line">
+              {p}
+            </p>
+          ))}
+        </section>
+      )}
     </main>
   );
 };

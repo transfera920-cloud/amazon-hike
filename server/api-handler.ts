@@ -460,6 +460,23 @@ export async function handleApiRequest(
       }
     }
 
+    // POST /api/admin/save-home-intro
+    if (path === '/api/admin/save-home-intro' && method === 'POST') {
+      try {
+        const db = await loadDatabaseWorker(env);
+        const body: any = await request.json();
+        db.homeIntro = {
+          title: String(body.title || '').trim().slice(0, 100),
+          content: String(body.content || '').replace(/\r\n?/g, '\n').trim().slice(0, 8000),
+          updatedAt: new Date().toISOString().split('T')[0],
+        };
+        await saveDatabaseWorker(db, env);
+        return jsonResponse({ success: true, homeIntro: db.homeIntro });
+      } catch (err: any) {
+        return jsonResponse({ error: err.message }, 500);
+      }
+    }
+
     // POST /api/admin/save-survey-item
     if (path === '/api/admin/save-survey-item' && method === 'POST') {
       try {
@@ -532,6 +549,7 @@ export async function handleApiRequest(
           sortOrder: Number(item.sortOrder) || 0,
           categorySlug: cleanCatSlug || undefined,
           introContent: (item.introContent || '').trim().slice(0, 3000) || undefined,
+          bottomContent: (item.bottomContent || '').trim().slice(0, 3000) || undefined,
           seoTitle: (item.seoTitle || '').trim().slice(0, 120) || undefined,
           metaDescription: (item.metaDescription || '').trim().slice(0, 200) || undefined,
         };

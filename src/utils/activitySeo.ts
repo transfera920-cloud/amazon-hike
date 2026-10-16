@@ -93,6 +93,28 @@ export function isPeakTableButton(btn: { title: string }): boolean {
   return PEAK_TABLE_TITLE_KEYWORDS.some((k) => (btn.title || '').includes(k));
 }
 
+/**
+ * 依站內路徑找出對應的「前台導覽按鈕」，其上方說明（introContent）與下方說明（bottomContent）
+ * 就是該頁面（/intro、/tools、/highlights、/policies、/surveys）的可編輯文字。
+ */
+const FIXED_PAGE_BUTTON_IDS: Record<string, string> = {
+  '/intro': 'btn_intro',
+  '/tools': 'btn_tools',
+  '/highlights': 'btn_highlights',
+  '/policies': 'btn_policies',
+  '/surveys': 'btn_surveys',
+};
+export function findPageNavButton<T extends { id: string; url?: string }>(
+  buttons: T[] | undefined,
+  path: string
+): T | undefined {
+  const list = buttons || [];
+  return (
+    list.find((b) => (b.url || '').replace(/\/+$/, '') === path) ||
+    list.find((b) => b.id === FIXED_PAGE_BUTTON_IDS[path])
+  );
+}
+
 /** 列表頁導讀段落：後台導讀內容優先（空白行分段），百岳總表沒填時用預設導讀 */
 export function resolveNavButtonIntroParagraphs(btn: { title: string; introContent?: string }): string[] {
   const custom = (btn.introContent || '')

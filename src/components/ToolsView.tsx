@@ -1,14 +1,19 @@
 import React from 'react';
+import { PageTextBlock } from './PageTextBlock.js';
 import { ArrowLeft, ExternalLink, Wrench } from 'lucide-react';
 import type { ToolItem } from '../types.js';
 import { normalizeUrl } from '../utils/url.js';
 
 interface ToolsViewProps {
   tools: ToolItem[];
+  /** 後台「前台導覽按鈕」的上方說明 */
+  introContent?: string;
+  /** 後台「前台導覽按鈕」的下方說明 */
+  bottomContent?: string;
   onBack: () => void;
 }
 
-export const ToolsView: React.FC<ToolsViewProps> = ({ tools, onBack }) => {
+export const ToolsView: React.FC<ToolsViewProps> = ({ tools, onBack, introContent, bottomContent }) => {
   return (
     <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6" aria-label="登山工具專區">
       {/* Breadcrumb / Back button */}
@@ -40,6 +45,8 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ tools, onBack }) => {
           </div>
         </div>
       </div>
+
+      <PageTextBlock text={introContent} position="top" />
 
       {/* Tools List */}
       {tools.length === 0 ? (
@@ -82,6 +89,8 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ tools, onBack }) => {
           })}
         </div>
       )}
+
+      <PageTextBlock text={bottomContent} position="bottom" />
     </main>
   );
 };

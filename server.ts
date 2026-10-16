@@ -424,6 +424,23 @@ apiRouter.post('/admin/save-highlight', requireAdmin, (req: Request, res: Respon
   }
 });
 
+// Save Home Intro (首頁說明區塊)
+apiRouter.post('/admin/save-home-intro', requireAdmin, (req: Request, res: Response) => {
+  try {
+    const db = loadDatabase();
+    const { title, content } = req.body || {};
+    db.homeIntro = {
+      title: String(title || '').trim().slice(0, 100),
+      content: String(content || '').replace(/\r\n?/g, '\n').trim().slice(0, 8000),
+      updatedAt: new Date().toISOString().split('T')[0],
+    };
+    saveDatabase(db);
+    res.json({ success: true, homeIntro: db.homeIntro });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Save Survey URL
 apiRouter.post('/admin/save-survey', requireAdmin, (req: Request, res: Response) => {
   try {
@@ -526,6 +543,7 @@ apiRouter.post('/admin/save-nav-button', requireAdmin, (req: Request, res: Respo
       sortOrder: Number(item.sortOrder) || 0,
       categorySlug: cleanCatSlug || undefined,
       introContent: (item.introContent || '').trim().slice(0, 3000) || undefined,
+      bottomContent: (item.bottomContent || '').trim().slice(0, 3000) || undefined,
       seoTitle: (item.seoTitle || '').trim().slice(0, 120) || undefined,
       metaDescription: (item.metaDescription || '').trim().slice(0, 200) || undefined,
     };
@@ -909,7 +927,7 @@ app.get('/sitemap.xml', (req: Request, res: Response) => {
   res.type('application/xml');
   const now = new Date().toISOString().split('T')[0];
   const db = loadDatabase();
-  const CHAPTER_SLUG_RE = /^chapter(0[1-9]|1[0-5])$/;
+  const CHAPTER_SLUG_RE = /^chapter(0[1-9]|[1-9][0-9]+)$/;
   const enabledChapters = (db.chapters || [])
     .filter((c) => c.enabled)
     .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));

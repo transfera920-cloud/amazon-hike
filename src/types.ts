@@ -68,6 +68,7 @@ export interface NavButtonItem {
   sortOrder: number;
   categorySlug?: string; // 新增：作為 /分類/活動/ 網址中的分類代稱，留空則由系統自動推導
   introContent?: string; // 列表頁導讀內容（空白行分段；選填）
+  bottomContent?: string; // 頁面下方補充說明（空白行分段；選填）
   seoTitle?: string; // 列表頁自訂 SEO 標題（選填）
   metaDescription?: string; // 列表頁自訂 meta description（選填，建議 80–120 字）
 }
@@ -160,6 +161,12 @@ export interface TripItinerary {
   days: ItineraryDay[];           // 保留相容性
 }
 
+export interface HomeIntro {
+  title: string;    // 首頁說明區塊標題（顯示為 H2）
+  content: string;  // 首頁說明內文（空白行分段）
+  updatedAt?: string;
+}
+
 export interface AssociationDatabase {
   version: number;
   surveyUrl: string;
@@ -173,6 +180,7 @@ export interface AssociationDatabase {
   highlights: HighlightItem[];
   policies: PolicyItem[];
   calendarActivities?: CalendarActivity[];
+  homeIntro?: HomeIntro;
 }
 
 export interface CalendarActivity {
@@ -199,4 +207,5 @@ export interface PublicDataResponse {
   highlights: HighlightItem[];
   policies: PolicyItem[];
   calendarActivities?: CalendarActivity[];
+  homeIntro?: HomeIntro;
 }

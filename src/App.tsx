@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Header } from './components/Header.js';
 import { Footer } from './components/Footer.js';
 import { CalendarSection } from './components/CalendarSection.js';
+import { HomeIntroSection } from './components/HomeIntroSection.js';
 import { IntroView } from './components/IntroView.js';
 import { ChapterView } from './components/ChapterView.js';
 import { ToolsView } from './components/ToolsView.js';
@@ -18,8 +19,9 @@ import {
   CHAPTER_SLUG_SOURCE,
   DEFAULT_OG_IMAGE,
   isThinMainChapter,
+  findPageNavButton,
 } from './utils/activitySeo.js';
-import type { AssociationDatabase, CalendarActivity } from './types.js';
+import type { AssociationDatabase, CalendarActivity, NavButtonItem } from './types.js';
 
 const KNOWN_PATHS = new Set(['/', '/intro', '/tools', '/highlights', '/policies', '/surveys', '/admin']);
 const CHAPTER_PATH_RE = new RegExp(`^/${CHAPTER_SLUG_SOURCE}$`, 'i');
@@ -545,6 +547,15 @@ export default function App() {
     currentNavButton,
   ]);
 
+  // 子頁面可編輯的上方／下方說明（取自對應的「前台導覽按鈕」）
+  const pageTexts = (path: string) => {
+    const btn = findPageNavButton<NavButtonItem>(publicData.navButtons, path);
+    return {
+      introContent: (btn?.introContent || '').trim(),
+      bottomContent: (btn?.bottomContent || '').trim(),
+    };
+  };
+
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col font-sans selection:bg-emerald-800 selection:text-white">
       {/* 1. 主導覽 (Header) with Organization details and 8 portals */}
@@ -586,11 +597,14 @@ export default function App() {
 
         {/* 首頁: 活動行事曆 ONLY (沒有任何堆疊的多餘區塊) */}
         {!isUnknownPath && currentPath === '/' && (
-          <CalendarSection
-            activities={activities}
-            loading={activitiesLoading}
-            error={activitiesError}
-          />
+          <>
+            <CalendarSection
+              activities={activities}
+              loading={activitiesLoading}
+              error={activitiesError}
+            />
+            <HomeIntroSection intro={publicData.homeIntro} />
+          </>
         )}
 
         {/* 登山入門 獨立專區 */}
@@ -600,6 +614,7 @@ export default function App() {
             intros={publicData.intros}
             onBack={() => navigate('/')}
             onSelectChapter={(slug) => navigate(`/intro/${slug}`)}
+            {...pageTexts('/intro')}
           />
         )}
 
@@ -692,6 +707,7 @@ export default function App() {
           <ToolsView
             tools={publicData.tools}
             onBack={() => navigate('/')}
+            {...pageTexts('/tools')}
           />
         )}
 
@@ -699,13 +715,7 @@ export default function App() {
         {!isUnknownPath && currentPath === '/highlights' && (
           <HighlightsView
             highlights={publicData.highlights}
-            introContent={
-              (
-                (publicData.navButtons || []).find(
-                  (b) => b.id === 'btn_highlights' || b.url === '/highlights'
-                )?.introContent || ''
-              ).trim()
-            }
+            {...pageTexts('/highlights')}
             onBack={() => navigate('/')}
           />
         )}
@@ -715,6 +725,7 @@ export default function App() {
           <PoliciesView
             policies={publicData.policies}
             onBack={() => navigate('/')}
+            {...pageTexts('/policies')}
           />
         )}
 
@@ -723,6 +734,7 @@ export default function App() {
           <SurveysView
             surveys={publicData.surveys}
             onBack={() => navigate('/')}
+            {...pageTexts('/surveys')}
           />
         )}
 

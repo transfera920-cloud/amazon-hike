@@ -13,6 +13,7 @@ import {
   DEFAULT_OG_IMAGE,
   isThinMainChapter,
   MAIN_WORKER_CHAPTER_SLUGS,
+  findPageNavButton,
 } from '../src/utils/activitySeo.js';
 import type { NavButtonActivity } from '../src/types.js';
 import { getYouTubeVideoId } from '../src/utils/url.js';
@@ -68,6 +69,20 @@ function buildSectionShellHtml(title: string, description: string): string {
 }
 
 /**
+ * 首頁（/）初始 HTML：保留原本 index.html 的 H1 與協會簡介，
+ * 並把後台「首頁說明」的文字放進原始碼，搜尋引擎不必執行 JavaScript 也讀得到。
+ * 後台沒填內容時回傳 undefined，沿用 index.html 內建的靜態外殼。
+ */
+function buildHomeShellHtml(intro?: { title?: string; content?: string }): string | undefined {
+  const title = String(intro?.title || '').trim();
+  const body = String(intro?.content || '').trim();
+  if (!title && !body) return undefined;
+  return `<main><h1>亞馬遜國家山岳協會</h1><p>Amazon Alpine Association，社團法人・立案編號 台內團自第1130008137號。協會宗旨：提倡全民運動、鍛鍊強健體魄、培養互助團隊精神，以及接觸大自然與山林相關知識及技能。</p>${
+    title ? `<h2>${escapeHtml(title)}</h2>` : ''
+  }${formatMultilineHtml(body)}${buildSiteNavHtml()}</main>`;
+}
+
+/**
  * 將多行文字依連續空行切成段落 <p>，段落內以 <br> 換行，並對文字進行 HTML 跳脫
  */
 function formatMultilineHtml(text: string): string {
@@ -83,6 +98,17 @@ function formatMultilineHtml(text: string): string {
       return `<p>${lines.join('<br>')}</p>`;
     })
     .join('');
+}
+
+/**
+ * 子頁面（/intro、/tools、/highlights、/policies、/surveys）後台可編輯的上方／下方說明，
+ * 取自對應的「前台導覽按鈕」(introContent / bottomContent)，轉成可放進初始 HTML 的段落。
+ */
+function pageTextHtml(db: any, path: string): { top: string; bottom: string } {
+  const btn: any = findPageNavButton(db?.navButtons, path);
+  const top = formatMultilineHtml(String(btn?.introContent || '').trim());
+  const bottomBody = formatMultilineHtml(String(btn?.bottomContent || '').trim());
+  return { top, bottom: bottomBody ? `<section>${bottomBody}</section>` : '' };
 }
 
 /**
@@ -219,8 +245,11 @@ function buildBreadcrumbJsonLd(items: { name: string; url: string }[], pageUrl: 
 async function buildToolsShellHtml(env: WorkerEnv, title: string, description: string): Promise<string> {
   const shortTitle = title.split(' | ')[0].trim();
   let listHtml = '';
+  let pageTop = '';
+  let pageBottom = '';
   try {
     const db = await loadDatabaseWorker(env);
+    ({ top: pageTop, bottom: pageBottom } = pageTextHtml(db, '/tools'));
     const tools = (db.tools || [])
       .filter((t) => t.enabled)
       .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
@@ -237,7 +266,7 @@ async function buildToolsShellHtml(env: WorkerEnv, title: string, description: s
   } catch (err) {
     console.error('Error building tools shell HTML:', err);
   }
-  return `<main><h1>${escapeHtml(shortTitle)}</h1><p>${escapeHtml(description)}</p>${listHtml}${buildSiteNavHtml()}</main>`;
+  return `<main><h1>${escapeHtml(shortTitle)}</h1><p>${escapeHtml(description)}</p>${pageTop}${listHtml}${pageBottom}${buildSiteNavHtml()}</main>`;
 }
 
 /** /highlights 的靜態外殼 + 影片結構化資料：把影片標題、說明文字放進初始 HTML（只放文字，不放影片網址） */
@@ -250,9 +279,11 @@ async function buildHighlightsShell(
   const shortTitle = title.split(' | ')[0].trim();
   let listHtml = '';
   let introHtml = '';
+  let pageBottom = '';
   const videoNodes: Record<string, unknown>[] = [];
   try {
     const db = await loadDatabaseWorker(env);
+    pageBottom = pageTextHtml(db, '/highlights').bottom;
     const hlBtn = (db.navButtons || []).find((b) => b.id === 'btn_highlights' || b.url === '/highlights');
     const intro = (hlBtn?.introContent || '').trim();
     if (intro) {
@@ -296,7 +327,7 @@ async function buildHighlightsShell(
     console.error('Error building highlights shell HTML:', err);
   }
   const leadHtml = introHtml || `<p>${escapeHtml(description)}</p>`;
-  const html = `<main><h1>${escapeHtml(shortTitle)}</h1>${leadHtml}${listHtml}${buildSiteNavHtml()}</main>`;
+  const html = `<main><h1>${escapeHtml(shortTitle)}</h1>${leadHtml}${listHtml}${pageBottom}${buildSiteNavHtml()}</main>`;
 
   const graph: Record<string, unknown>[] = [
     {
@@ -317,8 +348,11 @@ async function buildHighlightsShell(
 async function buildPoliciesShellHtml(env: WorkerEnv, title: string, description: string): Promise<string> {
   const shortTitle = title.split(' | ')[0].trim();
   let bodyHtml = '';
+  let pageTop = '';
+  let pageBottom = '';
   try {
     const db = await loadDatabaseWorker(env);
+    ({ top: pageTop, bottom: pageBottom } = pageTextHtml(db, '/policies'));
     const policies = (db.policies || [])
       .filter((p) => p.enabled)
       .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
@@ -328,7 +362,31 @@ async function buildPoliciesShellHtml(env: WorkerEnv, title: string, description
   } catch (err) {
     console.error('Error building policies shell HTML:', err);
   }
-  return `<main><h1>${escapeHtml(shortTitle)}</h1><p>${escapeHtml(description)}</p>${bodyHtml}${buildSiteNavHtml()}</main>`;
+  return `<main><h1>${escapeHtml(shortTitle)}</h1><p>${escapeHtml(description)}</p>${pageTop}${bodyHtml}${pageBottom}${buildSiteNavHtml()}</main>`;
+}
+
+/** /surveys 的靜態外殼：問卷標題清單 + 後台上下方說明 */
+async function buildSurveysShellHtml(env: WorkerEnv, title: string, description: string): Promise<string> {
+  const shortTitle = title.split(' | ')[0].trim();
+  let pageTop = '';
+  let pageBottom = '';
+  let listHtml = '';
+  try {
+    const db = await loadDatabaseWorker(env);
+    ({ top: pageTop, bottom: pageBottom } = pageTextHtml(db, '/surveys'));
+    const items = (db.surveys || [])
+      .filter((s) => s.enabled)
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+      .map((s) => {
+        const desc = (s.description || '').trim() ? `：${escapeHtml(s.description || '')}` : '';
+        return `<li>${escapeHtml(s.title)}${desc}</li>`;
+      })
+      .join('');
+    if (items) listHtml = `<ul>${items}</ul>`;
+  } catch (err) {
+    console.error('Error building surveys shell HTML:', err);
+  }
+  return `<main><h1>${escapeHtml(shortTitle)}</h1><p>${escapeHtml(description)}</p>${pageTop}${listHtml}${pageBottom}${buildSiteNavHtml()}</main>`;
 }
 
 /**
@@ -342,8 +400,10 @@ async function buildIntroLinksHtml(env: WorkerEnv): Promise<string> {
       .filter((c) => c.enabled && CHAPTER_SLUG_RE.test((c.slug || '').toLowerCase()))
       .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
 
+    const { top: pageTop, bottom: pageBottom } = pageTextHtml(db, '/intro');
+
     if (enabledChapters.length === 0) {
-      return '';
+      return `${pageTop}${pageBottom}`;
     }
 
     const itemsHtml = enabledChapters
@@ -353,7 +413,7 @@ async function buildIntroLinksHtml(env: WorkerEnv): Promise<string> {
       )
       .join('');
 
-    return `<nav aria-label="登山入門教學章節"><ul>${itemsHtml}</ul></nav>`;
+    return `${pageTop}<nav aria-label="登山入門教學章節"><ul>${itemsHtml}</ul></nav>${pageBottom}`;
   } catch (err) {
     console.error('Error building intro links HTML:', err);
     return '';
@@ -657,6 +717,21 @@ Sitemap: https://amazon-hike.com/sitemap.xml
         .filter(Boolean)
         .join('\n');
 
+      // 獨立專案渲染的 chapter05～chapter25：不論後台資料庫有沒有建，都保證進 sitemap
+      const STANDALONE_CHAPTER_MAX = 25;
+      const fallbackChapterUrls = Array.from({ length: STANDALONE_CHAPTER_MAX - 4 }, (_, i) => {
+        const slug = `chapter${String(i + 5).padStart(2, '0')}`;
+        if (seenChapterSlugs.has(slug)) return '';
+        seenChapterSlugs.add(slug);
+        return `  <url>
+    <loc>${SITE_ORIGIN}/${slug}/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>`;
+      })
+        .filter(Boolean)
+        .join('\n');
+
       const seenToolPaths = new Set<string>();
       const toolUrls = (db.tools || [])
         .filter((t) => t.enabled)
@@ -756,6 +831,7 @@ Sitemap: https://amazon-hike.com/sitemap.xml
 ${toolUrls}
 ${chapterUrls}
 ${introChapterUrls}
+${fallbackChapterUrls}
 ${navUrls}
 ${activityUrls}
 </urlset>`,
@@ -978,7 +1054,14 @@ ${activityUrls}
         const indexRequest = new Request(new URL('/', request.url), request);
         const indexResponse = await env.ASSETS.fetch(indexRequest);
         if (indexResponse.ok) {
-          return applyRouteMeta(indexResponse, routeMeta, 'https://amazon-hike.com/');
+          let homeRootHtml: string | undefined;
+          try {
+            const homeDb = await loadDatabaseWorker(env);
+            homeRootHtml = buildHomeShellHtml(homeDb.homeIntro);
+          } catch (e) {
+            homeRootHtml = undefined;
+          }
+          return applyRouteMeta(indexResponse, routeMeta, 'https://amazon-hike.com/', undefined, homeRootHtml);
         }
         return indexResponse;
       }
@@ -1065,7 +1148,9 @@ ${activityUrls}
                   .map((p) => `<p>${escapeHtml(p)}</p>`)
                   .join('')
               : '';
-            rootHtml = `<main><h1>${escapeHtml(btn ? btn.title : '活動列表')}</h1>${introHtml}<ul>${listHtml}</ul>${buildSiteNavHtml()}</main>`;
+            const navBottomBody = btn ? formatMultilineHtml(String(btn.bottomContent || '').trim()) : '';
+            const navBottomHtml = navBottomBody ? `<section>${navBottomBody}</section>` : '';
+            rootHtml = `<main><h1>${escapeHtml(btn ? btn.title : '活動列表')}</h1>${introHtml}<ul>${listHtml}</ul>${navBottomHtml}${buildSiteNavHtml()}</main>`;
             if (btn) {
               chapterJsonLd = buildBreadcrumbJsonLd(
                 [
@@ -1125,6 +1210,8 @@ ${activityUrls}
           chapterJsonLd = hl.jsonLd;
         } else if (normalizedPath === '/policies') {
           rootHtml = await buildPoliciesShellHtml(env, routeMeta.title, routeMeta.description);
+        } else if (normalizedPath === '/surveys') {
+          rootHtml = await buildSurveysShellHtml(env, routeMeta.title, routeMeta.description);
         } else if (!normalizedPath.startsWith('/intro/')) {
           rootHtml = buildSectionShellHtml(routeMeta.title, routeMeta.description);
         }

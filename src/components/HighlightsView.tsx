@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { PageTextBlock } from './PageTextBlock.js';
 import { ArrowLeft, Video, ExternalLink, Play } from 'lucide-react';
 import type { HighlightItem } from '../types.js';
 import { getYouTubeVideoId, normalizeUrl } from '../utils/url.js';
@@ -7,6 +8,8 @@ interface HighlightsViewProps {
   highlights: HighlightItem[];
   /** 後台「活動花絮」按鈕的列表頁導讀內容；沒填就顯示預設說明 */
   introContent?: string;
+  /** 後台「活動花絮」按鈕的下方說明 */
+  bottomContent?: string;
   onBack: () => void;
 }
 
@@ -55,7 +58,7 @@ const LazyYouTube: React.FC<{ videoId: string; title: string }> = ({ videoId, ti
   );
 };
 
-export const HighlightsView: React.FC<HighlightsViewProps> = ({ highlights, introContent, onBack }) => {
+export const HighlightsView: React.FC<HighlightsViewProps> = ({ highlights, introContent, bottomContent, onBack }) => {
   const introParagraphs = (introContent || '')
     .split(/\n\s*\n/)
     .map((p) => p.trim())
@@ -189,6 +192,8 @@ export const HighlightsView: React.FC<HighlightsViewProps> = ({ highlights, intr
           })}
         </div>
       )}
+
+      <PageTextBlock text={bottomContent} position="bottom" />
     </main>
   );
 };

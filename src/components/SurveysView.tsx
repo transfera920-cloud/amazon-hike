@@ -1,14 +1,19 @@
 import React from 'react';
+import { PageTextBlock } from './PageTextBlock.js';
 import { ArrowLeft, ExternalLink, ClipboardList, CheckCircle2 } from 'lucide-react';
 import type { SurveyItem } from '../types.js';
 import { normalizeUrl } from '../utils/url.js';
 
 interface SurveysViewProps {
   surveys?: SurveyItem[];
+  /** 後台「前台導覽按鈕」的上方說明 */
+  introContent?: string;
+  /** 後台「前台導覽按鈕」的下方說明 */
+  bottomContent?: string;
   onBack: () => void;
 }
 
-export const SurveysView: React.FC<SurveysViewProps> = ({ surveys = [], onBack }) => {
+export const SurveysView: React.FC<SurveysViewProps> = ({ surveys = [], onBack, introContent, bottomContent }) => {
   const activeSurveys = surveys
     .filter((s) => s.enabled)
     .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
@@ -44,6 +49,8 @@ export const SurveysView: React.FC<SurveysViewProps> = ({ surveys = [], onBack }
           </div>
         </div>
       </div>
+
+      <PageTextBlock text={introContent} position="top" />
 
       {/* Surveys List */}
       {activeSurveys.length === 0 ? (
@@ -113,6 +120,8 @@ export const SurveysView: React.FC<SurveysViewProps> = ({ surveys = [], onBack }
           })}
         </div>
       )}
+
+      <PageTextBlock text={bottomContent} position="bottom" />
     </main>
   );
 };

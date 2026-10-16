@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { PageTextBlock } from './PageTextBlock.js';
 import {
   ArrowLeft,
   Compass,
@@ -614,6 +615,8 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
       )}
         </>
       )}
+
+      <PageTextBlock text={button.bottomContent} position="bottom" />
     </main>
   );
 };

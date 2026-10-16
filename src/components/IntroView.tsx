@@ -1,4 +1,5 @@
 import React from 'react';
+import { PageTextBlock } from './PageTextBlock.js';
 import { ArrowLeft, BookOpen, ChevronRight, Calendar, ExternalLink } from 'lucide-react';
 import { normalizeUrl } from '../utils/url.js';
 import { isFormalChapterSlug } from '../utils/activitySeo.js';
@@ -7,6 +8,10 @@ import type { ChapterItem, IntroItem } from '../types.js';
 interface IntroViewProps {
   chapters?: ChapterItem[];
   intros?: IntroItem[];
+  /** 後台「前台導覽按鈕」的上方說明 */
+  introContent?: string;
+  /** 後台「前台導覽按鈕」的下方說明 */
+  bottomContent?: string;
   onBack: () => void;
   onSelectChapter?: (slug: string) => void;
 }
@@ -49,6 +54,8 @@ export const IntroView: React.FC<IntroViewProps> = ({
   intros = [],
   onBack,
   onSelectChapter,
+  introContent,
+  bottomContent,
 }) => {
   // Prefer chapters if available, otherwise fallback to intros if any
   const hasChapters = chapters.length > 0;
@@ -88,6 +95,8 @@ export const IntroView: React.FC<IntroViewProps> = ({
           </div>
         </div>
       </div>
+
+      <PageTextBlock text={introContent} position="top" />
 
       {/* 導讀（置頂） */}
       {pinnedIntros.map((guide) => {
@@ -220,6 +229,8 @@ export const IntroView: React.FC<IntroViewProps> = ({
           })}
         </div>
       )}
+
+      <PageTextBlock text={bottomContent} position="bottom" />
     </main>
   );
 };

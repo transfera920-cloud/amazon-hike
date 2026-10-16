@@ -84,6 +84,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
   const [editingTool, setEditingTool] = useState<Partial<ToolItem> | null>(null);
   const [editingHighlight, setEditingHighlight] = useState<Partial<HighlightItem> | null>(null);
   const [surveyUrlInput, setSurveyUrlInput] = useState('');
+  const [homeIntroTitle, setHomeIntroTitle] = useState('');
+  const [homeIntroContent, setHomeIntroContent] = useState('');
   const [editingSurvey, setEditingSurvey] = useState<Partial<SurveyItem> | null>(null);
   const [editingPolicy, setEditingPolicy] = useState<Partial<PolicyItem> | null>(null);
   const [editingNavButton, setEditingNavButton] = useState<Partial<NavButtonItem> | null>(null);
@@ -156,6 +158,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
       if (json.success) {
         setAdminData(json.data);
         setSurveyUrlInput(json.data.surveyUrl || '');
+        setHomeIntroTitle(json.data.homeIntro?.title || '');
+        setHomeIntroContent(json.data.homeIntro?.content || '');
       }
     } catch (err: any) {
       setStatusMessage({ text: err.message || '讀取資料庫失敗', isError: true });
@@ -395,6 +399,34 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
       const json = await res.json();
       if (json.success) {
         showFeedback('問卷調查 Google Forms 網址已成功寫入永久資料庫');
+        await fetchAdminData(token);
+        onDataUpdated();
+      } else {
+        showFeedback(json.error || '儲存失敗', true);
+      }
+    } catch (err: any) {
+      showFeedback(err.message || '連線儲存失敗', true);
+    }
+  };
+
+  // ---------------------------------------------------------
+  // Home Intro Save（首頁行事曆下方說明）
+  // ---------------------------------------------------------
+  const handleSaveHomeIntro = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/admin/save-home-intro', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ title: homeIntroTitle, content: homeIntroContent }),
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        showFeedback('首頁說明已儲存，前台首頁行事曆下方會立即更新');
         await fetchAdminData(token);
         onDataUpdated();
       } else {
@@ -2723,10 +2755,39 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                   />
                   <div className="flex items-center justify-between text-[11px] text-neutral-400">
                     <span>
-                      顯示在前台列表頁標題下方；空一行代表分段。標題含「百岳總表」的按鈕留空時，會使用系統預設導讀。
+                      顯示在該頁面標題下方、內容上方；空一行代表分段。標題含「百岳總表」的按鈕留空時，會使用系統預設導讀。
                     </span>
                     <span className="shrink-0 ml-3">
                       {(editingNavButton.introContent || '').length} / 3000
+                    </span>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-emerald-900/50 bg-emerald-950/10 p-3 space-y-2">
+                  <label
+                    htmlFor="button-bottom-content"
+                    className="block text-emerald-400 font-semibold"
+                  >
+                    頁面下方說明（選填）
+                  </label>
+                  <textarea
+                    id="button-bottom-content"
+                    rows={7}
+                    maxLength={3000}
+                    value={editingNavButton.bottomContent || ''}
+                    onChange={(e) =>
+                      setEditingNavButton({
+                        ...editingNavButton,
+                        bottomContent: e.target.value,
+                      })
+                    }
+                    placeholder={'例如：補充注意事項、常見問題、報名方式或相關連結說明。\n\n空一行即分成下一段。'}
+                    className="w-full px-3 py-2 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 leading-relaxed resize-y"
+                  />
+                  <div className="flex items-center justify-between text-[11px] text-neutral-400">
+                    <span>顯示在該頁面內容（清單、影片等）下方；空一行代表分段。</span>
+                    <span className="shrink-0 ml-3">
+                      {(editingNavButton.bottomContent || '').length} / 3000
                     </span>
                   </div>
                 </div>
@@ -3900,6 +3961,50 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
           ========================================================= */}
       {activeTab === 'calendar' && adminData && (
         <div className="space-y-6">
+          {/* 首頁說明（顯示在前台首頁行事曆下方） */}
+          <div className="border border-neutral-800 rounded bg-neutral-900 p-5 space-y-3">
+            <div>
+              <h2 className="text-base font-bold text-neutral-200">首頁說明（行事曆下方）</h2>
+              <p className="text-xs text-neutral-400 mt-0.5">
+                顯示在前台首頁行事曆下方，不影響行事曆一進站就能看到。內文以空白行分段，建議 200～500 字，說明協會是什麼、辦哪些活動、適合誰參加。
+              </p>
+            </div>
+            <form onSubmit={handleSaveHomeIntro} className="space-y-3 text-xs" id="home-intro-form">
+              <div>
+                <label className="block text-neutral-300 font-medium mb-1">區塊標題（選填，顯示為 H2）</label>
+                <input
+                  type="text"
+                  value={homeIntroTitle}
+                  onChange={(e) => setHomeIntroTitle(e.target.value)}
+                  maxLength={100}
+                  placeholder="例如：關於亞馬遜國家山岳協會"
+                  className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+              <div>
+                <label className="block text-neutral-300 font-medium mb-1">
+                  說明內容（空白行分段，目前 {homeIntroContent.length} / 8000 字）
+                </label>
+                <textarea
+                  value={homeIntroContent}
+                  onChange={(e) => setHomeIntroContent(e.target.value)}
+                  maxLength={8000}
+                  rows={10}
+                  placeholder={'第一段：協會簡介與宗旨。\n\n第二段：主要活動類型（百岳行程、入門教學、體能訓練）。\n\n第三段：如何報名與聯絡方式。'}
+                  className="w-full px-3 py-2 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 leading-relaxed focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+              <div className="flex items-center justify-end">
+                <button
+                  type="submit"
+                  className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded text-xs font-semibold bg-emerald-800 hover:bg-emerald-700 text-white transition-colors"
+                >
+                  儲存首頁說明
+                </button>
+              </div>
+            </form>
+          </div>
+
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-base font-bold text-neutral-200">

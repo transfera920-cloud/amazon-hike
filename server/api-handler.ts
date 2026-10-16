@@ -21,6 +21,7 @@ import {
   getCategorySlug,
   isFormalChapterSlug,
   processBatchImportActivities,
+  findPageNavButton,
 } from '../src/utils/activitySeo.js';
 import {
   cleanTripItinerary,
@@ -455,6 +456,28 @@ export async function handleApiRequest(
         db.surveyUrl = (surveyUrl || '').trim();
         await saveDatabaseWorker(db, env);
         return jsonResponse({ success: true, surveyUrl: db.surveyUrl });
+      } catch (err: any) {
+        return jsonResponse({ error: err.message }, 500);
+      }
+    }
+
+    // POST /api/admin/save-page-text（子頁面上方導讀／下方說明）
+    if (path === '/api/admin/save-page-text' && method === 'POST') {
+      try {
+        const db = await loadDatabaseWorker(env);
+        const body: any = await request.json();
+        const pagePath = String(body.path || '').trim();
+        if (!['/intro', '/tools', '/highlights', '/policies', '/surveys'].includes(pagePath)) {
+          return jsonResponse({ error: '不支援的頁面路徑' }, 400);
+        }
+        const btn = findPageNavButton(db.navButtons, pagePath);
+        if (!btn) {
+          return jsonResponse({ error: '找不到此頁面對應的前台導覽按鈕，請先到「前台按鈕管理」建立後再編輯' }, 404);
+        }
+        btn.introContent = String(body.introContent || '').replace(/\r\n?/g, '\n').trim().slice(0, 3000) || undefined;
+        btn.bottomContent = String(body.bottomContent || '').replace(/\r\n?/g, '\n').trim().slice(0, 3000) || undefined;
+        await saveDatabaseWorker(db, env);
+        return jsonResponse({ success: true, introContent: btn.introContent || '', bottomContent: btn.bottomContent || '' });
       } catch (err: any) {
         return jsonResponse({ error: err.message }, 500);
       }

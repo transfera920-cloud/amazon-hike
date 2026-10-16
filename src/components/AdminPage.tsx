@@ -46,13 +46,123 @@ import {
   processBatchImportActivities,
   type BatchImportResult,
 } from '../utils/activitySeo.js';
-import { PEAK_INTRO_PARAGRAPHS } from '../utils/activitySeo.js';
+import { PEAK_INTRO_PARAGRAPHS, findPageNavButton } from '../utils/activitySeo.js';
 import { ImageUploadButton } from './ImageUploadButton.js';
 import InlineEditorPortal, { editSlotKey } from './InlineEditorPortal.js';
 import peaksTop100Data from '../../data/peaks-top100.json';
 import {
   calculateDaysFromDates
 } from '../utils/itineraryHelper.js';
+
+interface PageTextEditorProps {
+  /** 頁面路徑，例如 /tools */
+  path: string;
+  /** 顯示用頁面名稱，例如「登山工具」 */
+  pageName: string;
+  navButtons?: NavButtonItem[];
+  token: string;
+  onSaved: () => Promise<void> | void;
+  notify: (text: string, isError?: boolean) => void;
+}
+
+/**
+ * 子頁面的「上方導讀 / 下方說明」編輯區塊。
+ * 內容存在對應的「前台導覽按鈕」(introContent / bottomContent)，與「前台按鈕管理」編輯的是同一份資料。
+ */
+const PageTextEditor: React.FC<PageTextEditorProps> = ({ path, pageName, navButtons, token, onSaved, notify }) => {
+  const btn = findPageNavButton<NavButtonItem>(navButtons, path);
+  const [top, setTop] = useState(btn?.introContent || '');
+  const [bottom, setBottom] = useState(btn?.bottomContent || '');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setTop(btn?.introContent || '');
+    setBottom(btn?.bottomContent || '');
+  }, [btn?.id, btn?.introContent, btn?.bottomContent]);
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const res = await fetch('/api/admin/save-page-text', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ path, introContent: top, bottomContent: bottom }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        notify(`「${pageName}」頁面的上方導讀與下方說明已儲存`);
+        await onSaved();
+      } else {
+        notify(json.error || '儲存失敗', true);
+      }
+    } catch (err: any) {
+      notify(err.message || '連線儲存失敗', true);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const fieldClass =
+    'w-full px-3 py-2 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 leading-relaxed resize-y text-xs focus:outline-none focus:border-emerald-500';
+
+  return (
+    <div className="border border-emerald-900/50 rounded bg-emerald-950/10 p-5 space-y-3" id={`page-text-editor-${path.replace(/\//g, '')}`}>
+      <div>
+        <h2 className="text-base font-bold text-emerald-400">「{pageName}」頁面文字</h2>
+        <p className="text-xs text-neutral-400 mt-0.5">
+          導讀顯示在前台頁面標題下方、內容上方；下方說明顯示在內容下方。空一行代表分段，留空則不顯示。
+        </p>
+      </div>
+      {!btn ? (
+        <p className="text-xs text-amber-400">
+          找不到「{pageName}」對應的前台導覽按鈕（網址 {path}），請先到「前台按鈕管理」建立後再編輯。
+        </p>
+      ) : (
+        <form onSubmit={handleSave} className="space-y-3">
+          <div>
+            <label className="block text-xs text-neutral-300 font-medium mb-1">
+              上方導讀（{top.length} / 3000 字）
+            </label>
+            <textarea
+              rows={6}
+              maxLength={3000}
+              value={top}
+              onChange={(e) => setTop(e.target.value)}
+              placeholder={'例如：介紹這個專區是什麼、適合誰、如何使用。\n\n空一行即分成下一段。'}
+              className={fieldClass}
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-neutral-300 font-medium mb-1">
+              下方說明（{bottom.length} / 3000 字）
+            </label>
+            <textarea
+              rows={6}
+              maxLength={3000}
+              value={bottom}
+              onChange={(e) => setBottom(e.target.value)}
+              placeholder={'例如：補充注意事項、常見問題、使用提醒或相關連結說明。\n\n空一行即分成下一段。'}
+              className={fieldClass}
+            />
+          </div>
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              disabled={saving}
+              className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded text-xs font-semibold bg-emerald-800 hover:bg-emerald-700 text-white transition-colors disabled:opacity-50"
+            >
+              {saving ? '儲存中...' : '儲存頁面文字'}
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+};
 
 interface AdminPageProps {
   onBack: () => void;
@@ -1143,6 +1253,18 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
           ========================================================= */}
       {activeTab === 'chapters' && adminData && (
         <div className="space-y-6">
+          <PageTextEditor
+            path="/intro"
+            pageName="登山入門"
+            navButtons={adminData.navButtons}
+            token={token}
+            notify={showFeedback}
+            onSaved={async () => {
+              await fetchAdminData(token);
+              onDataUpdated();
+            }}
+          />
+
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-base font-bold text-neutral-200">
@@ -1664,6 +1786,18 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
           ========================================================= */}
       {activeTab === 'tools' && adminData && (
         <div className="space-y-6">
+          <PageTextEditor
+            path="/tools"
+            pageName="登山工具"
+            navButtons={adminData.navButtons}
+            token={token}
+            notify={showFeedback}
+            onSaved={async () => {
+              await fetchAdminData(token);
+              onDataUpdated();
+            }}
+          />
+
           <div className="flex items-center justify-between">
             <h2 className="text-base font-bold text-neutral-200">
               登山工具清單 ({adminData.tools.length})
@@ -1873,6 +2007,18 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
           ========================================================= */}
       {activeTab === 'highlights' && adminData && (
         <div className="space-y-6">
+          <PageTextEditor
+            path="/highlights"
+            pageName="活動花絮"
+            navButtons={adminData.navButtons}
+            token={token}
+            notify={showFeedback}
+            onSaved={async () => {
+              await fetchAdminData(token);
+              onDataUpdated();
+            }}
+          />
+
           <div className="flex items-center justify-between">
             <h2 className="text-base font-bold text-neutral-200">
               活動花絮 YouTube 影片清單 ({adminData.highlights.length})
@@ -2119,6 +2265,18 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
           ========================================================= */}
       {activeTab === 'survey' && adminData && (
         <div className="space-y-6">
+          <PageTextEditor
+            path="/surveys"
+            pageName="問卷調查"
+            navButtons={adminData.navButtons}
+            token={token}
+            notify={showFeedback}
+            onSaved={async () => {
+              await fetchAdminData(token);
+              onDataUpdated();
+            }}
+          />
+
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-800 pb-4">
             <div>
               <h2 className="text-base font-bold text-neutral-100 flex items-center gap-2">
@@ -2399,6 +2557,18 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
           ========================================================= */}
       {activeTab === 'policies' && adminData && (
         <div className="space-y-6">
+          <PageTextEditor
+            path="/policies"
+            pageName="政策與條款"
+            navButtons={adminData.navButtons}
+            token={token}
+            notify={showFeedback}
+            onSaved={async () => {
+              await fetchAdminData(token);
+              onDataUpdated();
+            }}
+          />
+
           <div className="flex items-center justify-between">
             <h2 className="text-base font-bold text-neutral-200">
               政策與條款清單 ({adminData.policies.length})

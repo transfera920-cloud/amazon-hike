@@ -1,8 +1,8 @@
 import React from 'react';
 import { PageTextBlock } from './PageTextBlock.js';
-import { ArrowLeft, ExternalLink, Wrench } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ExternalLink, Wrench } from 'lucide-react';
 import type { ToolItem } from '../types.js';
-import { normalizeUrl } from '../utils/url.js';
+import { normalizeUrl, isInternalUrl } from '../utils/url.js';
 
 interface ToolsViewProps {
   tools: ToolItem[];
@@ -37,7 +37,7 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ tools, onBack, introConten
           </div>
           <div>
             <h1 className="text-xl sm:text-2xl font-bold text-neutral-100">
-              登山工具
+              登山工具與氣象服務
             </h1>
             <p className="text-xs text-neutral-400 mt-0.5">
               高山氣象查詢、入山入園申辦、步道路況與實用數位山林工具
@@ -57,13 +57,14 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ tools, onBack, introConten
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {tools.map((tool) => {
             const url = normalizeUrl(tool.url);
+            // 站內工具頁（/tool01/ 等）同分頁開啟；子網域或外部網址才另開分頁
+            const internal = isInternalUrl(tool.url);
 
             return (
               <a
                 key={tool.id}
                 href={url || '#'}
-                target="_blank"
-                rel="noopener noreferrer"
+                {...(internal ? {} : { target: '_blank', rel: 'noopener noreferrer' })}
                 className="group border border-neutral-800 rounded bg-neutral-900/40 p-5 hover:border-neutral-700/80 hover:bg-neutral-900/80 transition-all flex flex-col justify-between"
                 id={`tool-item-${tool.id}`}
               >
@@ -72,7 +73,11 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ tools, onBack, introConten
                     <h2 className="text-base font-bold text-neutral-100 group-hover:text-emerald-400 transition-colors">
                       {tool.title}
                     </h2>
-                    <ExternalLink size={14} className="text-neutral-500 group-hover:text-emerald-400 shrink-0 mt-1 transition-colors" />
+                    {internal ? (
+                      <ArrowRight size={14} className="text-neutral-500 group-hover:text-emerald-400 shrink-0 mt-1 transition-colors" />
+                    ) : (
+                      <ExternalLink size={14} className="text-neutral-500 group-hover:text-emerald-400 shrink-0 mt-1 transition-colors" />
+                    )}
                   </div>
                   {tool.description && (
                     <p className="text-xs sm:text-sm text-neutral-400 mt-2 leading-relaxed">

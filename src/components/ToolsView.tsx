@@ -2,7 +2,7 @@ import React from 'react';
 import { PageTextBlock } from './PageTextBlock.js';
 import { ArrowLeft, ArrowRight, ExternalLink, Wrench } from 'lucide-react';
 import type { ToolItem } from '../types.js';
-import { normalizeUrl, isInternalUrl } from '../utils/url.js';
+import { normalizeToolUrl, isInternalUrl } from '../utils/url.js';
 
 interface ToolsViewProps {
   tools: ToolItem[];
@@ -56,9 +56,9 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ tools, onBack, introConten
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {tools.map((tool) => {
-            const url = normalizeUrl(tool.url);
+            const url = normalizeToolUrl(tool.url);
             // 站內工具頁（/tool01/ 等）同分頁開啟；子網域或外部網址才另開分頁
-            const internal = isInternalUrl(tool.url);
+            const internal = isInternalUrl(url);
 
             return (
               <a

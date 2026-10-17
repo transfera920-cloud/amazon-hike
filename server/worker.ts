@@ -15,7 +15,7 @@ import {
   MAIN_WORKER_CHAPTER_SLUGS,
 } from '../src/utils/activitySeo.js';
 import type { NavButtonActivity } from '../src/types.js';
-import { getYouTubeVideoId } from '../src/utils/url.js';
+import { getYouTubeVideoId, normalizeToolUrl } from '../src/utils/url.js';
 
 declare const HTMLRewriter: any;
 
@@ -226,7 +226,7 @@ async function buildToolsShellHtml(env: WorkerEnv, title: string, description: s
       .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
     const items = tools
       .map((t) => {
-        const href = resolveToolHref(t.url);
+        const href = normalizeToolUrl(t.url);
         if (!href) return '';
         const desc = (t.description || '').trim() ? `：${escapeHtml(t.description)}` : '';
         return `<li><a href="${escapeHtml(href)}">${escapeHtml(t.title)}</a>${desc}</li>`;
@@ -238,6 +238,55 @@ async function buildToolsShellHtml(env: WorkerEnv, title: string, description: s
     console.error('Error building tools shell HTML:', err);
   }
   return `<main><h1>${escapeHtml(shortTitle)}</h1><p>${escapeHtml(description)}</p>${listHtml}${buildSiteNavHtml()}</main>`;
+}
+
+/**
+ * /tools 的結構化資料：BreadcrumbList + ItemList。
+ * ItemList 的順序 = 後台「登山工具」的排序（sortOrder），內部工具與外部連結都會列出。
+ */
+async function buildToolsJsonLd(env: WorkerEnv, pageUrl: string): Promise<string> {
+  const listItems: { '@type': 'ListItem'; position: number; name: string; url: string }[] = [];
+  try {
+    const db = await loadDatabaseWorker(env);
+    const tools = (db.tools || [])
+      .filter((t) => t.enabled && (t.title || '').trim())
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+    for (const t of tools) {
+      const href = normalizeToolUrl(t.url);
+      if (!href) continue;
+      const abs = href.startsWith('/') ? SITE_ORIGIN + href : href;
+      if (!/^https?:\/\//i.test(abs)) continue;
+      listItems.push({
+        '@type': 'ListItem',
+        position: listItems.length + 1,
+        name: t.title.trim(),
+        url: abs,
+      });
+    }
+  } catch (err) {
+    console.error('Error building tools JSON-LD:', err);
+  }
+  const graph: Record<string, unknown>[] = [
+    {
+      '@type': 'BreadcrumbList',
+      '@id': `${pageUrl}#breadcrumb`,
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, name: '首頁', item: `${SITE_ORIGIN}/` },
+        { '@type': 'ListItem', position: 2, name: '登山工具', item: pageUrl },
+      ],
+    },
+  ];
+  if (listItems.length > 0) {
+    graph.push({
+      '@type': 'ItemList',
+      '@id': `${pageUrl}#toollist`,
+      name: '登山工具與氣象服務',
+      numberOfItems: listItems.length,
+      itemListOrder: 'https://schema.org/ItemListOrderAscending',
+      itemListElement: listItems,
+    });
+  }
+  return JSON.stringify({ '@context': 'https://schema.org', '@graph': graph }).replace(/</g, '\\u003c');
 }
 
 /** /highlights 的靜態外殼 + 影片結構化資料：把影片標題、說明文字放進初始 HTML（只放文字，不放影片網址） */
@@ -667,7 +716,7 @@ Sitemap: https://amazon-hike.com/sitemap.xml
         .filter((t) => t.enabled)
         .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
         .map((t) => {
-          const p = toInternalPath(resolveToolHref(t.url));
+          const p = toInternalPath(normalizeToolUrl(t.url));
           // 只收格式乾淨的站內路徑（例如 /tool25/），含 * 或引號等字元的錯誤網址一律略過
           if (!p || p === '/tools' || !/^\/[A-Za-z0-9_\-\/]+$/.test(p) || seenToolPaths.has(p)) return '';
           seenToolPaths.add(p);
@@ -1126,13 +1175,7 @@ ${activityUrls}
           chapterJsonLd = buildChapterJsonLd(matchedChapter, canonicalUrl);
         } else if (normalizedPath === '/tools') {
           rootHtml = await buildToolsShellHtml(env, routeMeta.title, routeMeta.description);
-          chapterJsonLd = buildBreadcrumbJsonLd(
-            [
-              { name: '首頁', url: `${SITE_ORIGIN}/` },
-              { name: '登山工具', url: canonicalUrl },
-            ],
-            canonicalUrl
-          );
+          chapterJsonLd = await buildToolsJsonLd(env, canonicalUrl);
         } else if (normalizedPath === '/highlights') {
           const hl = await buildHighlightsShell(env, routeMeta.title, routeMeta.description, canonicalUrl);
           rootHtml = hl.html;

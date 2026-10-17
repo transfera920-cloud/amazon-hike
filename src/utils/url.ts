@@ -16,6 +16,35 @@ export function normalizeUrl(url: string | undefined | null): string {
 }
 
 /**
+ * 工具網址正規化：
+ * - 去掉誤填在結尾的 *（例如把 Cloudflare 路由 /tool17* 貼成網址）
+ * - 本站的 /toolNN 一律補成 /toolNN/（與各子專案的 canonical、sitemap 一致，避免 /toolNN 與 /toolNN/ 重複）
+ * - 其他網址（外部連結、子網域）維持原樣
+ */
+export function normalizeToolUrl(url: string | undefined | null): string {
+  const bare = (url || '').trim().replace(/\*+$/, '');
+  if (/^tool\d+\/?$/i.test(bare)) return `/${bare.replace(/\/$/, '').toLowerCase()}/`;
+  const u = normalizeUrl(url).replace(/\*+$/, '');
+  if (!u) return '';
+  let pathname: string | null = null;
+  if (u.startsWith('/')) {
+    pathname = u;
+  } else {
+    try {
+      const parsed = new URL(u);
+      if (/^(www\.)?amazon-hike\.com$/i.test(parsed.hostname)) pathname = parsed.pathname;
+    } catch {
+      // ignore
+    }
+  }
+  if (pathname) {
+    const m = pathname.match(/^\/(tool\d+)\/?$/i);
+    if (m) return `/${m[1].toLowerCase()}/`;
+  }
+  return u;
+}
+
+/**
  * 判斷網址是否屬於本站（相對路徑，或 amazon-hike.com / www.amazon-hike.com）。
  * 子網域（price.、road.、transfer. 等）視為外部網址。
  */

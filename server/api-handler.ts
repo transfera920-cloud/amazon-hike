@@ -29,6 +29,7 @@ import {
   removeCalendarActivityForActivity,
   removeCalendarActivitiesForNavButton,
 } from '../src/utils/itineraryHelper.js';
+import { normalizeToolUrl } from '../src/utils/url.js';
 
 const ADMIN_SECRET_TOKEN = 'amazon-alpine-secure-token-2026';
 
@@ -346,7 +347,7 @@ export async function handleApiRequest(
           id: item.id || `tool_${Date.now()}`,
           title: (item.title || '').trim(),
           description: (item.description || '').trim(),
-          url: (item.url || '').trim(),
+          url: normalizeToolUrl(item.url),
           enabled: item.enabled ?? true,
           sortOrder: Number(item.sortOrder) || 0,
         };

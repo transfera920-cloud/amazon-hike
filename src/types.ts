@@ -67,6 +67,7 @@ export interface NavButtonItem {
   enabled: boolean;
   sortOrder: number;
   categorySlug?: string; // 新增：作為 /分類/活動/ 網址中的分類代稱，留空則由系統自動推導
+  mobileBar?: boolean; // 手機版是否直接顯示在標題下方的按鈕列（未設定時：依排序取前 5 個啟用的按鈕）
   introContent?: string; // 列表頁導讀內容（空白行分段；選填）
   footerContent?: string; // 列表頁下方說明（顯示在列表下方，空白行分段；選填）
   seoTitle?: string; // 列表頁自訂 SEO 標題（選填）

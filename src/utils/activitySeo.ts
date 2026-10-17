@@ -462,3 +462,23 @@ export function isThinMainChapter(chapter: { slug?: string; content?: string }):
   const body = (chapter.content || '').trim();
   return !body || body.includes(SEED_CHAPTER_MARKER);
 }
+
+
+/** 手機版「標題下方按鈕列」最多預設顯示幾個按鈕（後台沒特別設定時） */
+export const MOBILE_BAR_DEFAULT_COUNT = 5;
+
+/**
+ * 這個按鈕在手機版是否直接顯示在按鈕列。
+ * 後台有勾選／取消就照後台；沒設定時，依排序取前 5 個啟用的按鈕。
+ */
+export function isOnMobileBar(
+  btn: { id: string; enabled: boolean; sortOrder: number; mobileBar?: boolean },
+  all: { id: string; enabled: boolean; sortOrder: number }[]
+): boolean {
+  if (typeof btn.mobileBar === 'boolean') return btn.mobileBar;
+  const rank = all
+    .filter((b) => b.enabled)
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .findIndex((b) => b.id === btn.id);
+  return rank >= 0 && rank < MOBILE_BAR_DEFAULT_COUNT;
+}

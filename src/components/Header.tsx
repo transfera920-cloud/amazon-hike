@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronDown, Mail, Phone, ExternalLink, ShieldCheck, Menu, X } from 'lucide-react';
 import { normalizeUrl } from '../utils/url.js';
-import { getCategorySlug } from '../utils/activitySeo.js';
+import { getCategorySlug, isOnMobileBar } from '../utils/activitySeo.js';
 import type { NavButtonItem, NavButtonActivity } from '../types.js';
 
 interface HeaderProps {
@@ -101,6 +101,9 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyU
         ]
   ).sort((a, b) => a.sortOrder - b.sortOrder);
 
+  // 手機版按鈕列：依後台設定（沒設定時取前 5 個），順序跟著按鈕排序
+  const mobileBarButtons = displayButtons.filter((b) => isOnMobileBar(b, displayButtons));
+
   return (
     <header className="border-b border-neutral-800 bg-neutral-950/95 backdrop-blur-md sticky top-0 z-40">
       {/* Top Organization Header */}
@@ -133,11 +136,12 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyU
               <button
                 type="button"
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                className="sm:hidden p-2 rounded-md text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800 focus:outline-none"
+                className="sm:hidden flex items-center gap-1.5 px-2.5 py-2 rounded-md text-neutral-300 hover:text-neutral-100 hover:bg-neutral-800 focus:outline-none"
                 aria-label="選單開關"
                 id="mobile-menu-toggle"
               >
                 {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
+                <span className="text-sm font-medium">{mobileMenuOpen ? '關閉' : '選單'}</span>
               </button>
             </div>
 
@@ -295,6 +299,63 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyU
               );
             })}
           </div>
+
+          {/* 手機版：標題下方的快速按鈕列（可左右滑動；顯示哪些由後台「前台導覽按鈕」決定） */}
+          {mobileBarButtons.length > 0 && (
+            <div
+              className="md:hidden flex items-center gap-2 overflow-x-auto py-2 -mx-1 px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              id="mobile-quick-bar"
+            >
+              {mobileBarButtons.map((btn) => {
+                const hasEnabledActivities = (navButtonActivities || []).some(
+                  (a) => a.navButtonId === btn.id && a.enabled === true
+                );
+                const hasExternalUrl = Boolean(
+                  btn.url && (btn.url.startsWith('http://') || btn.url.startsWith('https://'))
+                );
+                const effectiveIsExternal = hasEnabledActivities
+                  ? false
+                  : Boolean(btn.isExternal || hasExternalUrl);
+                const base =
+                  'shrink-0 inline-flex items-center gap-1 px-3.5 py-2 rounded-full border text-sm font-bold whitespace-nowrap transition-colors';
+
+                if (effectiveIsExternal) {
+                  return (
+                    <a
+                      key={btn.id}
+                      href={normalizeUrl(btn.url)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`${base} border-neutral-700 bg-neutral-900 text-neutral-100 hover:bg-neutral-800`}
+                    >
+                      <span>{btn.title}</span>
+                      <ExternalLink size={12} className="text-neutral-400 shrink-0" />
+                    </a>
+                  );
+                }
+
+                const buttonNavPath = btn.url && btn.url.startsWith('/nav/') ? btn.url : `/nav/${btn.id}`;
+                const targetUrl = hasEnabledActivities ? buttonNavPath : (btn.url || buttonNavPath);
+                const isActive = checkButtonActive(btn, currentPath, buttonNavPath, hasEnabledActivities, navButtonActivities);
+
+                return (
+                  <a
+                    key={btn.id}
+                    href={targetUrl}
+                    onClick={(e) => handleInternalLinkClick(e, targetUrl)}
+                    aria-current={isActive ? 'page' : undefined}
+                    className={`${base} ${
+                      isActive
+                        ? 'border-emerald-500 bg-emerald-950 text-emerald-300'
+                        : 'border-neutral-700 bg-neutral-900 text-neutral-100 hover:bg-neutral-800'
+                    }`}
+                  >
+                    {btn.title}
+                  </a>
+                );
+              })}
+            </div>
+          )}
 
           {/* Mobile Collapsible Navigation Menu */}
           {mobileMenuOpen && (

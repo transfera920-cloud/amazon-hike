@@ -46,7 +46,7 @@ import {
   processBatchImportActivities,
   type BatchImportResult,
 } from '../utils/activitySeo.js';
-import { PEAK_INTRO_PARAGRAPHS } from '../utils/activitySeo.js';
+import { PEAK_INTRO_PARAGRAPHS, isOnMobileBar } from '../utils/activitySeo.js';
 import { ImageUploadButton } from './ImageUploadButton.js';
 import InlineEditorPortal, { editSlotKey } from './InlineEditorPortal.js';
 import peaksTop100Data from '../../data/peaks-top100.json';
@@ -2676,6 +2676,40 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                   />
                   <p className="text-[11px] text-neutral-400 mt-1">
                     選填。若此按鈕底下有啟用中的活動，前台點擊將優先開啟活動列表；若無活動，則導向此處設定之網址或路徑。
+                  </p>
+                </div>
+
+                {/* 手機版擺放：直接顯示在標題下方按鈕列，或只放在右上角選單 */}
+                <div className="rounded-lg border border-emerald-900/50 bg-emerald-950/10 p-3 space-y-1.5">
+                  <label className="flex items-center gap-2 text-emerald-400 font-semibold cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isOnMobileBar(
+                        {
+                          id: editingNavButton.id || '__new__',
+                          enabled: editingNavButton.enabled ?? true,
+                          sortOrder: Number(editingNavButton.sortOrder) || 0,
+                          mobileBar: editingNavButton.mobileBar,
+                        },
+                        [
+                          ...(adminData.navButtons || []).filter((b) => b.id !== editingNavButton.id),
+                          {
+                            id: editingNavButton.id || '__new__',
+                            enabled: editingNavButton.enabled ?? true,
+                            sortOrder: Number(editingNavButton.sortOrder) || 0,
+                          },
+                        ]
+                      )}
+                      onChange={(e) =>
+                        setEditingNavButton({ ...editingNavButton, mobileBar: e.target.checked })
+                      }
+                      className="accent-emerald-500"
+                    />
+                    <span>手機版：顯示在標題下方的快速按鈕列</span>
+                  </label>
+                  <p className="text-[11px] text-neutral-400">
+                    勾選 = 手機上直接看得到、可左右滑動；不勾 = 只放在右上角「選單」裡。按鈕列的順序跟著下方的「排序序號」（小的在左邊）。
+                    沒有設定過時，系統預設放排序最前面的 5 個。
                   </p>
                 </div>
 

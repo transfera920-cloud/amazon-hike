@@ -548,6 +548,7 @@ apiRouter.post('/admin/save-nav-button', requireAdmin, (req: Request, res: Respo
       enabled: item.enabled ?? true,
       sortOrder: Number(item.sortOrder) || 0,
       categorySlug: cleanCatSlug || undefined,
+      mobileBar: typeof item.mobileBar === 'boolean' ? item.mobileBar : undefined,
       introContent: (item.introContent || '').trim().slice(0, 3000) || undefined,
       footerContent: (item.footerContent || '').trim().slice(0, 3000) || undefined,
       seoTitle: (item.seoTitle || '').trim().slice(0, 120) || undefined,

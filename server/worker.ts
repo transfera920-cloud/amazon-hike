@@ -89,6 +89,32 @@ function formatMultilineHtml(text: string): string {
  * 後台「前台導覽按鈕」的上文（introContent）與下文（footerContent），轉成初始 HTML 段落，
  * 讓搜尋引擎不必執行 JavaScript 就能讀到。找不到或沒填就回傳空字串。
  */
+/** 與前台相同規則：[文字](網址) 轉成 <a>，只允許站內路徑與 amazon-hike.com（含子網域） */
+function formatLinkedMultilineHtml(text: string): string {
+  const isSafe = (h: string) =>
+    /^\/(?!\/)/.test(h) || /^https:\/\/([a-z0-9-]+\.)*amazon-hike\.com(\/|$)/i.test(h);
+  const linkRe = /\[([^\]]+)\]\(([^)\s]+)\)/g;
+  const renderLine = (line: string): string => {
+    let out = '';
+    let last = 0;
+    let m: RegExpExecArray | null;
+    linkRe.lastIndex = 0;
+    while ((m = linkRe.exec(line)) !== null) {
+      out += escapeHtml(line.slice(last, m.index));
+      out += isSafe(m[2]) ? `<a href="${escapeHtml(m[2])}">${escapeHtml(m[1])}</a>` : escapeHtml(m[1]);
+      last = m.index + m[0].length;
+    }
+    return out + escapeHtml(line.slice(last));
+  };
+  return text
+    .replace(/\r\n?/g, '\n')
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => `<p>${p.split('\n').map(renderLine).join('<br>')}</p>`)
+    .join('');
+}
+
 const PAGE_TEXT_BUTTON_IDS: Record<string, string> = {
   '/': 'btn_calendar',
   '/intro': 'btn_intro',
@@ -103,8 +129,8 @@ async function loadPageTextHtml(env: WorkerEnv, path: string): Promise<{ top: st
       (b) => ((b.url || '').replace(/\/+$/, '') || '/') === path || b.id === PAGE_TEXT_BUTTON_IDS[path]
     );
     return {
-      top: formatMultilineHtml((btn?.introContent || '').trim()),
-      bottom: formatMultilineHtml((btn?.footerContent || '').trim()),
+      top: formatLinkedMultilineHtml((btn?.introContent || '').trim()),
+      bottom: formatLinkedMultilineHtml((btn?.footerContent || '').trim()),
     };
   } catch (err) {
     console.error('Error loading page text:', err);

@@ -2757,7 +2757,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                   />
                   <div className="flex items-center justify-between text-[11px] text-neutral-400">
                     <span>
-                      顯示在這個按鈕對應頁面的標題下方（活動行事曆、登山入門教學、登山工具等都適用）；空一行代表分段。標題含「百岳總表」的按鈕留空時，會使用系統預設導讀。
+                      顯示在這個按鈕對應頁面的標題下方（活動行事曆、登山入門教學、登山工具等都適用）；空一行代表分段；要放連結請寫成 [顯示文字](/網址路徑)，只能連到本站（含 road.amazon-hike.com 這類子網域）。標題含「百岳總表」的按鈕留空時，會使用系統預設導讀。
                     </span>
                     <span className="shrink-0 ml-3">
                       {(editingNavButton.introContent || '').length} / 3000

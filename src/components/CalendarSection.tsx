@@ -1,8 +1,12 @@
+import { PageTextBlock } from './PageTextBlock.js';
 import React, { useState, useMemo } from 'react';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, List, Grid3X3, ExternalLink } from 'lucide-react';
 import type { CalendarActivity } from '../types.js';
 
 interface CalendarSectionProps {
+  /** 後台「活動行事曆」按鈕的上文／下文 */
+  introContent?: string;
+  bottomContent?: string;
   activities: CalendarActivity[];
   loading: boolean;
   error?: string | null;
@@ -10,7 +14,7 @@ interface CalendarSectionProps {
 
 type ViewMode = 'month' | 'year' | 'list';
 
-export const CalendarSection: React.FC<CalendarSectionProps> = ({ activities, loading, error }) => {
+export const CalendarSection: React.FC<CalendarSectionProps> = ({ activities, loading, error, introContent, bottomContent }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('month');
 
   // Active view date
@@ -93,6 +97,7 @@ export const CalendarSection: React.FC<CalendarSectionProps> = ({ activities, lo
 
   return (
     <section className="w-full max-w-5xl mx-auto px-4 sm:px-6 py-4" aria-label="活動行事曆">
+      <PageTextBlock text={introContent} position="top" />
       {/* Calendar Header Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-neutral-800 pb-3 mb-3">
         {/* Title & Date Navigation */}
@@ -450,6 +455,7 @@ export const CalendarSection: React.FC<CalendarSectionProps> = ({ activities, lo
           )}
         </div>
       )}
+      <PageTextBlock text={bottomContent} position="bottom" />
     </section>
   );
 };

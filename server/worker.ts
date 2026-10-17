@@ -60,11 +60,11 @@ function buildSiteNavHtml(): string {
  * 產生非 /intro 獨立專區頁面的靜態外殼 HTML
  * 規定：<h1> 必須只取 Title 用「 | 」切開後的第一段，不可放完整 Title。
  */
-function buildSectionShellHtml(title: string, description: string): string {
+function buildSectionShellHtml(title: string, description: string, topHtml = '', bottomHtml = ''): string {
   const shortTitle = title.split(' | ')[0].trim();
   return `<main><h1>${escapeHtml(shortTitle)}</h1><p>${escapeHtml(
     description
-  )}</p>${buildSiteNavHtml()}</main>`;
+  )}</p>${topHtml}${bottomHtml}${buildSiteNavHtml()}</main>`;
 }
 
 /**
@@ -83,6 +83,33 @@ function formatMultilineHtml(text: string): string {
       return `<p>${lines.join('<br>')}</p>`;
     })
     .join('');
+}
+
+/**
+ * 後台「前台導覽按鈕」的上文（introContent）與下文（footerContent），轉成初始 HTML 段落，
+ * 讓搜尋引擎不必執行 JavaScript 就能讀到。找不到或沒填就回傳空字串。
+ */
+const PAGE_TEXT_BUTTON_IDS: Record<string, string> = {
+  '/': 'btn_calendar',
+  '/intro': 'btn_intro',
+  '/tools': 'btn_tools',
+  '/policies': 'btn_policies',
+  '/surveys': 'btn_survey',
+};
+async function loadPageTextHtml(env: WorkerEnv, path: string): Promise<{ top: string; bottom: string }> {
+  try {
+    const db = await loadDatabaseWorker(env);
+    const btn = (db.navButtons || []).find(
+      (b) => ((b.url || '').replace(/\/+$/, '') || '/') === path || b.id === PAGE_TEXT_BUTTON_IDS[path]
+    );
+    return {
+      top: formatMultilineHtml((btn?.introContent || '').trim()),
+      bottom: formatMultilineHtml((btn?.footerContent || '').trim()),
+    };
+  } catch (err) {
+    console.error('Error loading page text:', err);
+    return { top: '', bottom: '' };
+  }
 }
 
 /**
@@ -218,6 +245,7 @@ function buildBreadcrumbJsonLd(items: { name: string; url: string }[], pageUrl: 
  */
 async function buildToolsShellHtml(env: WorkerEnv, title: string, description: string): Promise<string> {
   const shortTitle = title.split(' | ')[0].trim();
+  const pageText = await loadPageTextHtml(env, '/tools');
   let listHtml = '';
   try {
     const db = await loadDatabaseWorker(env);
@@ -237,7 +265,7 @@ async function buildToolsShellHtml(env: WorkerEnv, title: string, description: s
   } catch (err) {
     console.error('Error building tools shell HTML:', err);
   }
-  return `<main><h1>${escapeHtml(shortTitle)}</h1><p>${escapeHtml(description)}</p>${listHtml}${buildSiteNavHtml()}</main>`;
+  return `<main><h1>${escapeHtml(shortTitle)}</h1><p>${escapeHtml(description)}</p>${pageText.top}${listHtml}${pageText.bottom}${buildSiteNavHtml()}</main>`;
 }
 
 /**
@@ -370,6 +398,7 @@ async function buildHighlightsShell(
 /** /policies 的靜態外殼：把已啟用的政策條文放進初始 HTML */
 async function buildPoliciesShellHtml(env: WorkerEnv, title: string, description: string): Promise<string> {
   const shortTitle = title.split(' | ')[0].trim();
+  const pageText = await loadPageTextHtml(env, '/policies');
   let bodyHtml = '';
   try {
     const db = await loadDatabaseWorker(env);
@@ -382,7 +411,7 @@ async function buildPoliciesShellHtml(env: WorkerEnv, title: string, description
   } catch (err) {
     console.error('Error building policies shell HTML:', err);
   }
-  return `<main><h1>${escapeHtml(shortTitle)}</h1><p>${escapeHtml(description)}</p>${bodyHtml}${buildSiteNavHtml()}</main>`;
+  return `<main><h1>${escapeHtml(shortTitle)}</h1><p>${escapeHtml(description)}</p>${pageText.top}${bodyHtml}${pageText.bottom}${buildSiteNavHtml()}</main>`;
 }
 
 /**
@@ -390,6 +419,7 @@ async function buildPoliciesShellHtml(env: WorkerEnv, title: string, description
  * 注意：不要加入任何 <h1>、<h2> 或其他標題標籤，/intro 既有的 H1 維持由前端渲染，不要重新設計標題結構。
  */
 async function buildIntroLinksHtml(env: WorkerEnv): Promise<string> {
+  const pageText = await loadPageTextHtml(env, '/intro');
   try {
     const db = await loadDatabaseWorker(env);
     const enabledChapters = (db.chapters || [])
@@ -397,7 +427,7 @@ async function buildIntroLinksHtml(env: WorkerEnv): Promise<string> {
       .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
 
     if (enabledChapters.length === 0) {
-      return '';
+      return `${pageText.top}${pageText.bottom}`;
     }
 
     const itemsHtml = enabledChapters
@@ -407,10 +437,10 @@ async function buildIntroLinksHtml(env: WorkerEnv): Promise<string> {
       )
       .join('');
 
-    return `<nav aria-label="登山入門教學章節"><ul>${itemsHtml}</ul></nav>`;
+    return `${pageText.top}<nav aria-label="登山入門教學章節"><ul>${itemsHtml}</ul></nav>${pageText.bottom}`;
   } catch (err) {
     console.error('Error building intro links HTML:', err);
-    return '';
+    return `${pageText.top}${pageText.bottom}`;
   }
 }
 
@@ -1183,7 +1213,11 @@ ${activityUrls}
         } else if (normalizedPath === '/policies') {
           rootHtml = await buildPoliciesShellHtml(env, routeMeta.title, routeMeta.description);
         } else if (!normalizedPath.startsWith('/intro/')) {
-          rootHtml = buildSectionShellHtml(routeMeta.title, routeMeta.description);
+          const pageText =
+            normalizedPath === '/' || normalizedPath === '/surveys'
+              ? await loadPageTextHtml(env, normalizedPath)
+              : { top: '', bottom: '' };
+          rootHtml = buildSectionShellHtml(routeMeta.title, routeMeta.description, pageText.top, pageText.bottom);
         }
 
         const isNotFound = isChapterNotFound || isNavNotFound || isRouteNotFound || isCategoryActivityNotFound;

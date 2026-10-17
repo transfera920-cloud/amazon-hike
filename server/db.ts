@@ -308,6 +308,5 @@ export function getPublicData(): PublicDataResponse {
     calendarActivities: (db.calendarActivities || [])
       .filter((a) => a.enabled)
       .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
-    homeIntro: db.homeIntro,
   };
 }

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Header } from './components/Header.js';
 import { Footer } from './components/Footer.js';
 import { CalendarSection } from './components/CalendarSection.js';
+import { findPageNavButton } from './utils/activitySeo.js';
 import { IntroView } from './components/IntroView.js';
 import { ChapterView } from './components/ChapterView.js';
 import { ToolsView } from './components/ToolsView.js';
@@ -19,7 +20,7 @@ import {
   DEFAULT_OG_IMAGE,
   isThinMainChapter,
 } from './utils/activitySeo.js';
-import type { AssociationDatabase, CalendarActivity } from './types.js';
+import type { AssociationDatabase, CalendarActivity, NavButtonItem } from './types.js';
 
 const KNOWN_PATHS = new Set(['/', '/intro', '/tools', '/highlights', '/policies', '/surveys', '/admin']);
 const CHAPTER_PATH_RE = new RegExp(`^/${CHAPTER_SLUG_SOURCE}$`, 'i');
@@ -169,6 +170,12 @@ export default function App() {
   const currentChapter = currentChapterIndex >= 0 ? sortedChapters[currentChapterIndex] : null;
   const prevChapter = currentChapterIndex > 0 ? sortedChapters[currentChapterIndex - 1] : undefined;
   const nextChapter = currentChapterIndex >= 0 && currentChapterIndex < sortedChapters.length - 1 ? sortedChapters[currentChapterIndex + 1] : undefined;
+
+  // 各頁面的「上文／下文」：取自後台「前台導覽按鈕」的導讀內容與下方說明
+  const pageText = (path: string): { intro: string; footer: string } => {
+    const btn = findPageNavButton<NavButtonItem>(publicData.navButtons, path);
+    return { intro: btn?.introContent || '', footer: btn?.footerContent || '' };
+  };
 
   // Dynamic nav button ID if route matches /nav/:buttonId
   const currentNavButtonId = useMemo(() => {
@@ -590,6 +597,8 @@ export default function App() {
             activities={activities}
             loading={activitiesLoading}
             error={activitiesError}
+            introContent={pageText('/').intro}
+            bottomContent={pageText('/').footer}
           />
         )}
 
@@ -598,6 +607,8 @@ export default function App() {
           <IntroView
             chapters={publicData.chapters}
             intros={publicData.intros}
+            introContent={pageText('/intro').intro}
+            bottomContent={pageText('/intro').footer}
             onBack={() => navigate('/')}
             onSelectChapter={(slug) => navigate(`/intro/${slug}`)}
           />
@@ -691,6 +702,8 @@ export default function App() {
         {!isUnknownPath && currentPath === '/tools' && (
           <ToolsView
             tools={publicData.tools}
+            introContent={pageText('/tools').intro}
+            bottomContent={pageText('/tools').footer}
             onBack={() => navigate('/')}
           />
         )}
@@ -721,6 +734,8 @@ export default function App() {
         {!isUnknownPath && currentPath === '/policies' && (
           <PoliciesView
             policies={publicData.policies}
+            introContent={pageText('/policies').intro}
+            bottomContent={pageText('/policies').footer}
             onBack={() => navigate('/')}
           />
         )}
@@ -729,6 +744,8 @@ export default function App() {
         {!isUnknownPath && currentPath === '/surveys' && (
           <SurveysView
             surveys={publicData.surveys}
+            introContent={pageText('/surveys').intro}
+            bottomContent={pageText('/surveys').footer}
             onBack={() => navigate('/')}
           />
         )}

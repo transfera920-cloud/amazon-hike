@@ -429,8 +429,9 @@ apiRouter.post('/admin/save-highlight', requireAdmin, (req: Request, res: Respon
 apiRouter.post('/admin/save-page-text', requireAdmin, (req: Request, res: Response) => {
   try {
     const db = loadDatabase();
-    const { path: pagePath, introContent, bottomContent } = req.body || {};
-    if (!['/intro', '/tools', '/highlights', '/policies', '/surveys'].includes(String(pagePath || '').trim())) {
+    const { path: pagePath, introContent, bottomContent, footerContent: bodyFooter } = req.body || {};
+    const footerText = bodyFooter ?? bottomContent;
+    if (!['/', '/intro', '/tools', '/highlights', '/policies', '/surveys'].includes(String(pagePath || '').trim())) {
       return res.status(400).json({ error: '不支援的頁面路徑' });
     }
     const btn = findPageNavButton(db.navButtons, String(pagePath).trim());
@@ -438,26 +439,9 @@ apiRouter.post('/admin/save-page-text', requireAdmin, (req: Request, res: Respon
       return res.status(404).json({ error: '找不到此頁面對應的前台導覽按鈕，請先到「前台按鈕管理」建立後再編輯' });
     }
     btn.introContent = String(introContent || '').replace(/\r\n?/g, '\n').trim().slice(0, 3000) || undefined;
-    btn.bottomContent = String(bottomContent || '').replace(/\r\n?/g, '\n').trim().slice(0, 3000) || undefined;
+    btn.footerContent = String(footerText || '').replace(/\r\n?/g, '\n').trim().slice(0, 3000) || undefined;
     saveDatabase(db);
-    res.json({ success: true, introContent: btn.introContent || '', bottomContent: btn.bottomContent || '' });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Save Home Intro (首頁說明區塊)
-apiRouter.post('/admin/save-home-intro', requireAdmin, (req: Request, res: Response) => {
-  try {
-    const db = loadDatabase();
-    const { title, content } = req.body || {};
-    db.homeIntro = {
-      title: String(title || '').trim().slice(0, 100),
-      content: String(content || '').replace(/\r\n?/g, '\n').trim().slice(0, 8000),
-      updatedAt: new Date().toISOString().split('T')[0],
-    };
-    saveDatabase(db);
-    res.json({ success: true, homeIntro: db.homeIntro });
+    res.json({ success: true, introContent: btn.introContent || '', footerContent: btn.footerContent || '' });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -565,7 +549,7 @@ apiRouter.post('/admin/save-nav-button', requireAdmin, (req: Request, res: Respo
       sortOrder: Number(item.sortOrder) || 0,
       categorySlug: cleanCatSlug || undefined,
       introContent: (item.introContent || '').trim().slice(0, 3000) || undefined,
-      bottomContent: (item.bottomContent || '').trim().slice(0, 3000) || undefined,
+      footerContent: (item.footerContent || '').trim().slice(0, 3000) || undefined,
       seoTitle: (item.seoTitle || '').trim().slice(0, 120) || undefined,
       metaDescription: (item.metaDescription || '').trim().slice(0, 200) || undefined,
     };

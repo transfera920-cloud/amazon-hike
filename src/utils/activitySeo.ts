@@ -98,6 +98,7 @@ export function isPeakTableButton(btn: { title: string }): boolean {
  * 就是該頁面（/intro、/tools、/highlights、/policies、/surveys）的可編輯文字。
  */
 const FIXED_PAGE_BUTTON_IDS: Record<string, string> = {
+  '/': 'btn_calendar',
   '/intro': 'btn_intro',
   '/tools': 'btn_tools',
   '/highlights': 'btn_highlights',
@@ -110,7 +111,7 @@ export function findPageNavButton<T extends { id: string; url?: string }>(
 ): T | undefined {
   const list = buttons || [];
   return (
-    list.find((b) => (b.url || '').replace(/\/+$/, '') === path) ||
+    list.find((b) => ((b.url || '').replace(/\/+$/, '') || '/') === path) ||
     list.find((b) => b.id === FIXED_PAGE_BUTTON_IDS[path])
   );
 }

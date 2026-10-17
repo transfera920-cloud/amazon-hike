@@ -2686,7 +2686,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                       htmlFor="button-intro-content"
                       className="block text-emerald-400 font-semibold"
                     >
-                      列表頁導讀內容（選填）
+                      上文：頁面標題下方的文字（選填）
                     </label>
                     <button
                       type="button"
@@ -2723,7 +2723,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                   />
                   <div className="flex items-center justify-between text-[11px] text-neutral-400">
                     <span>
-                      顯示在前台列表頁標題下方；空一行代表分段。標題含「百岳總表」的按鈕留空時，會使用系統預設導讀。
+                      顯示在這個按鈕對應頁面的標題下方（活動行事曆、登山入門教學、登山工具等都適用）；空一行代表分段。標題含「百岳總表」的按鈕留空時，會使用系統預設導讀。
                     </span>
                     <span className="shrink-0 ml-3">
                       {(editingNavButton.introContent || '').length} / 3000
@@ -2737,7 +2737,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                     htmlFor="button-footer-content"
                     className="block text-emerald-400 font-semibold"
                   >
-                    列表頁下方說明（選填）
+                    下文：頁面內容下方的文字（選填）
                   </label>
                   <textarea
                     id="button-footer-content"
@@ -2754,7 +2754,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                     className="w-full px-3 py-2 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 leading-relaxed resize-y"
                   />
                   <div className="flex items-center justify-between text-[11px] text-neutral-400">
-                    <span>顯示在前台列表頁內容下方；空一行代表分段；留空則不顯示。</span>
+                    <span>顯示在這個按鈕對應頁面的內容下方（例如行事曆下方的空白處）；空一行代表分段；留空則不顯示。</span>
                     <span className="shrink-0 ml-3">
                       {(editingNavButton.footerContent || '').length} / 3000
                     </span>

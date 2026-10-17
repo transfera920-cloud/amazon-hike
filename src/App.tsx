@@ -364,7 +364,7 @@ export default function App() {
 
     let currentMeta: { title: string; description: string; ogImage?: string } | undefined = seoMap[currentPath];
     // 固定頁面：後台「前台導覽按鈕」有填 SEO 標題／描述就優先使用
-    if (currentMeta && ['/', '/intro', '/tools', '/policies', '/surveys'].includes(currentPath)) {
+    if (currentMeta && ['/', '/intro', '/tools', '/highlights', '/policies', '/surveys'].includes(currentPath)) {
       const btn = findPageNavButton<NavButtonItem>(publicData.navButtons, currentPath);
       const t = (btn?.seoTitle || '').trim();
       const d = (btn?.metaDescription || '').trim();

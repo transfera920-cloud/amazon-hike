@@ -121,6 +121,7 @@ const PAGE_TEXT_BUTTON_IDS: Record<string, string> = {
   '/tools': 'btn_tools',
   '/policies': 'btn_policies',
   '/surveys': 'btn_survey',
+  '/highlights': 'btn_highlights',
 };
 async function loadPageTextHtml(env: WorkerEnv, path: string): Promise<{ top: string; bottom: string }> {
   try {
@@ -360,11 +361,11 @@ async function buildHighlightsShell(
     const hlBtn = (db.navButtons || []).find((b) => b.id === 'btn_highlights' || b.url === '/highlights');
     const intro = (hlBtn?.introContent || '').trim();
     if (intro) {
-      introHtml = formatMultilineHtml(intro);
+      introHtml = formatLinkedMultilineHtml(intro);
     }
     const footer = (hlBtn?.footerContent || '').trim();
     if (footer) {
-      footerHtml = formatMultilineHtml(footer);
+      footerHtml = formatLinkedMultilineHtml(footer);
     }
     const enabled = (db.highlights || [])
       .filter((h) => h.enabled && ((h.title || '').trim() || (h.description || '').trim()))

@@ -6,7 +6,7 @@ export function isSafePageTextHref(href: string): boolean {
 }
 
 /** 把 [文字](網址) 轉成連結，其餘維持純文字（不使用 dangerouslySetInnerHTML） */
-function renderLinkedText(text: string): React.ReactNode[] {
+export function renderLinkedText(text: string): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];
   const re = /\[([^\]]+)\]\(([^)\s]+)\)/g;
   let last = 0;

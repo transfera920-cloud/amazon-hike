@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ArrowLeft, Video, ExternalLink, Play } from 'lucide-react';
 import type { HighlightItem } from '../types.js';
 import { getYouTubeVideoId, normalizeUrl } from '../utils/url.js';
+import { renderLinkedText } from './PageTextBlock.js';
 
 interface HighlightsViewProps {
   highlights: HighlightItem[];
@@ -103,7 +104,7 @@ export const HighlightsView: React.FC<HighlightsViewProps> = ({ highlights, intr
           <div className="mt-4 space-y-3 text-sm text-neutral-300 leading-relaxed">
             {introParagraphs.map((p, idx) => (
               <p key={idx} className="whitespace-pre-line">
-                {p}
+                {renderLinkedText(p)}
               </p>
             ))}
           </div>
@@ -203,7 +204,7 @@ export const HighlightsView: React.FC<HighlightsViewProps> = ({ highlights, intr
         >
           {footerParagraphs.map((p, idx) => (
             <p key={idx} className="whitespace-pre-line">
-              {p}
+              {renderLinkedText(p)}
             </p>
           ))}
         </section>

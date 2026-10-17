@@ -940,6 +940,20 @@ ${activityUrls}
       const normalizedPath = pathname.replace(/\/+$/, '') || '/';
       const isRoot = normalizedPath === '/' || pathname === '/index.html';
       let routeMeta = ROUTE_META_MAP[normalizedPath];
+      // 固定頁面（首頁、/intro、/tools、/policies、/surveys）：後台「前台導覽按鈕」有填 SEO 標題／描述就優先使用
+      if (routeMeta && PAGE_TEXT_BUTTON_IDS[normalizedPath]) {
+        try {
+          const db = await loadDatabaseWorker(env);
+          const btn = (db.navButtons || []).find(
+            (b) => ((b.url || '').replace(/\/+$/, '') || '/') === normalizedPath || b.id === PAGE_TEXT_BUTTON_IDS[normalizedPath]
+          );
+          const t = (btn?.seoTitle || '').trim();
+          const d = (btn?.metaDescription || '').trim();
+          if (t || d) routeMeta = { ...routeMeta, title: t || routeMeta.title, description: d || routeMeta.description };
+        } catch (err) {
+          console.error('Error applying admin SEO override:', err);
+        }
+      }
 
       // Dynamic chapter route matching: /intro/:slug 以及正式章節網址 /chapterXX/
       let isChapterNotFound = false;

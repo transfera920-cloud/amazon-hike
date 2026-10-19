@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import type { NavButtonItem, NavButtonActivity } from '../types.js';
 import { getYouTubeVideoId, normalizeUrl } from '../utils/url.js';
+import { findTransferLink } from '../utils/transferLinks.js';
 
 interface RouteActivityViewProps {
   activity: NavButtonActivity;
@@ -48,6 +49,8 @@ export const RouteActivityView: React.FC<RouteActivityViewProps> = ({
       );
     }
   }, [activity, parentButton]);
+
+  const transferLink = findTransferLink(activity.title);
 
   // Split description by double newlines into paragraphs
   const paragraphs = activity.description
@@ -262,6 +265,24 @@ export const RouteActivityView: React.FC<RouteActivityViewProps> = ({
               ))}
             </div>
           </section>
+        )}
+
+        {/* 交通接駁：連到亞馬遜高山接駁對應的登山口頁（僅在有對應頁面時顯示） */}
+        {transferLink && (
+          <aside id="activity-transfer-cta" className="pt-6 border-t border-neutral-800">
+            <div className="text-xs text-neutral-400">交通安排</div>
+            <p className="mt-1 text-sm text-neutral-200">
+              這條路線的登山口交通，可參考{' '}
+              <a
+                href={transferLink.url}
+                target="_blank"
+                rel="noopener"
+                className="font-semibold text-emerald-400 hover:text-emerald-300 underline underline-offset-4"
+              >
+                亞馬遜高山接駁：{transferLink.label}
+              </a>
+            </p>
+          </aside>
         )}
 
         {/* Call to Action: 完整行程／報名 */}

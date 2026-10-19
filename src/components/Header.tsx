@@ -203,7 +203,7 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyU
                   </a>
 
                   <a
-                    href="https://lin.ee/yFZbgXb"
+                    href="https://lin.ee/TJJLV36"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-start gap-2.5 p-2 rounded hover:bg-neutral-800 transition-colors text-neutral-200"
@@ -417,7 +417,7 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyU
                   <Phone size={16} className="text-emerald-400" />
                   <span>電話: 0972573495</span>
                 </a>
-                <a href="https://lin.ee/yFZbgXb" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-4 py-2 text-sm text-neutral-300">
+                <a href="https://lin.ee/TJJLV36" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-4 py-2 text-sm text-neutral-300">
                   <span className="w-4 h-4 rounded-full bg-[#06C755] flex items-center justify-center text-black font-bold text-[9px]">L</span>
                   <span>LINE 官方好友諮詢</span>
                 </a>

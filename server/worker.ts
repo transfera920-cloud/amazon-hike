@@ -16,6 +16,7 @@ import {
 } from '../src/utils/activitySeo.js';
 import type { NavButtonActivity } from '../src/types.js';
 import { getYouTubeVideoId, normalizeToolUrl } from '../src/utils/url.js';
+import { findTransferLink } from '../src/utils/transferLinks.js';
 
 declare const HTMLRewriter: any;
 
@@ -53,7 +54,12 @@ function buildSiteNavHtml(): string {
   const items = SITE_NAV_LINKS.map(
     (item) => `<li><a href="${item.href}">${item.text}</a></li>`
   ).join('');
-  return `<nav aria-label="主要導覽"><ul>${items}</ul></nav>`;
+  const partners =
+    '<nav aria-label="合作服務"><ul>' +
+    '<li><a href="https://transfer.amazon-hike.com/">亞馬遜高山接駁（登山口包車）</a></li>' +
+    '<li><a href="https://price.amazon-hike.com/">接駁費用試算</a></li>' +
+    '</ul></nav>';
+  return `<nav aria-label="主要導覽"><ul>${items}</ul></nav>${partners}`;
 }
 
 /**
@@ -163,7 +169,12 @@ function buildActivityShellHtml(act: NavButtonActivity): string {
     ? `<p><a href="${escapeHtml(act.externalUrl)}" target="_blank" rel="noopener noreferrer">查看行程</a></p>`
     : '';
 
-  return `<main><h1>${escapeHtml(act.title)}</h1>${descHtml}${contentHtml}${itineraryExtraHtml}${externalLinkHtml}${buildSiteNavHtml()}</main>`;
+  const transferLink = findTransferLink(act.title);
+  const transferHtml = transferLink
+    ? `<p>這條路線的登山口交通，可參考<a href="${transferLink.url}">亞馬遜高山接駁：${escapeHtml(transferLink.label)}</a></p>`
+    : '';
+
+  return `<main><h1>${escapeHtml(act.title)}</h1>${descHtml}${contentHtml}${itineraryExtraHtml}${transferHtml}${externalLinkHtml}${buildSiteNavHtml()}</main>`;
 }
 
 /**

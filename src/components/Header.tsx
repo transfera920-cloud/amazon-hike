@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChevronDown, Mail, Phone, ExternalLink, ShieldCheck, Menu, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Mail, Phone, ExternalLink, ShieldCheck, Menu, X } from 'lucide-react';
 import { normalizeUrl } from '../utils/url.js';
 import { getCategorySlug, isOnMobileBar } from '../utils/activitySeo.js';
 import type { NavButtonItem, NavButtonActivity } from '../types.js';
@@ -54,6 +54,25 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyU
   const [moreOpen, setMoreOpen] = useState(false);
   const contactRef = useRef<HTMLDivElement>(null);
   const moreRef = useRef<HTMLDivElement>(null);
+  const quickBarRef = useRef<HTMLDivElement>(null);
+  const [quickBarMore, setQuickBarMore] = useState(false);
+
+  // 手機版快速按鈕列：右邊還有按鈕沒看到時，顯示「可左右滑動」提示（滑到底就消失）
+  useEffect(() => {
+    const el = quickBarRef.current;
+    if (!el) {
+      setQuickBarMore(false);
+      return;
+    }
+    const update = () => setQuickBarMore(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+    update();
+    el.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    return () => {
+      el.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+    };
+  });
 
   // Close contact dropdown on click outside
   useEffect(() => {
@@ -377,8 +396,10 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyU
 
           {/* 手機版：標題下方的快速按鈕列（可左右滑動；顯示哪些由後台「前台導覽按鈕」決定） */}
           {mobileBarButtons.length > 0 && (
+            <div className="md:hidden relative">
             <div
-              className="md:hidden flex items-center gap-2 overflow-x-auto py-2 -mx-1 px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              ref={quickBarRef}
+              className="flex items-center gap-2 overflow-x-auto py-2 -mx-1 px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
               id="mobile-quick-bar"
             >
               {mobileBarButtons.map((btn) => {
@@ -429,6 +450,15 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyU
                   </a>
                 );
               })}
+            </div>
+            {quickBarMore && (
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute right-0 top-0 bottom-0 w-12 flex items-center justify-end pr-1 bg-gradient-to-l from-neutral-900 via-neutral-900/80 to-transparent"
+              >
+                <ChevronRight size={20} className="text-emerald-400 animate-pulse" />
+              </div>
+            )}
             </div>
           )}
 

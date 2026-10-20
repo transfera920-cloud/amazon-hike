@@ -40,6 +40,30 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
             ))}
           </ul>
         </nav>
+        <nav aria-label="合作服務">
+          <ul className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+            <li>
+              <a
+                href="https://transfer.amazon-hike.com/"
+                target="_blank"
+                rel="noopener"
+                className="hover:text-emerald-300 hover:underline transition-colors"
+              >
+                亞馬遜高山接駁（登山口包車）
+              </a>
+            </li>
+            <li>
+              <a
+                href="https://price.amazon-hike.com/"
+                target="_blank"
+                rel="noopener"
+                className="hover:text-emerald-300 hover:underline transition-colors"
+              >
+                接駁費用試算
+              </a>
+            </li>
+          </ul>
+        </nav>
         <div className="flex items-center justify-center gap-2">
           <a
             href="/"

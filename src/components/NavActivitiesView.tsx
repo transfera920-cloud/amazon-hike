@@ -394,7 +394,11 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
       {isPeakTable ? (
         <section id="peak-list-section" aria-label="百岳總表">
           <div className="flex items-end justify-between mb-2 px-0.5">
-            <h2 className="text-base sm:text-lg font-bold text-neutral-100">百岳列表</h2>
+            {isPeakOverview ? (
+              <h2 className="text-base sm:text-lg font-bold text-neutral-100">百岳列表</h2>
+            ) : (
+              <span />
+            )}
             <div className="text-right">
               <span className="text-xs text-neutral-500">共 {peakRows.length} 座</span>
               {groupFilter && (
@@ -414,9 +418,10 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
 
           <div className="overflow-x-auto rounded-lg border border-neutral-800">
               <table className="w-full table-auto border-collapse text-sm">
-                <caption className="sr-only">{button.title}：編號、山名、標高、所屬國家公園、群組、備註與行程連結</caption>
+                <caption className="sr-only">{button.title}：山名、標高、所屬國家公園、群組、備註與行程連結</caption>
                 <thead className="bg-neutral-800/70 text-neutral-200">
                   <tr>
+                    {isPeakOverview && (
                     <th scope="col" aria-sort={ariaSort('no')} className="w-px whitespace-nowrap px-1 sm:px-3 py-2.5 text-center text-xs sm:text-sm font-bold">
                       <button
                         type="button"
@@ -428,6 +433,7 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
                         <SortIcon k="no" />
                       </button>
                     </th>
+                  )}
                     <th scope="col" className="w-full md:w-auto md:whitespace-nowrap pl-1.5 pr-1 sm:px-3 py-2.5 text-left font-bold">
                       山名
                     </th>
@@ -490,9 +496,11 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
                       }
                     >
                       <tr className="align-top">
-                        <td className="w-px whitespace-nowrap px-1 sm:px-3 py-2.5 text-center text-xs sm:text-sm text-neutral-500 tabular-nums">
+                        {isPeakOverview && (
+                          <td className="w-px whitespace-nowrap px-1 sm:px-3 py-2.5 text-center text-xs sm:text-sm text-neutral-500 tabular-nums">
                           {no != null ? String(no).padStart(3, '0') : '—'}
                         </td>
+                        )}
 
                         <td className="w-full md:w-auto md:whitespace-nowrap pl-1.5 pr-1 sm:px-3 py-2.5 text-left font-bold text-neutral-100">
                           {internalTarget ? (

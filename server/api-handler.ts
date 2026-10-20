@@ -799,6 +799,31 @@ export async function handleApiRequest(
       }
     }
 
+    // POST /api/admin/delete-nav-button-activities  { navButtonId, ids: string[] }
+    // 批次刪除同一個按鈕底下的活動（只會刪除「屬於該按鈕」的 id，其他按鈕的資料不受影響）
+    if (path === '/api/admin/delete-nav-button-activities' && method === 'POST') {
+      try {
+        const db = await loadDatabaseWorker(env);
+        const body: any = await request.json();
+        const navButtonId = String(body?.navButtonId || '').trim();
+        const ids: string[] = Array.isArray(body?.ids) ? body.ids.map((x: any) => String(x)) : [];
+        if (!navButtonId) return jsonResponse({ error: '所屬按鈕為必填欄位' }, 400);
+        if (ids.length === 0) return jsonResponse({ error: '沒有要刪除的項目' }, 400);
+
+        const idSet = new Set(ids);
+        const all = db.navButtonActivities || [];
+        const targets = all.filter((a) => idSet.has(String(a.id)) && String(a.navButtonId) === navButtonId);
+        targets.forEach((a) => removeCalendarActivityForActivity(db, String(a.id)));
+        const targetIds = new Set(targets.map((a) => String(a.id)));
+        db.navButtonActivities = all.filter((a) => !targetIds.has(String(a.id)));
+
+        await saveDatabaseWorker(db, env);
+        return jsonResponse({ success: true, deleted: targets.length });
+      } catch (err: any) {
+        return jsonResponse({ error: err.message }, 500);
+      }
+    }
+
     // POST /api/admin/reset-nav-buttons
     if (path === '/api/admin/reset-nav-buttons' && method === 'POST') {
       try {

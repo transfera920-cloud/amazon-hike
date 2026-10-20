@@ -103,6 +103,14 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
   const [peakPickInput, setPeakPickInput] = useState('');
   const [peakLinkTemplate, setPeakLinkTemplate] = useState('');
   const [peakSyncFromMaster, setPeakSyncFromMaster] = useState(true);
+  const [peakKeepInput, setPeakKeepInput] = useState('');
+  const [peakKeepPlan, setPeakKeepPlan] = useState<{
+    keepCount: number;
+    deleteIds: string[];
+    deleteNames: string[];
+    unmatched: string[];
+  } | null>(null);
+  const [peakKeepBusy, setPeakKeepBusy] = useState(false);
   const [peakPickUnmatched, setPeakPickUnmatched] = useState<string[]>([]);
   const [peakPickSelectedNames, setPeakPickSelectedNames] = useState<string[]>([]);
   const [batchImportItems, setBatchImportItems] = useState<any[] | null>(null);
@@ -595,7 +603,74 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
     }
   };
 
+  // 只保留指定的山，其餘刪除：先算出計畫（不會動資料），確認後才真正刪除
+  const handlePlanKeepOnly = (navButtonId: string) => {
+    const acts = (adminData?.navButtonActivities || []).filter((a) => a.navButtonId === navButtonId);
+    const rows = acts.map((a) => {
+      const { no, name } = extractPeakNoAndName(a.title);
+      const group = (a.title || '').replace(/^\s*\d{1,3}\s*\S+?\s*\d{4}\s*/, '').trim();
+      return { act: a, no, name, group };
+    });
+    const numbered = rows.filter((r) => r.no != null) as Array<{ act: typeof acts[number]; no: number; name: string; group: string }>;
+    const { selected, unmatched } = parsePeakSelection(peakKeepInput, numbered);
+    if (selected.length === 0) {
+      setPeakKeepPlan(null);
+      showFeedback('沒有對應到任何要保留的山，為避免全部刪除，已停止', true);
+      return;
+    }
+    const keepIds = new Set(selected.map((r) => r.act.id));
+    // 標題沒有編號的活動不動，避免誤刪手動建立的項目
+    const toDelete = numbered.filter((r) => !keepIds.has(r.act.id));
+    setPeakKeepPlan({
+      keepCount: selected.length,
+      deleteIds: toDelete.map((r) => r.act.id),
+      deleteNames: toDelete.map((r) => `${String(r.no).padStart(3, '0')} ${r.name}`),
+      unmatched,
+    });
+  };
+
+  const handleConfirmKeepOnly = async (navButtonId: string) => {
+    if (!peakKeepPlan || peakKeepPlan.deleteIds.length === 0 || peakKeepBusy) return;
+    setPeakKeepBusy(true);
+    try {
+      const res = await fetch('/api/admin/delete-nav-button-activities', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ navButtonId, ids: peakKeepPlan.deleteIds }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        showFeedback(`已刪除 ${json.deleted ?? peakKeepPlan.deleteIds.length} 筆，保留 ${peakKeepPlan.keepCount} 筆`);
+        setPeakKeepPlan(null);
+        await fetchAdminData(token);
+        onDataUpdated();
+      } else {
+        showFeedback(json.error || '批次刪除失敗', true);
+      }
+    } catch (err: any) {
+      showFeedback(err.message || '連線刪除失敗', true);
+    } finally {
+      setPeakKeepBusy(false);
+    }
+  };
+
   const handlePickPeaksFromMaster = (navButtonId: string) => {
+    try {
+      pickPeaksFromMasterImpl(navButtonId);
+    } catch (err: any) {
+      setBatchImportItems(null);
+      setBatchImportPreview(null);
+      setBatchImportParseError(`挑選失敗：${err?.message || '未知錯誤'}`);
+    }
+  };
+
+  const pickPeaksFromMasterImpl = (navButtonId: string) => {
+    // 先清掉舊的預覽與內容，確保畫面上看到的一定是這次挑選的結果
+    setBatchImportItems(null);
+    setBatchImportPreview(null);
+    setBatchImportResult(null);
+    setBatchImportParseError(null);
+    setBatchImportJsonText('');
     const { selected, unmatched } = parsePeakSelection(
       peakPickInput,
       (peaksTop100Data as any).peaks as any[]
@@ -3286,6 +3361,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                                   setBatchImportJsonText('');
                                   setPeakPickInput('');
                                   setPeakLinkTemplate('');
+                                  setPeakKeepInput('');
+                                  setPeakKeepPlan(null);
                                   setPeakPickUnmatched([]);
                                   setPeakPickSelectedNames([]);
                                   setBatchImportItems(null);
@@ -3353,13 +3430,20 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                                 <button
                                   type="button"
                                   onClick={() => {
+                                    if (
+                                      !window.confirm(
+                                        '這會把全部 100 座百岳都放進匯入清單。\n\n如果只想匯入部分山，請改用下方「從百岳總表挑選」。\n\n確定要載入全部 100 座嗎？'
+                                      )
+                                    ) {
+                                      return;
+                                    }
                                     const text = JSON.stringify(peaksTop100Data, null, 2);
                                     setBatchImportJsonText(text);
                                     handlePreviewBatchImport(item.id, text);
                                   }}
                                   className="px-2.5 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-emerald-300 border border-neutral-700 transition-colors"
                                 >
-                                  載入內建 peaks-top100.json
+                                  載入全部 100 座（不建議）
                                 </button>
                               </div>
                             </div>
@@ -3372,7 +3456,15 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                                 <input
                                   type="text"
                                   value={peakPickInput}
-                                  onChange={(e) => setPeakPickInput(e.target.value)}
+                                  onChange={(e) => {
+                                    setPeakPickInput(e.target.value);
+                                    // 條件改了，舊的預覽就作廢，避免誤用過期的內容匯入
+                                    setBatchImportPreview(null);
+                                    setBatchImportItems(null);
+                                    setBatchImportJsonText('');
+                                    setPeakPickSelectedNames([]);
+                                    setPeakPickUnmatched([]);
+                                  }}
                                   onKeyDown={(e) => {
                                     if (e.key === 'Enter') {
                                       e.preventDefault();
@@ -3422,6 +3514,65 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                                   {peakPickUnmatched.map((u, i) => (
                                     <div key={i}>• 無法對應：{u}</div>
                                   ))}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="p-3 rounded border border-rose-900/60 bg-rose-950/10 space-y-2">
+                              <label className="block text-rose-300 font-semibold">
+                                只保留指定的山，其餘刪除（清理已匯入的多餘資料）
+                              </label>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <input
+                                  type="text"
+                                  value={peakKeepInput}
+                                  onChange={(e) => {
+                                    setPeakKeepInput(e.target.value);
+                                    setPeakKeepPlan(null);
+                                  }}
+                                  placeholder="要保留的山，例如：1, 8, 12-15"
+                                  className="flex-1 min-w-[200px] px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-rose-500"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handlePlanKeepOnly(item.id)}
+                                  className="px-3 py-1.5 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-100 border border-neutral-700 font-semibold transition-colors"
+                                >
+                                  預覽要刪除的山
+                                </button>
+                              </div>
+                              {peakKeepPlan && (
+                                <div className="space-y-2 text-[11px]">
+                                  {peakKeepPlan.unmatched.length > 0 && (
+                                    <div className="text-amber-300">
+                                      無法對應：{peakKeepPlan.unmatched.join('、')}
+                                    </div>
+                                  )}
+                                  <div className="text-neutral-300">
+                                    將保留 <b className="text-emerald-400">{peakKeepPlan.keepCount}</b> 筆，刪除{' '}
+                                    <b className="text-rose-400">{peakKeepPlan.deleteIds.length}</b> 筆（此操作無法復原）。
+                                  </div>
+                                  {peakKeepPlan.deleteNames.length > 0 && (
+                                    <div className="max-h-24 overflow-y-auto text-neutral-500 leading-relaxed">
+                                      {peakKeepPlan.deleteNames.join('、')}
+                                    </div>
+                                  )}
+                                  <button
+                                    type="button"
+                                    disabled={peakKeepBusy || peakKeepPlan.deleteIds.length === 0}
+                                    onClick={() => {
+                                      if (
+                                        window.confirm(
+                                          `確定要永久刪除 ${peakKeepPlan.deleteIds.length} 筆活動嗎？保留 ${peakKeepPlan.keepCount} 筆。此操作無法復原。`
+                                        )
+                                      ) {
+                                        handleConfirmKeepOnly(item.id);
+                                      }
+                                    }}
+                                    className="px-3 py-1.5 rounded bg-rose-700 hover:bg-rose-600 disabled:opacity-50 text-white font-semibold transition-colors"
+                                  >
+                                    {peakKeepBusy ? '刪除中...' : `確認刪除 ${peakKeepPlan.deleteIds.length} 筆`}
+                                  </button>
                                 </div>
                               )}
                             </div>
@@ -3476,6 +3627,18 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                                 <div className="font-bold text-emerald-300">
                                   匯入前預覽（共解析 {batchImportItems.length} 筆資料）
                                 </div>
+                                <div className="text-[11px] text-neutral-300 break-words">
+                                  將處理：
+                                  {batchImportItems
+                                    .slice(0, 30)
+                                    .map((it: any) =>
+                                      it?.no != null && it?.name
+                                        ? `${String(it.no).padStart(3, '0')} ${it.name}`
+                                        : String(it?.title || it?.name || '')
+                                    )
+                                    .join('、')}
+                                  {batchImportItems.length > 30 ? ` …等共 ${batchImportItems.length} 筆` : ''}
+                                </div>
                                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
                                   <div className="p-2 rounded bg-neutral-900/90 border border-neutral-800">
                                     <div className="text-neutral-400 text-[11px]">將新增</div>
@@ -3516,11 +3679,20 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                                   <button
                                     type="button"
                                     disabled={batchImportExecuting}
-                                    onClick={() => handleConfirmBatchImport(item.id)}
+                                    onClick={() => {
+                                      const n = batchImportItems.length;
+                                      if (
+                                        n > 20 &&
+                                        !window.confirm(`你即將匯入 ${n} 筆，確定嗎？\n\n如果只想匯入幾座，請按取消，改用「從百岳總表挑選」。`)
+                                      ) {
+                                        return;
+                                      }
+                                      handleConfirmBatchImport(item.id);
+                                    }}
                                     className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-semibold transition-colors"
                                   >
                                     <CheckCircle2 size={13} />
-                                    <span>{batchImportExecuting ? '匯入處理中...' : '確認執行匯入'}</span>
+                                    <span>{batchImportExecuting ? '匯入處理中...' : `確認匯入 ${batchImportItems.length} 筆`}</span>
                                   </button>
                                 </div>
                               </div>

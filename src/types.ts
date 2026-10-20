@@ -90,6 +90,7 @@ export interface NavButtonActivity {
   title: string;         // 行程／活動名稱
   description: string;   // 說明
   externalUrl: string;   // 完整行程／報名的外部網址
+  detailUrl?: string;     // 山名連結（站內網址，選填）：百岳列表的山名優先連到這裡，例如指向百岳總表的詳細頁
   sortOrder: number;
   enabled: boolean;      // true = 前台顯示，false = 後台保留、前台不顯示
   content?: string;      // 完整圖文活動介紹

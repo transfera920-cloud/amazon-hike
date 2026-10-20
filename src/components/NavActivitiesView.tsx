@@ -459,8 +459,14 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
                   const hasContent = Boolean((activity.content || '').trim());
                   // 「外部網址」欄填的是本站網址（例如 /baiyue-traverse/3952）時，
                   // 整列視為站內連結：山名與整列都可點，同分頁開啟，不需要頁面內文。
-                  const internalTarget =
+                  const externalIsInternal = Boolean(
                     activity.externalUrl && isInternalUrl(activity.externalUrl)
+                  );
+                  // 山名連結：優先用「山名連結（detailUrl）」，其次才是填本站網址的外部網址
+                  const internalTarget =
+                    activity.detailUrl && isInternalUrl(activity.detailUrl)
+                      ? normalizeUrl(activity.detailUrl)
+                      : externalIsInternal
                       ? normalizeUrl(activity.externalUrl)
                       : '';
                   return (
@@ -541,16 +547,16 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
                           {activity.externalUrl && (
                             <a
                               href={normalizeUrl(activity.externalUrl)}
-                              {...(internalTarget
+                              {...(externalIsInternal
                                 ? {}
                                 : { target: '_blank', rel: 'noopener noreferrer' })}
                               className="inline-flex items-center gap-1.5 px-2 py-1 sm:px-3 sm:py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition-colors shadow-sm"
                               aria-label={
-                                internalTarget ? `查看${name}行程` : `查看${name}行程（開新視窗）`
+                                externalIsInternal ? `查看${name}行程` : `查看${name}行程（開新視窗）`
                               }
                             >
                               <span>查看行程</span>
-                              {!internalTarget && (
+                              {!externalIsInternal && (
                                 <ExternalLink size={13} className="hidden sm:inline text-emerald-200" />
                               )}
                             </a>

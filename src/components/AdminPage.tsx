@@ -46,7 +46,7 @@ import {
   processBatchImportActivities,
   type BatchImportResult,
 } from '../utils/activitySeo.js';
-import { PEAK_INTRO_PARAGRAPHS, isOnMobileBar } from '../utils/activitySeo.js';
+import { PEAK_INTRO_PARAGRAPHS, isOnMobileBar, extractPeakNoAndName, isPeakTableButton } from '../utils/activitySeo.js';
 import { ImageUploadButton } from './ImageUploadButton.js';
 import { GpxUploadButton } from './GpxUploadButton.js';
 import InlineEditorPortal, { editSlotKey } from './InlineEditorPortal.js';
@@ -102,6 +102,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
   const [batchImportJsonText, setBatchImportJsonText] = useState('');
   const [peakPickInput, setPeakPickInput] = useState('');
   const [peakLinkTemplate, setPeakLinkTemplate] = useState('');
+  const [peakSyncFromMaster, setPeakSyncFromMaster] = useState(true);
   const [peakPickUnmatched, setPeakPickUnmatched] = useState<string[]>([]);
   const [peakPickSelectedNames, setPeakPickSelectedNames] = useState<string[]>([]);
   const [batchImportItems, setBatchImportItems] = useState<any[] | null>(null);
@@ -566,6 +567,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
       ...editingNavButtonActivity,
       slug: targetSlug,
       externalUrl: (editingNavButtonActivity.externalUrl || '').trim(),
+      detailUrl: (editingNavButtonActivity.detailUrl || '').trim() || undefined,
       nationalPark: (editingNavButtonActivity.nationalPark || '').trim() || undefined,
     };
 
@@ -608,16 +610,37 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
     }
     // 連結網址規則（選填）：{no}=編號、{no3}=三位數編號、{elevation}=標高、{slug}=系統代稱
     const tpl = peakLinkTemplate.trim();
-    const withLinks = tpl
-      ? selected.map((p: any) => ({
-          ...p,
-          externalUrl: tpl
-            .replace(/\{no3\}/g, String(p.no).padStart(3, '0'))
-            .replace(/\{no\}/g, String(p.no))
-            .replace(/\{elevation\}/g, String(p.elevation ?? ''))
-            .replace(/\{slug\}/g, String(p.slug ?? '')),
-        }))
-      : selected;
+
+    // 同步自百岳總表：山名連到總表的詳細頁（總表該座山有內文時），查看行程沿用總表的外部網址
+    const masterBtn = (adminData?.navButtons || []).find(
+      (b) => b.id !== navButtonId && b.title.includes('百岳總表') && isPeakTableButton(b)
+    );
+    const masterActs = masterBtn
+      ? (adminData?.navButtonActivities || []).filter((a) => a.navButtonId === masterBtn.id)
+      : [];
+    const findMaster = (no: number) =>
+      masterActs.find((a) => extractPeakNoAndName(a.title).no === no);
+
+    const withLinks = selected.map((p: any) => {
+      const out: any = { ...p };
+      if (peakSyncFromMaster && masterBtn) {
+        const src = findMaster(p.no);
+        if (src) {
+          if ((src.externalUrl || '').trim()) out.externalUrl = src.externalUrl.trim();
+          if ((src.content || '').trim()) {
+            out.detailUrl = `/${getCategorySlug(masterBtn)}/${src.slug}/`;
+          }
+        }
+      }
+      if (tpl && !out.externalUrl) {
+        out.externalUrl = tpl
+          .replace(/\{no3\}/g, String(p.no).padStart(3, '0'))
+          .replace(/\{no\}/g, String(p.no))
+          .replace(/\{elevation\}/g, String(p.elevation ?? ''))
+          .replace(/\{slug\}/g, String(p.slug ?? ''));
+      }
+      return out;
+    });
     const text = JSON.stringify({ peaks: withLinks }, null, 2);
     setBatchImportJsonText(text);
     handlePreviewBatchImport(navButtonId, text);
@@ -3367,11 +3390,20 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                                   挑選並預覽
                                 </button>
                               </div>
+                              <label className="flex items-center gap-2 text-neutral-300 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={peakSyncFromMaster}
+                                  onChange={(e) => setPeakSyncFromMaster(e.target.checked)}
+                                  className="accent-emerald-500"
+                                />
+                                <span>連結同步自「百岳總表」（山名連到總表詳細頁、查看行程沿用總表網址）</span>
+                              </label>
                               <input
                                 type="text"
                                 value={peakLinkTemplate}
                                 onChange={(e) => setPeakLinkTemplate(e.target.value)}
-                                placeholder="（選填）連結網址規則，例如 /baiyue-traverse/{elevation}"
+                                placeholder="（選填）總表沒有網址時才使用的連結規則，例如 /baiyue-traverse/{elevation}"
                                 className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500"
                               />
                               <p className="text-[11px] text-neutral-500">
@@ -3572,7 +3604,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                                     完整行程／報名外部網址（選填）
                                   </label>
                                   <input
-                                    type="url"
+                                    type="text"
                                     value={editingNavButtonActivity.externalUrl || ''}
                                     onChange={(e) =>
                                       setEditingNavButtonActivity((prev) => ({
@@ -3581,6 +3613,24 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                                       }))
                                     }
                                     placeholder="https://...（留空則前台不顯示「查看行程」按鈕）"
+                                    className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 font-mono text-[11px]"
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className="block text-neutral-400 mb-1">
+                                    山名連結（站內網址，選填）
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={editingNavButtonActivity.detailUrl || ''}
+                                    onChange={(e) =>
+                                      setEditingNavButtonActivity((prev) => ({
+                                        ...prev,
+                                        detailUrl: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="/百岳總表代稱/peak-001/（列表頁的山名與整列會連到這裡）"
                                     className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 font-mono text-[11px]"
                                   />
                                 </div>

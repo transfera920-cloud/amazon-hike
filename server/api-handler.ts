@@ -734,6 +734,7 @@ export async function handleApiRequest(
           title: item.title.trim(),
           description: (item.description || '').trim(),
           externalUrl: (item.externalUrl || '').trim(),
+          detailUrl: /^(\/(?!\/)|https:\/\/(www\.)?amazon-hike\.com(\/|$))/i.test((item.detailUrl || '').trim()) ? (item.detailUrl || '').trim() : undefined,
           sortOrder: Number(item.sortOrder) || 0,
           enabled: item.enabled ?? true,
           content: (item.content || '').trim() || undefined,

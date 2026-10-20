@@ -301,6 +301,7 @@ export function processBatchImportActivities(
     const incomingOgImage = String(rawItem.ogImage || '').trim();
     const incomingCoverImage = String(rawItem.coverImage || '').trim();
     const incomingExternalUrl = String(rawItem.externalUrl || '').trim();
+    const incomingDetailUrl = String(rawItem.detailUrl || '').trim();
 
     const matched = workingButtonActs.find((act) => {
       const parsedAct = extractPeakNoAndName(act.title);
@@ -326,6 +327,10 @@ export function processBatchImportActivities(
       }
       if (incomingContent && (overwrite || !(matched.content || '').trim()) && matched.content !== incomingContent) {
         matched.content = incomingContent;
+        changed = true;
+      }
+      if (incomingDetailUrl && (overwrite || !(matched.detailUrl || '').trim()) && matched.detailUrl !== incomingDetailUrl) {
+        matched.detailUrl = incomingDetailUrl;
         changed = true;
       }
       if (incomingExternalUrl && (overwrite || !(matched.externalUrl || '').trim()) && matched.externalUrl !== incomingExternalUrl) {
@@ -419,6 +424,7 @@ export function processBatchImportActivities(
           : undefined,
       sortOrder: Number(rawItem.sortOrder ?? rawItem.no ?? idx + 1) || 0,
       externalUrl: incomingExternalUrl,
+      detailUrl: incomingDetailUrl || undefined,
       enabled: true,
       updatedAt: todayStr,
     };

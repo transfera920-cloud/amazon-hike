@@ -81,7 +81,7 @@ export function resolveActivitySeo(
 }
 
 /** 標題含此關鍵字的按鈕使用「百岳總表」表格版面，沒填導讀時退回預設導讀 */
-export const PEAK_TABLE_TITLE_KEYWORDS = ['百岳總表', '入門百岳', '進階百岳'];
+export const PEAK_TABLE_TITLE_KEYWORDS = ['百岳總表', '入門百岳', '進階百岳', '新手百岳'];
 
 /** 百岳總表預設導讀（後台沒填「列表頁導讀內容」時使用；前台本文與 SSR 外殼共用） */
 export const PEAK_INTRO_PARAGRAPHS = [

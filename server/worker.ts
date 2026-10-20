@@ -98,7 +98,9 @@ function formatMultilineHtml(text: string): string {
 /** 與前台相同規則：[文字](網址) 轉成 <a>，只允許站內路徑與 amazon-hike.com（含子網域） */
 function formatLinkedMultilineHtml(text: string): string {
   const isSafe = (h: string) =>
-    /^\/(?!\/)/.test(h) || /^https:\/\/([a-z0-9-]+\.)*amazon-hike\.com(\/|$)/i.test(h);
+    /^\/(?!\/)/.test(h) ||
+    /^https:\/\/([a-z0-9-]+\.)*amazon-hike\.com(\/|$)/i.test(h) ||
+    /^https:\/\/mountain-vigil\.lovable\.app(\/|$)/i.test(h);
   const linkRe = /\[([^\]]+)\]\(([^)\s]+)\)/g;
   const renderLine = (line: string): string => {
     let out = '';

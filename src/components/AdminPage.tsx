@@ -3450,7 +3450,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
 
                             <div className="p-3 rounded border border-emerald-800/50 bg-emerald-950/10 space-y-2">
                               <label className="block text-emerald-300 font-semibold">
-                                從百岳總表挑選（自動帶入山名、標高、國家公園、群組、備註）
+                                步驟 1：從百岳總表挑選（輸入編號後，按右邊「挑選並預覽」）
                               </label>
                               <div className="flex items-center gap-2 flex-wrap">
                                 <input
@@ -3504,6 +3504,36 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                               <p className="text-[11px] text-neutral-500">
                                 可輸入編號（<code>1, 8</code>）、範圍（<code>12-15</code>）、山名（需完全相同）或群組名稱（<code>五岳</code>、<code>十峻</code>），用逗號或空白分隔。
                               </p>
+                              {batchImportPreview && batchImportItems && batchImportItems.length > 0 && (
+                                <div className="p-2.5 rounded border border-emerald-600 bg-emerald-950/40 space-y-2">
+                                  <div className="text-emerald-200 font-semibold">
+                                    步驟 2：確認內容無誤後，按下面的按鈕存檔
+                                  </div>
+                                  <div className="text-[11px] text-neutral-300">
+                                    將新增 {batchImportPreview.created} 筆、補齊 {batchImportPreview.updated} 筆、略過 {batchImportPreview.skipped} 筆
+                                  </div>
+                                  <button
+                                    type="button"
+                                    disabled={batchImportExecuting}
+                                    onClick={() => {
+                                      const n = batchImportItems.length;
+                                      if (
+                                        n > 20 &&
+                                        !window.confirm(`你即將匯入 ${n} 筆，確定嗎？`)
+                                      ) {
+                                        return;
+                                      }
+                                      handleConfirmBatchImport(item.id);
+                                    }}
+                                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold transition-colors"
+                                  >
+                                    <CheckCircle2 size={14} />
+                                    <span>
+                                      {batchImportExecuting ? '儲存中...' : `儲存：確認匯入 ${batchImportItems.length} 筆`}
+                                    </span>
+                                  </button>
+                                </div>
+                              )}
                               {peakPickSelectedNames.length > 0 && (
                                 <div className="text-[11px] text-neutral-300">
                                   已挑選 {peakPickSelectedNames.length} 座：{peakPickSelectedNames.join('、')}

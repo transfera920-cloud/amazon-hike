@@ -7,6 +7,7 @@ import {
   Images,
   Backpack,
   AlertTriangle,
+  Download,
 } from 'lucide-react';
 import type { NavButtonItem, NavButtonActivity } from '../types.js';
 import { getYouTubeVideoId, normalizeUrl } from '../utils/url.js';
@@ -172,6 +173,26 @@ export const RouteActivityView: React.FC<RouteActivityViewProps> = ({
                 {p}
               </p>
             ))}
+          </section>
+        )}
+
+        {/* GPX 航跡下載 */}
+        {activity.gpxUrl && /^(\/|https:\/\/)/i.test(activity.gpxUrl.trim()) && (
+          <section
+            aria-label="GPX 航跡下載"
+            className="mb-6 pt-6 border-t border-neutral-800/60"
+          >
+            <a
+              href={activity.gpxUrl.trim()}
+              download={activity.gpxFileName || undefined}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold transition-colors"
+            >
+              <Download size={16} />
+              <span>下載 GPX 航跡檔</span>
+            </a>
+            <p className="mt-2 text-xs text-neutral-500 leading-relaxed">
+              航跡僅供行程規劃與離線導航參考，實際路況、路跡與管制請以官方公告及現地狀況為準。
+            </p>
           </section>
         )}
 

@@ -102,6 +102,8 @@ export interface NavButtonActivity {
   metaDescription?: string; // 自訂 SEO 描述
   ogImage?: string;      // 自訂社群分享圖
   nationalPark?: string; // 百岳總表用：所屬國家公園（選填）
+  gpxUrl?: string;       // GPX 航跡檔下載網址（選填，前台顯示下載按鈕）
+  gpxFileName?: string;  // GPX 下載時顯示的檔名（選填）
   updatedAt?: string;    // 最後更新日期
   itinerary?: TripItinerary; // 選填的內嵌式登山行程資料
 }

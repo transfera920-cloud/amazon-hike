@@ -153,6 +153,41 @@ export async function handleApiRequest(
     }
   }
 
+  // Public GPX Serving: GET/HEAD /api/gpx/<32-hex-id>.gpx（以附件方式下載）
+  if (path.startsWith('/api/gpx/')) {
+    if (method !== 'GET' && method !== 'HEAD') {
+      return new Response('Not Found', { status: 404 });
+    }
+    const gpxMatch = path.match(/^\/api\/gpx\/([0-9a-f]{32})\.gpx$/i);
+    if (!gpxMatch || !env.ASSOCIATION_DB || typeof env.ASSOCIATION_DB.getWithMetadata !== 'function') {
+      return new Response('Not Found', { status: 404 });
+    }
+    const gpxId = gpxMatch[1].toLowerCase();
+    try {
+      const result = await env.ASSOCIATION_DB.getWithMetadata(`gpx_${gpxId}`, 'arrayBuffer');
+      if (!result || !result.value) {
+        return new Response('Not Found', { status: 404 });
+      }
+      const rawName =
+        (result.metadata && typeof result.metadata.fileName === 'string' && result.metadata.fileName) ||
+        `${gpxId}.gpx`;
+      const asciiName = rawName.replace(/[^A-Za-z0-9._-]/g, '_') || 'route.gpx';
+      return new Response(method === 'HEAD' ? null : result.value, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/gpx+xml; charset=utf-8',
+          'Content-Disposition': `attachment; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(rawName)}`,
+          'Cache-Control': 'public, max-age=31536000, immutable',
+          'X-Content-Type-Options': 'nosniff',
+          'Content-Security-Policy': "sandbox; default-src 'none'",
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
+    } catch {
+      return new Response('Not Found', { status: 404 });
+    }
+  }
+
   // Admin APIs
   if (path.startsWith('/api/admin/')) {
     // POST /api/admin/login
@@ -231,6 +266,70 @@ export async function handleApiRequest(
         });
       } catch (err: any) {
         return jsonResponse({ error: err.message || '圖片上傳失敗' }, 500);
+      }
+    }
+
+    // POST /api/admin/upload-gpx（Body 為 GPX 原始文字，檔名放在 X-File-Name，需 encodeURIComponent）
+    if (path === '/api/admin/upload-gpx' && method === 'POST') {
+      try {
+        const maxBytes = 5 * 1024 * 1024;
+        const contentLengthHeader = request.headers.get('Content-Length');
+        if (contentLengthHeader && Number(contentLengthHeader) > maxBytes) {
+          return jsonResponse({ error: 'GPX 檔案大小不得超過 5MB' }, 413);
+        }
+
+        const buffer = await request.arrayBuffer();
+        if (!buffer || buffer.byteLength === 0) {
+          return jsonResponse({ error: '上傳的 GPX 內容為空' }, 400);
+        }
+        if (buffer.byteLength > maxBytes) {
+          return jsonResponse({ error: 'GPX 檔案大小不得超過 5MB' }, 413);
+        }
+
+        let text = '';
+        try {
+          text = new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+        } catch {
+          return jsonResponse({ error: '檔案不是有效的 UTF-8 文字，請確認是 GPX 檔' }, 400);
+        }
+        if (!/<gpx[\s>]/i.test(text)) {
+          return jsonResponse({ error: '檔案內容不是 GPX 格式（找不到 <gpx> 標籤）' }, 400);
+        }
+        if (/<script[\s>]|<!ENTITY/i.test(text)) {
+          return jsonResponse({ error: 'GPX 內容含有不允許的標籤，已拒絕上傳' }, 400);
+        }
+
+        let fileName = '';
+        try {
+          fileName = decodeURIComponent(request.headers.get('X-File-Name') || '');
+        } catch {
+          fileName = '';
+        }
+        fileName = fileName.replace(/[\u0000-\u001f\\/:*?"<>|]/g, '').trim().slice(0, 100);
+        if (!/\.gpx$/i.test(fileName)) {
+          fileName = `${fileName || 'route'}.gpx`;
+        }
+
+        if (!env.ASSOCIATION_DB) {
+          return jsonResponse({ error: '系統尚未綁定 Cloudflare KV (ASSOCIATION_DB)，無法儲存 GPX' }, 500);
+        }
+
+        const randomBytes = new Uint8Array(16);
+        crypto.getRandomValues(randomBytes);
+        const id = Array.from(randomBytes, (b) => b.toString(16).padStart(2, '0')).join('');
+
+        await env.ASSOCIATION_DB.put(`gpx_${id}`, buffer, {
+          metadata: { contentType: 'application/gpx+xml', fileName },
+        });
+
+        return jsonResponse({
+          success: true,
+          url: `/api/gpx/${id}.gpx`,
+          fileName,
+          size: buffer.byteLength,
+        });
+      } catch (err: any) {
+        return jsonResponse({ error: err.message || 'GPX 上傳失敗' }, 500);
       }
     }
 
@@ -639,6 +738,10 @@ export async function handleApiRequest(
           metaDescription: (item.metaDescription || '').trim() || undefined,
           ogImage: (item.ogImage || '').trim() || undefined,
           nationalPark: (item.nationalPark || '').trim() || undefined,
+          gpxUrl: /^(\/|https:\/\/)/i.test((item.gpxUrl || '').trim()) ? (item.gpxUrl || '').trim() : undefined,
+          gpxFileName: (item.gpxUrl || '').trim()
+            ? (item.gpxFileName || '').replace(/[\u0000-\u001f\\/:*?"<>|]/g, '').trim().slice(0, 100) || undefined
+            : undefined,
           updatedAt: new Date().toISOString().split('T')[0],
           itinerary: item.itinerary ? cleanTripItinerary(item.itinerary) : undefined,
         };

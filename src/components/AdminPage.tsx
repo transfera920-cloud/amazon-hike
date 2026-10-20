@@ -48,6 +48,7 @@ import {
 } from '../utils/activitySeo.js';
 import { PEAK_INTRO_PARAGRAPHS, isOnMobileBar } from '../utils/activitySeo.js';
 import { ImageUploadButton } from './ImageUploadButton.js';
+import { GpxUploadButton } from './GpxUploadButton.js';
 import InlineEditorPortal, { editSlotKey } from './InlineEditorPortal.js';
 import peaksTop100Data from '../../data/peaks-top100.json';
 import {
@@ -3547,6 +3548,37 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                                   onUploaded={(url) =>
                                     setEditingNavButtonActivity((prev) =>
                                       prev ? { ...prev, coverImage: url } : prev
+                                    )
+                                  }
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-neutral-400 mb-1">GPX 航跡檔（選填，前台顯示下載按鈕）</label>
+                                <input
+                                  type="text"
+                                  value={editingNavButtonActivity.gpxUrl || ''}
+                                  onChange={(e) =>
+                                    setEditingNavButtonActivity((prev) => ({
+                                      ...prev,
+                                      gpxUrl: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="上傳後自動填入；也可貼 https:// 或 / 開頭的網址（留空則前台不顯示）"
+                                  className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 font-mono text-[11px]"
+                                />
+                                <GpxUploadButton
+                                  token={token}
+                                  value={editingNavButtonActivity.gpxUrl || ''}
+                                  fileName={editingNavButtonActivity.gpxFileName || ''}
+                                  onUploaded={(url, name) =>
+                                    setEditingNavButtonActivity((prev) =>
+                                      prev ? { ...prev, gpxUrl: url, gpxFileName: name } : prev
+                                    )
+                                  }
+                                  onClear={() =>
+                                    setEditingNavButtonActivity((prev) =>
+                                      prev ? { ...prev, gpxUrl: '', gpxFileName: '' } : prev
                                     )
                                   }
                                 />

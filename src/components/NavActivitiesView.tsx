@@ -16,6 +16,7 @@ import { renderLinkedText } from './PageTextBlock.js';
 import {
   getCategorySlug,
   isPeakTableButton,
+  isPeakOverviewButton,
   resolveNavButtonIntroParagraphs,
   PEAK_INTRO_PARAGRAPHS,
 } from '../utils/activitySeo.js';
@@ -126,6 +127,8 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
 }) => {
   const isPeakTable =
     activities.length > 0 && isPeakTableButton(button);
+  // 只有「百岳總表」才顯示固定導讀；入門百岳、進階百岳只顯示後台上文／下文
+  const isPeakOverview = isPeakTable && isPeakOverviewButton(button);
 
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir } | null>(null);
   const [groupFilter, setGroupFilter] = useState<string | null>(null);
@@ -193,7 +196,7 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
     () => (button.introContent || '').split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean),
     [button.introContent]
   );
-  const introParagraphs = customIntro.length > 0 ? customIntro : PEAK_INTRO_PARAGRAPHS;
+  const introParagraphs = customIntro.length > 0 ? customIntro : isPeakOverview ? PEAK_INTRO_PARAGRAPHS : [];
   const footerParagraphs = useMemo(
     () => (button.footerContent || '').split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean),
     [button.footerContent]
@@ -228,14 +231,14 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
         <h1 className="text-2xl sm:text-3xl font-extrabold text-neutral-100 tracking-tight">
           {button.title}
         </h1>
-        {!isPeakTable &&
+        {!isPeakOverview &&
           (customIntro.length > 0 ? (
             <div className="mt-2 space-y-2 text-sm text-neutral-300 leading-relaxed">
               {customIntro.map((p, idx) => (
                 <p key={idx} className="whitespace-pre-line">{renderLinkedText(p)}</p>
               ))}
             </div>
-          ) : (
+          ) : isPeakTable ? null : (
             <p className="text-sm text-neutral-400 mt-2">
               歡迎瀏覽本專區推薦之健行登山行程，點選活動可查看詳細說明或前往外部頁面報名。
             </p>
@@ -243,7 +246,7 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
       </header>
 
       {/* 百岳總表：導讀 */}
-      {isPeakTable && (
+      {isPeakOverview && (
         <section
           aria-labelledby="peak-intro-heading"
           className="mb-8 rounded-lg border border-neutral-800 bg-neutral-900/50 p-3 sm:p-6"

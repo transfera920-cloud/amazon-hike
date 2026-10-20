@@ -93,6 +93,11 @@ export function isPeakTableButton(btn: { title: string }): boolean {
   return PEAK_TABLE_TITLE_KEYWORDS.some((k) => (btn.title || '').includes(k));
 }
 
+/** 只有「百岳總表」本身才使用固定導讀；入門百岳、進階百岳只顯示後台填的上文／下文 */
+export function isPeakOverviewButton(btn: { title: string }): boolean {
+  return (btn.title || '').includes('百岳總表');
+}
+
 /**
  * 依站內路徑找出對應的「前台導覽按鈕」，其上方說明（introContent）與下方說明（bottomContent）
  * 就是該頁面（/intro、/tools、/highlights、/policies、/surveys）的可編輯文字。
@@ -123,7 +128,7 @@ export function resolveNavButtonIntroParagraphs(btn: { title: string; introConte
     .map((p) => p.trim())
     .filter(Boolean);
   if (custom.length > 0) return custom;
-  return isPeakTableButton(btn) ? PEAK_INTRO_PARAGRAPHS : [];
+  return isPeakOverviewButton(btn) ? PEAK_INTRO_PARAGRAPHS : [];
 }
 
 /**

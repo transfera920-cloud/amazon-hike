@@ -3597,7 +3597,14 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                             <div className="flex items-center gap-2 flex-wrap">
                               <button
                                 type="button"
-                                onClick={() => handlePreviewBatchImport(item.id)}
+                                onClick={() => {
+                                  // 文字框是空的、但上方「從百岳總表挑選」已填了編號時，直接依編號挑選
+                                  if (!batchImportJsonText.trim() && peakPickInput.trim()) {
+                                    handlePickPeaksFromMaster(item.id);
+                                  } else {
+                                    handlePreviewBatchImport(item.id);
+                                  }
+                                }}
                                 className="px-3 py-1.5 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-100 border border-neutral-700 font-semibold transition-colors"
                               >
                                 預覽匯入內容

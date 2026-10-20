@@ -2813,6 +2813,24 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                   </p>
                 </div>
 
+                {/* 不顯示在頂端按鈕列：按鈕仍啟用，頁面、上文／下文、SEO 與內文連結照常運作 */}
+                <div className="rounded-lg border border-emerald-900/50 bg-emerald-950/10 p-3 space-y-1.5">
+                  <label className="flex items-center gap-2 text-emerald-400 font-semibold cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editingNavButton.hideFromNav === true}
+                      onChange={(e) =>
+                        setEditingNavButton({ ...editingNavButton, hideFromNav: e.target.checked })
+                      }
+                      className="accent-emerald-500"
+                    />
+                    <span>不顯示在頂端按鈕列（電腦版與手機版都不顯示）</span>
+                  </label>
+                  <p className="text-[11px] text-neutral-400">
+                    勾選後，這個按鈕不會出現在網站頂端，但「啟用顯示在前台」請保持勾選：頁面、上文／下文、SEO 標題與描述、行程頁和 sitemap 都照常運作，也可以用內文超連結進入。要完全下架這個專區，才取消「啟用顯示在前台」。
+                  </p>
+                </div>
+
                 {/* 手機版擺放：直接顯示在標題下方按鈕列，或只放在右上角選單 */}
                 <div className="rounded-lg border border-emerald-900/50 bg-emerald-950/10 p-3 space-y-1.5">
                   <label className="flex items-center gap-2 text-emerald-400 font-semibold cursor-pointer">

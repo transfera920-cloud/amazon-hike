@@ -640,6 +640,7 @@ export async function handleApiRequest(
           sortOrder: Number(item.sortOrder) || 0,
           categorySlug: cleanCatSlug || undefined,
           mobileBar: typeof item.mobileBar === 'boolean' ? item.mobileBar : undefined,
+          hideFromNav: item.hideFromNav === true ? true : undefined,
       introContent: (item.introContent || '').trim().slice(0, 3000) || undefined,
           footerContent: (item.footerContent || '').trim().slice(0, 3000) || undefined,
           seoTitle: (item.seoTitle || '').trim().slice(0, 120) || undefined,

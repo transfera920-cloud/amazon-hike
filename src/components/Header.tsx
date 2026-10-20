@@ -88,7 +88,7 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyU
   // Process and sort enabled navigation buttons
   const displayButtons: NavButtonItem[] = (
     navButtons && navButtons.length > 0
-      ? navButtons.filter((b) => b.enabled)
+      ? navButtons.filter((b) => b.enabled && !b.hideFromNav)
       : [
           { id: 'btn_calendar', title: '活動行事曆', url: '/', isExternal: false, sortOrder: 1, enabled: true },
           { id: 'btn_recent', title: '近期活動', url: 'https://amazon-trail.ai.studio/activity/', isExternal: true, sortOrder: 2, enabled: true },

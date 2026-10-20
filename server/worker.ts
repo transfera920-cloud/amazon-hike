@@ -259,6 +259,104 @@ function toInternalPath(href: string): string | null {
   return null;
 }
 
+const ORG_ID = 'https://amazon-hike.com/#organization';
+
+/**
+ * 按鈕列表頁（例如百岳列表）的結構化資料：BreadcrumbList + CollectionPage + ItemList。
+ * 讓搜尋引擎與生成式 AI 能直接讀到「這一頁有哪些山／行程」。只有已有內文的項目才附網址。
+ */
+function buildNavListJsonLd(
+  btn: { title: string },
+  acts: NavButtonActivity[],
+  catSlug: string,
+  isPeak: boolean,
+  pageUrl: string
+): string {
+  const sorted = acts.slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  const items = sorted.slice(0, 120).map((a, idx) => {
+    const name = isPeak ? formatPeakLinkText(a.title) : a.title;
+    const hasPage = (a.content || '').trim().length > 0;
+    return {
+      '@type': 'ListItem',
+      position: idx + 1,
+      name,
+      ...(hasPage ? { url: `${SITE_ORIGIN}/${catSlug}/${a.slug}/` } : {}),
+    };
+  });
+  const graph = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'BreadcrumbList',
+        '@id': `${pageUrl}#breadcrumb`,
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: '首頁', item: `${SITE_ORIGIN}/` },
+          { '@type': 'ListItem', position: 2, name: btn.title, item: pageUrl },
+        ],
+      },
+      {
+        '@type': 'CollectionPage',
+        '@id': `${pageUrl}#page`,
+        url: pageUrl,
+        name: btn.title,
+        inLanguage: 'zh-TW',
+        isPartOf: { '@id': `${SITE_ORIGIN}/#website` },
+        publisher: { '@id': ORG_ID },
+        mainEntity: { '@id': `${pageUrl}#list` },
+      },
+      {
+        '@type': 'ItemList',
+        '@id': `${pageUrl}#list`,
+        name: btn.title,
+        numberOfItems: sorted.length,
+        itemListElement: items,
+      },
+    ],
+  };
+  return JSON.stringify(graph).replace(/</g, '\\u003c');
+}
+
+/** 單一行程／百岳頁的 Article + BreadcrumbList 結構化資料（含更新日期，利於搜尋引擎與 AI 判斷內容新鮮度） */
+function buildActivityJsonLd(
+  act: NavButtonActivity,
+  parentBtn: { id: string; title: string },
+  isPeak: boolean,
+  pageUrl: string,
+  meta: { description: string; image?: string }
+): string {
+  const headline = isPeak ? formatPeakLinkText(act.title) : act.title;
+  const image = meta.image && /^https?:\/\//i.test(meta.image) ? meta.image : undefined;
+  const graph = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'Article',
+        '@id': `${pageUrl}#article`,
+        headline,
+        description: meta.description || headline,
+        inLanguage: 'zh-TW',
+        mainEntityOfPage: pageUrl,
+        url: pageUrl,
+        ...(act.updatedAt ? { dateModified: act.updatedAt } : {}),
+        ...(image ? { image } : {}),
+        author: { '@id': ORG_ID },
+        publisher: { '@id': ORG_ID },
+        isPartOf: { '@id': `${SITE_ORIGIN}/#website` },
+      },
+      {
+        '@type': 'BreadcrumbList',
+        '@id': `${pageUrl}#breadcrumb`,
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: '首頁', item: `${SITE_ORIGIN}/` },
+          { '@type': 'ListItem', position: 2, name: parentBtn.title, item: `${SITE_ORIGIN}/nav/${parentBtn.id}` },
+          { '@type': 'ListItem', position: 3, name: headline, item: pageUrl },
+        ],
+      },
+    ],
+  };
+  return JSON.stringify(graph).replace(/</g, '\\u003c');
+}
+
 /** 通用 BreadcrumbList 結構化資料 */
 function buildBreadcrumbJsonLd(items: { name: string; url: string }[], pageUrl: string): string {
   const graph = {
@@ -705,6 +803,88 @@ async function applyRouteMeta(
   });
 }
 
+/** 產生 /llms.txt（給生成式 AI 讀的網站導覽），內容全部來自後台資料與既有頁面，不編造任何資訊 */
+async function buildLlmsTxt(env: WorkerEnv): Promise<string> {
+  const db = await loadDatabaseWorker(env);
+  const abs = (u: string) => (u.startsWith('/') ? `${SITE_ORIGIN}${u}` : u);
+  const oneLine = (t: string) => (t || '').replace(/\s+/g, ' ').trim();
+  const lines: string[] = [];
+
+  lines.push('# 亞馬遜國家山岳協會（Amazon Alpine Association）');
+  lines.push('');
+  lines.push(
+    '> 社團法人（立案編號 台內團自第1130008137號）。宗旨：提倡全民運動、鍛鍊強健體魄、培養互助團隊精神，以及接觸大自然與山林相關知識及技能。網站提供活動行事曆、台灣百岳行程、登山入門教學、登山工具與活動花絮。'
+  );
+  lines.push('');
+  lines.push('聯絡：LINE https://lin.ee/TJJLV36 ｜ 電話 0972573495 ｜ Email yy661003@gmail.com');
+  lines.push('');
+
+  lines.push('## 主要頁面');
+  lines.push(`- [活動行事曆](${SITE_ORIGIN}/)：協會近期登山活動與行程`);
+  lines.push(`- [登山入門教學](${SITE_ORIGIN}/intro)：從行前規劃、裝備、氣象到安全與法規的入門章節`);
+  lines.push(`- [登山工具與氣象服務](${SITE_ORIGIN}/tools)：登山計算工具與氣象、路況查詢`);
+  lines.push(`- [活動花絮影音](${SITE_ORIGIN}/highlights)：歷年登山活動影片`);
+  lines.push(`- [政策與條款](${SITE_ORIGIN}/policies)：章程、活動參與安全守則、退費規範與隱私權聲明`);
+  lines.push('');
+
+  const buttons = (db.navButtons || []).filter((b) => b.enabled).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  const acts = (db.navButtonActivities || []).filter((a) => a.enabled);
+  const listBtns = buttons.filter((b) => acts.some((a) => a.navButtonId === b.id));
+  if (listBtns.length > 0) {
+    lines.push('## 百岳與登山行程');
+    for (const b of listBtns) {
+      const n = acts.filter((a) => a.navButtonId === b.id).length;
+      const intro = oneLine(resolveNavButtonIntroParagraphs(b)[0] || '');
+      const brief = intro ? `：${intro.length > 80 ? intro.slice(0, 79) + '…' : intro}` : '';
+      lines.push(`- [${b.title}](${SITE_ORIGIN}/nav/${b.id})（${n} 筆）${brief}`);
+    }
+    lines.push('');
+  }
+
+  const tools = (db.tools || []).filter((t) => t.enabled).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  const toolLines = tools
+    .map((t) => {
+      const href = normalizeToolUrl(t.url);
+      if (!href) return '';
+      const d = oneLine(t.description || '');
+      return `- [${t.title}](${abs(href)})${d ? `：${d.length > 80 ? d.slice(0, 79) + '…' : d}` : ''}`;
+    })
+    .filter(Boolean);
+  if (toolLines.length > 0) {
+    lines.push('## 登山工具');
+    lines.push(...toolLines);
+    lines.push('');
+  }
+
+  const chapters = (db.chapters || [])
+    .filter((c) => c.enabled && !isThinMainChapter(c))
+    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  if (chapters.length > 0) {
+    lines.push('## 登山入門教學章節');
+    for (const c of chapters) {
+      const slug = (c.slug || '').toLowerCase();
+      const loc = CHAPTER_SLUG_RE.test(slug) ? `${SITE_ORIGIN}/${slug}/` : `${SITE_ORIGIN}/intro/${c.slug}`;
+      const d = oneLine(c.description || '');
+      lines.push(`- [${c.title}](${loc})${d ? `：${d.length > 80 ? d.slice(0, 79) + '…' : d}` : ''}`);
+    }
+    lines.push('');
+  }
+
+  lines.push('## 相關服務與工具（不同網域）');
+  lines.push('- [亞馬遜高山接駁：全台登山口包車接送](https://transfer.amazon-hike.com/)');
+  lines.push('- [登山接駁費用試算](https://price.amazon-hike.com/)');
+  lines.push('- [登山路況與道路管制查詢](https://road.amazon-hike.com/)');
+  lines.push('- [台灣林道通行狀況查詢](https://forestroad.amazon-hike.com/)');
+  lines.push('');
+
+  lines.push('## 說明');
+  lines.push(
+    '亞馬遜高山接駁為獨立品牌的接駁服務，與本協會互相推薦；登山教學與百岳介紹以本站為準，包車與接駁報價以接駁站為準。百岳標高與路況資料可能因測量年份或天災而有出入，實際規劃請以官方最新公告為準。'
+  );
+  lines.push('');
+  return lines.join('\n');
+}
+
 export default {
   async fetch(request: Request, env: WorkerEnv, ctx: any): Promise<Response> {
     const url = new URL(request.url);
@@ -722,6 +902,24 @@ export default {
 Allow: /
 Disallow: /admin
 Disallow: /api/admin/
+
+# 明確允許主要的搜尋與 AI 助理爬蟲讀取公開內容（後台仍不開放）
+User-agent: Googlebot
+User-agent: Bingbot
+User-agent: GPTBot
+User-agent: OAI-SearchBot
+User-agent: ChatGPT-User
+User-agent: ClaudeBot
+User-agent: Claude-User
+User-agent: Claude-SearchBot
+User-agent: PerplexityBot
+User-agent: Perplexity-User
+User-agent: Google-Extended
+User-agent: Applebot-Extended
+Allow: /
+Disallow: /admin
+Disallow: /api/admin/
+
 Sitemap: https://amazon-hike.com/sitemap.xml
 `,
         {
@@ -731,6 +929,23 @@ Sitemap: https://amazon-hike.com/sitemap.xml
           },
         }
       );
+    }
+
+    // llms.txt：依後台資料動態產生，新增百岳／行程按鈕、工具、章節後會自動更新；失敗時退回 public/llms.txt
+    if (pathname === '/llms.txt') {
+      try {
+        const body = await buildLlmsTxt(env);
+        if (body) {
+          return new Response(body, {
+            headers: {
+              'Content-Type': 'text/plain; charset=utf-8',
+              'Cache-Control': 'public, max-age=3600',
+            },
+          });
+        }
+      } catch (err) {
+        console.error('Error building llms.txt:', err);
+      }
     }
 
     if (pathname === '/sitemap.xml') {
@@ -1214,13 +1429,7 @@ ${activityUrls}
               : '';
             rootHtml = `<main><h1>${escapeHtml(btn ? btn.title : '活動列表')}</h1>${introHtml}<ul>${listHtml}</ul>${footerHtml}${buildSiteNavHtml()}</main>`;
             if (btn) {
-              chapterJsonLd = buildBreadcrumbJsonLd(
-                [
-                  { name: '首頁', url: `${SITE_ORIGIN}/` },
-                  { name: btn.title, url: canonicalUrl },
-                ],
-                canonicalUrl
-              );
+              chapterJsonLd = buildNavListJsonLd(btn, acts, catSlug, isPeak, canonicalUrl);
             }
           } catch (e) {
             rootHtml = buildSectionShellHtml(routeMeta.title, routeMeta.description);
@@ -1240,13 +1449,12 @@ ${activityUrls}
               : null;
             if (act && parentBtn) {
               rootHtml = buildActivityShellHtml(act);
-              chapterJsonLd = buildBreadcrumbJsonLd(
-                [
-                  { name: '首頁', url: `${SITE_ORIGIN}/` },
-                  { name: parentBtn.title, url: `${SITE_ORIGIN}/nav/${parentBtn.id}` },
-                  { name: act.title, url: canonicalUrl },
-                ],
-                canonicalUrl
+              chapterJsonLd = buildActivityJsonLd(
+                act,
+                parentBtn,
+                isPeakTableButton(parentBtn),
+                canonicalUrl,
+                { description: routeMeta.description, image: routeMeta.image }
               );
             } else {
               rootHtml = buildSectionShellHtml(routeMeta.title, routeMeta.description);

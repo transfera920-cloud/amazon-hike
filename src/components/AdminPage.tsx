@@ -51,6 +51,7 @@ import { ImageUploadButton } from './ImageUploadButton.js';
 import { GpxUploadButton } from './GpxUploadButton.js';
 import InlineEditorPortal, { editSlotKey } from './InlineEditorPortal.js';
 import peaksTop100Data from '../../data/peaks-top100.json';
+import { parsePeakSelection } from '../utils/peakPicker.js';
 import {
   calculateDaysFromDates
 } from '../utils/itineraryHelper.js';
@@ -99,6 +100,9 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
   // Batch Import state for navButtonActivities
   const [batchImportButtonId, setBatchImportButtonId] = useState<string | null>(null);
   const [batchImportJsonText, setBatchImportJsonText] = useState('');
+  const [peakPickInput, setPeakPickInput] = useState('');
+  const [peakPickUnmatched, setPeakPickUnmatched] = useState<string[]>([]);
+  const [peakPickSelectedNames, setPeakPickSelectedNames] = useState<string[]>([]);
   const [batchImportItems, setBatchImportItems] = useState<any[] | null>(null);
   const [batchImportPreview, setBatchImportPreview] = useState<BatchImportResult | null>(null);
   const [batchImportParseError, setBatchImportParseError] = useState<string | null>(null);
@@ -586,6 +590,24 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
     } catch (err: any) {
       showFeedback(err.message || '連線儲存失敗', true);
     }
+  };
+
+  const handlePickPeaksFromMaster = (navButtonId: string) => {
+    const { selected, unmatched } = parsePeakSelection(
+      peakPickInput,
+      (peaksTop100Data as any).peaks as any[]
+    );
+    setPeakPickUnmatched(unmatched);
+    setPeakPickSelectedNames(selected.map((p: any) => `${String(p.no).padStart(3, '0')} ${p.name}`));
+    if (selected.length === 0) {
+      setBatchImportItems(null);
+      setBatchImportPreview(null);
+      setBatchImportParseError('沒有挑到任何百岳，請檢查輸入的編號、山名或群組');
+      return;
+    }
+    const text = JSON.stringify({ peaks: selected }, null, 2);
+    setBatchImportJsonText(text);
+    handlePreviewBatchImport(navButtonId, text);
   };
 
   const handlePreviewBatchImport = (navButtonId: string, rawText?: string) => {
@@ -3226,6 +3248,9 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                                 } else {
                                   setBatchImportButtonId(item.id);
                                   setBatchImportJsonText('');
+                                  setPeakPickInput('');
+                                  setPeakPickUnmatched([]);
+                                  setPeakPickSelectedNames([]);
                                   setBatchImportItems(null);
                                   setBatchImportPreview(null);
                                   setBatchImportParseError(null);
@@ -3300,6 +3325,49 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                                   載入內建 peaks-top100.json
                                 </button>
                               </div>
+                            </div>
+
+                            <div className="p-3 rounded border border-emerald-800/50 bg-emerald-950/10 space-y-2">
+                              <label className="block text-emerald-300 font-semibold">
+                                從百岳總表挑選（自動帶入山名、標高、國家公園、群組、備註）
+                              </label>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <input
+                                  type="text"
+                                  value={peakPickInput}
+                                  onChange={(e) => setPeakPickInput(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      handlePickPeaksFromMaster(item.id);
+                                    }
+                                  }}
+                                  placeholder="例如：1, 8, 12-15, 雪山, 五岳"
+                                  className="flex-1 min-w-[200px] px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handlePickPeaksFromMaster(item.id)}
+                                  className="px-3 py-1.5 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-semibold transition-colors"
+                                >
+                                  挑選並預覽
+                                </button>
+                              </div>
+                              <p className="text-[11px] text-neutral-500">
+                                可輸入編號（<code>1, 8</code>）、範圍（<code>12-15</code>）、山名（需完全相同）或群組名稱（<code>五岳</code>、<code>十峻</code>），用逗號或空白分隔。
+                              </p>
+                              {peakPickSelectedNames.length > 0 && (
+                                <div className="text-[11px] text-neutral-300">
+                                  已挑選 {peakPickSelectedNames.length} 座：{peakPickSelectedNames.join('、')}
+                                </div>
+                              )}
+                              {peakPickUnmatched.length > 0 && (
+                                <div className="text-[11px] text-amber-300 space-y-0.5">
+                                  {peakPickUnmatched.map((u, i) => (
+                                    <div key={i}>• 無法對應：{u}</div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
 
                             <div>

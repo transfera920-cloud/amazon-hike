@@ -14,6 +14,8 @@ import { NavActivitiesView } from './components/NavActivitiesView.js';
 import { RouteActivityView } from './components/RouteActivityView.js';
 import {
   getCategorySlug,
+  getNavButtonPath,
+  isPossibleNavListSlug,
   resolveActivitySeo,
   resolveNavButtonSeo,
   CHAPTER_SLUG_SOURCE,
@@ -137,9 +139,22 @@ export default function App() {
       return;
     }
 
+    // 站內仍寫著舊的 /nav/按鈕id 時，直接換成好看的 /代稱/ 網址
+    const navM = path.match(/^\/nav\/([^/?#]+)\/?$/);
+    if (navM) {
+      const navBtn = (publicData.navButtons || []).find((b) => b.id === navM[1] && b.enabled);
+      if (navBtn) path = getNavButtonPath(navBtn);
+    }
+
     const target = normalizePath(path);
     if (target !== currentPath) {
-      window.history.pushState({}, '', target);
+      // 分類列表頁（/代稱/）與活動頁（/代稱/活動/）的正式網址帶結尾斜線，網址列也保持一致
+      const keepSlash =
+        /^\/[^/]+(\/[^/]+)?$/.test(target) &&
+        !KNOWN_PATHS.has(target) &&
+        !/^\/(nav|intro|route|admin)(\/|$)/.test(target) &&
+        !CHAPTER_PATH_RE.test(target);
+      window.history.pushState({}, '', keepSlash ? `${target}/` : target);
       setCurrentPath(target);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -177,13 +192,39 @@ export default function App() {
     return { intro: btn?.introContent || '', footer: btn?.footerContent || '' };
   };
 
-  // Dynamic nav button ID if route matches /nav/:buttonId
+  // 單層網址 /:categorySlug/（按鈕列表頁的好看網址，例如 /traverse/）
+  const currentCategoryListSlug = useMemo<string | null>(() => {
+    if (
+      KNOWN_PATHS.has(currentPath) ||
+      currentPath.startsWith('/intro/') ||
+      currentPath.startsWith('/nav/') ||
+      currentPath.startsWith('/route/') ||
+      currentPath.startsWith('/admin')
+    ) {
+      return null;
+    }
+    const segs = currentPath.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
+    if (segs.length !== 1) return null;
+    return isPossibleNavListSlug(segs[0]) ? segs[0].toLowerCase() : null;
+  }, [currentPath]);
+
+  const currentCategoryListButton = useMemo(() => {
+    if (!currentCategoryListSlug) return null;
+    return (
+      (publicData.navButtons || []).find(
+        (b) => b.enabled && getNavButtonPath(b) === `/${currentCategoryListSlug}/`
+      ) || null
+    );
+  }, [currentCategoryListSlug, publicData.navButtons]);
+
+  // Dynamic nav button ID if route matches /nav/:buttonId，或單層代稱網址 /:categorySlug/
   const currentNavButtonId = useMemo(() => {
     if (currentPath.startsWith('/nav/')) {
       return currentPath.replace(/^\/nav\//, '').replace(/\/+$/, '');
     }
+    if (currentCategoryListButton) return currentCategoryListButton.id;
     return null;
-  }, [currentPath]);
+  }, [currentPath, currentCategoryListButton]);
 
   // Current nav button: matches by id or by url matching /nav/:buttonId
   const currentNavButton = useMemo(() => {
@@ -313,10 +354,16 @@ export default function App() {
       if (!publicDataLoaded) return false;
       return !currentCategoryButton || !currentCategoryActivity;
     }
+    if (currentCategoryListSlug) {
+      if (!publicDataLoaded) return false;
+      return !currentCategoryListButton;
+    }
     return true;
   }, [
     currentPath,
     publicDataLoaded,
+    currentCategoryListSlug,
+    currentCategoryListButton,
     currentNavButton,
     currentRouteActivity,
     currentCategoryActivitySegments,
@@ -328,6 +375,7 @@ export default function App() {
   useEffect(() => {
     if (currentChapterSlug && !currentChapter && !publicDataLoaded) return;
     if (currentNavButtonId && !currentNavButton && !publicDataLoaded) return;
+    if (currentCategoryListSlug && !currentCategoryListButton && !publicDataLoaded) return;
     if (currentRouteSlug && !currentRouteActivity && !publicDataLoaded) return;
     if (currentCategoryActivitySegments && !currentCategoryActivity && !publicDataLoaded) return;
 
@@ -417,7 +465,7 @@ export default function App() {
         };
       }
     } else if (!currentMeta && currentNavButton) {
-      customCanonicalUrl = `${SITE_ORIGIN}/nav/${currentNavButton.id}`;
+      customCanonicalUrl = `${SITE_ORIGIN}${getNavButtonPath(currentNavButton)}`;
       currentMeta = resolveNavButtonSeo(currentNavButton);
     } else if (!currentMeta && currentChapter) {
       const isOfficialChapter = CHAPTER_PATH_RE.test('/' + currentChapter.slug);
@@ -557,6 +605,8 @@ export default function App() {
     currentRouteActivity,
     currentRouteParentButton,
     currentNavButton,
+    currentCategoryListSlug,
+    currentCategoryListButton,
   ]);
 
   return (
@@ -667,7 +717,7 @@ export default function App() {
             activity={currentCategoryActivity}
             parentButton={currentCategoryButton}
             siblingActivities={currentCategorySiblingActivities}
-            onBack={() => navigate(`/nav/${currentCategoryButton.id}`)}
+            onBack={() => navigate(getNavButtonPath(currentCategoryButton))}
             onNavigateHome={() => navigate('/')}
           />
         )}
@@ -695,7 +745,9 @@ export default function App() {
             activity={currentRouteActivity}
             parentButton={currentRouteParentButton}
             onBack={() => {
-              if (currentRouteActivity.navButtonId) {
+              if (currentRouteParentButton) {
+                navigate(getNavButtonPath(currentRouteParentButton));
+              } else if (currentRouteActivity.navButtonId) {
                 navigate(`/nav/${currentRouteActivity.navButtonId}`);
               } else {
                 navigate('/');

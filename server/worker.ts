@@ -3,6 +3,8 @@ import { handleApiRequest } from './api-handler.js';
 import type { WorkerEnv } from './db-kv.js';
 import {
   getCategorySlug,
+  getNavButtonPath,
+  isPossibleNavListSlug,
   resolveActivitySeo,
   resolveNavButtonSeo,
   resolveNavButtonIntroParagraphs,
@@ -121,6 +123,21 @@ function formatLinkedMultilineHtml(text: string): string {
     .filter(Boolean)
     .map((p) => `<p>${p.split('\n').map(renderLine).join('<br>')}</p>`)
     .join('');
+}
+
+/** 依 /nav/:id 的 id（或後台存的 url）找出按鈕；與前台 App.tsx 的比對規則一致 */
+function findNavButtonByNavId<T extends { id: string; url?: string }>(
+  buttons: T[] | undefined,
+  buttonId: string,
+  normalizedPath: string
+): T | undefined {
+  return (buttons || []).find((b) => {
+    if (b.id === buttonId) return true;
+    if (b.url === normalizedPath) return true;
+    if (b.url === `/nav/${buttonId}`) return true;
+    const strippedUrl = (b.url || '').replace(/^\/nav\//, '').replace(/\/+$/, '');
+    return Boolean(strippedUrl && strippedUrl === buttonId);
+  });
 }
 
 const PAGE_TEXT_BUTTON_IDS: Record<string, string> = {
@@ -348,7 +365,7 @@ function buildActivityJsonLd(
         '@id': `${pageUrl}#breadcrumb`,
         itemListElement: [
           { '@type': 'ListItem', position: 1, name: '首頁', item: `${SITE_ORIGIN}/` },
-          { '@type': 'ListItem', position: 2, name: parentBtn.title, item: `${SITE_ORIGIN}/nav/${parentBtn.id}` },
+          { '@type': 'ListItem', position: 2, name: parentBtn.title, item: `${SITE_ORIGIN}${getNavButtonPath(parentBtn)}` },
           { '@type': 'ListItem', position: 3, name: headline, item: pageUrl },
         ],
       },
@@ -836,7 +853,7 @@ async function buildLlmsTxt(env: WorkerEnv): Promise<string> {
       const n = acts.filter((a) => a.navButtonId === b.id).length;
       const intro = oneLine(resolveNavButtonIntroParagraphs(b)[0] || '');
       const brief = intro ? `：${intro.length > 80 ? intro.slice(0, 79) + '…' : intro}` : '';
-      lines.push(`- [${b.title}](${SITE_ORIGIN}/nav/${b.id})（${n} 筆）${brief}`);
+      lines.push(`- [${b.title}](${SITE_ORIGIN}${getNavButtonPath(b)})（${n} 筆）${brief}`);
     }
     lines.push('');
   }
@@ -1052,7 +1069,7 @@ Sitemap: https://amazon-hike.com/sitemap.xml
             .pop();
           const lastmodTag = latestActUpdate ? `\n    <lastmod>${latestActUpdate}</lastmod>` : '';
           return `  <url>
-    <loc>https://amazon-hike.com/nav/${btn.id}</loc>${lastmodTag}
+    <loc>${SITE_ORIGIN}${getNavButtonPath(btn)}</loc>${lastmodTag}
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>`;
@@ -1131,6 +1148,36 @@ ${activityUrls}
         !pathname.startsWith('/api/')
       ) {
         return Response.redirect(`https://amazon-hike.com/${segs[0]}/${segs[1]}/${url.search}`, 301);
+      }
+
+      // 單層代稱網址沒帶結尾斜線（/traverse）-> 301 到 /traverse/（只在真的有對應按鈕時才轉）
+      if (segs.length === 1 && isPossibleNavListSlug(segs[0]) && !(`/${segs[0]}` in ROUTE_META_MAP)) {
+        try {
+          const db = await loadDatabaseWorker(env);
+          const listBtn = (db.navButtons || []).find((b) => b.enabled && getNavButtonPath(b) === `/${segs[0]}/`);
+          if (listBtn) {
+            return Response.redirect(`https://amazon-hike.com/${segs[0]}/${url.search}`, 301);
+          }
+        } catch (err) {
+          // 讀不到資料庫就交給後面的流程處理
+        }
+      }
+    }
+
+    // 2-1b. 舊的按鈕列表頁網址 /nav/:id（含結尾斜線）-> 301 轉到好看的 /代稱/
+    const legacyNavMatch = pathname.replace(/\/+$/, '').match(/^\/nav\/([^/]+)$/);
+    if (legacyNavMatch) {
+      try {
+        const db = await loadDatabaseWorker(env);
+        const legacyBtn = findNavButtonByNavId(db.navButtons, legacyNavMatch[1], `/nav/${legacyNavMatch[1]}`);
+        if (legacyBtn && legacyBtn.enabled) {
+          const prettyPath = getNavButtonPath(legacyBtn);
+          if (!prettyPath.startsWith('/nav/')) {
+            return Response.redirect(`https://amazon-hike.com${prettyPath}${url.search}`, 301);
+          }
+        }
+      } catch (err) {
+        // 讀不到資料庫就交給後面的流程處理
       }
     }
 
@@ -1326,6 +1373,24 @@ ${activityUrls}
         }
       }
 
+      // Dynamic single-segment category list route: /:categorySlug/（按鈕列表頁的好看網址）
+      let matchedListBtn: any = null;
+      if (!routeMeta && pathSegments.length === 1 && isPossibleNavListSlug(pathSegments[0])) {
+        try {
+          const db = await loadDatabaseWorker(env);
+          const listSlug = pathSegments[0].toLowerCase();
+          const listBtn = (db.navButtons || []).find(
+            (b) => b.enabled && getNavButtonPath(b) === `/${listSlug}/`
+          );
+          if (listBtn) {
+            matchedListBtn = listBtn;
+            routeMeta = resolveNavButtonSeo(listBtn);
+          }
+        } catch (err) {
+          console.error('Error resolving category list metadata:', err);
+        }
+      }
+
       // 3-1. 首頁 (/) 或 /index.html：套用首頁專屬 SEO Meta
       if (isRoot && routeMeta) {
         const indexRequest = new Request(new URL('/', request.url), request);
@@ -1361,6 +1426,7 @@ ${activityUrls}
 
       if (routeMeta && indexResponse.ok) {
         const isTrailingSlashRoute =
+          Boolean(matchedListBtn) ||
           CHAPTER_SLUG_RE.test(normalizedPath.slice(1).toLowerCase()) ||
           (pathSegments.length === 2 &&
             !isCategoryActivityNotFound &&
@@ -1387,18 +1453,20 @@ ${activityUrls}
           } catch (e) {
             rootHtml = buildSectionShellHtml(routeMeta.title, routeMeta.description);
           }
-        } else if (normalizedPath.startsWith('/nav/') && !isNavNotFound) {
+        } else if ((normalizedPath.startsWith('/nav/') && !isNavNotFound) || matchedListBtn) {
           const buttonId = normalizedPath.replace(/^\/nav\//, '');
           try {
             const db = await loadDatabaseWorker(env);
-            const btn = (db.navButtons || []).find((b) => {
-              if (b.id === buttonId) return true;
-              if (b.url === normalizedPath) return true;
-              if (b.url === `/nav/${buttonId}`) return true;
-              const strippedUrl = (b.url || '').replace(/^\/nav\//, '').replace(/\/+$/, '');
-              if (strippedUrl && strippedUrl === buttonId) return true;
-              return false;
-            });
+            const btn =
+              matchedListBtn ||
+              (db.navButtons || []).find((b) => {
+                if (b.id === buttonId) return true;
+                if (b.url === normalizedPath) return true;
+                if (b.url === `/nav/${buttonId}`) return true;
+                const strippedUrl = (b.url || '').replace(/^\/nav\//, '').replace(/\/+$/, '');
+                if (strippedUrl && strippedUrl === buttonId) return true;
+                return false;
+              });
             const acts = btn
               ? (db.navButtonActivities || []).filter((a) => a.navButtonId === btn.id && a.enabled)
               : [];

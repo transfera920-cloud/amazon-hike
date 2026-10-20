@@ -24,6 +24,7 @@ import type {
 import {
   RESERVED_SLUGS,
   getCategorySlug,
+  getNavButtonPath,
   isFormalChapterSlug,
   processBatchImportActivities,
   findPageNavButton,
@@ -977,7 +978,7 @@ app.get('/sitemap.xml', (req: Request, res: Response) => {
   const navUrls = navButtonsWithActivities
     .map(
       (btn) => `  <url>
-    <loc>https://amazon-hike.com/nav/${btn.id}</loc>
+    <loc>https://amazon-hike.com${getNavButtonPath(btn)}</loc>
     <lastmod>${now}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>

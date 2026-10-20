@@ -57,6 +57,34 @@ export function getCategorySlug(navButton: { id: string; title: string; category
 }
 
 /**
+ * 按鈕「列表頁」的網址（單一層，例如 /traverse/）。
+ * - 有代稱（手動填的 categorySlug，或標題自動轉出的英數字）→ /代稱/
+ * - 沒有代稱（只能退回按鈕 id）、或代稱與系統路徑衝突 → 維持舊的 /nav/按鈕id
+ * 前台連結、canonical、sitemap、舊網址 301 轉址全部用這個函式，才會一致。
+ */
+export function getNavButtonPath(navButton: { id: string; title: string; categorySlug?: string }): string {
+  const slug = getCategorySlug(navButton);
+  if (
+    !slug ||
+    slug === String(navButton.id || '').toLowerCase() ||
+    RESERVED_SLUGS.has(slug) ||
+    /^tool\d+$/.test(slug) ||
+    !/^[a-z0-9][a-z0-9_-]*$/.test(slug)
+  ) {
+    return `/nav/${navButton.id}`;
+  }
+  return `/${slug}/`;
+}
+
+/** 單一層網址（/xxx）是否有可能是按鈕列表頁；系統路徑、檔案（含 .）、toolNN 一律排除 */
+export function isPossibleNavListSlug(seg: string): boolean {
+  const s = (seg || '').toLowerCase();
+  if (!/^[a-z0-9][a-z0-9_-]*$/.test(s)) return false;
+  if (RESERVED_SLUGS.has(s) || CHAPTER_SLUG_RE.test(s) || /^tool\d+$/.test(s)) return false;
+  return true;
+}
+
+/**
  * Resolves SEO title, meta description, and social share image for an activity.
  */
 export function resolveActivitySeo(

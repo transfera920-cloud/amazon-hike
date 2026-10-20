@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronDown, ChevronRight, Mail, Phone, ExternalLink, ShieldCheck, Menu, X } from 'lucide-react';
 import { normalizeUrl } from '../utils/url.js';
-import { getCategorySlug, isOnMobileBar } from '../utils/activitySeo.js';
+import { getCategorySlug, getNavButtonPath, isOnMobileBar } from '../utils/activitySeo.js';
 import type { NavButtonItem, NavButtonActivity } from '../types.js';
 
 interface HeaderProps {
@@ -22,7 +22,7 @@ function checkButtonActive(
   if (!hasEnabledActivities) {
     return Boolean(btn.url) && currentPath === btn.url;
   }
-  if (currentPath.startsWith(`/nav/${btn.id}`) || currentPath === buttonNavPath) {
+  if (currentPath.startsWith(`/nav/${btn.id}`) || currentPath === buttonNavPath.replace(/\/+$/, '')) {
     return true;
   }
   // Check two-segment path /{categorySlug}/{activitySlug}/
@@ -155,7 +155,7 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyU
         </a>
       );
     }
-    const buttonNavPath = btn.url && btn.url.startsWith('/nav/') ? btn.url : `/nav/${btn.id}`;
+    const buttonNavPath = getNavButtonPath(btn);
     const targetUrl = hasEnabledActivities ? buttonNavPath : (btn.url || buttonNavPath);
     const isActive = checkButtonActive(btn, currentPath, buttonNavPath, hasEnabledActivities, navButtonActivities);
     return (
@@ -349,7 +349,7 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyU
                 );
               }
 
-              const buttonNavPath = btn.url && btn.url.startsWith('/nav/') ? btn.url : `/nav/${btn.id}`;
+              const buttonNavPath = getNavButtonPath(btn);
               const targetUrl = hasEnabledActivities ? buttonNavPath : (btn.url || buttonNavPath);
               const isActive = checkButtonActive(btn, currentPath, buttonNavPath, hasEnabledActivities, navButtonActivities);
 
@@ -430,7 +430,7 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyU
                   );
                 }
 
-                const buttonNavPath = btn.url && btn.url.startsWith('/nav/') ? btn.url : `/nav/${btn.id}`;
+                const buttonNavPath = getNavButtonPath(btn);
                 const targetUrl = hasEnabledActivities ? buttonNavPath : (btn.url || buttonNavPath);
                 const isActive = checkButtonActive(btn, currentPath, buttonNavPath, hasEnabledActivities, navButtonActivities);
 
@@ -492,7 +492,7 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyU
                   );
                 }
 
-                const buttonNavPath = btn.url && btn.url.startsWith('/nav/') ? btn.url : `/nav/${btn.id}`;
+                const buttonNavPath = getNavButtonPath(btn);
                 const targetUrl = hasEnabledActivities ? buttonNavPath : (btn.url || buttonNavPath);
                 const isActive = checkButtonActive(btn, currentPath, buttonNavPath, hasEnabledActivities, navButtonActivities);
 

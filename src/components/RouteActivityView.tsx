@@ -12,6 +12,7 @@ import {
 import type { NavButtonItem, NavButtonActivity } from '../types.js';
 import { getYouTubeVideoId, normalizeUrl } from '../utils/url.js';
 import { findTransferLink } from '../utils/transferLinks.js';
+import { getNavButtonPath } from '../utils/activitySeo.js';
 
 interface RouteActivityViewProps {
   activity: NavButtonActivity;
@@ -122,7 +123,7 @@ export const RouteActivityView: React.FC<RouteActivityViewProps> = ({
           <span>/</span>
           {parentButton ? (
             <a
-              href={parentButton.url && parentButton.url.startsWith('/nav/') ? parentButton.url : `/nav/${parentButton.id}`}
+              href={getNavButtonPath(parentButton)}
               onClick={(e) => go(e, onBack)}
               className="hover:text-emerald-400 transition-colors"
             >

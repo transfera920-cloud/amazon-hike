@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ArrowLeft,
   Compass,
@@ -27,6 +27,26 @@ export const RouteActivityView: React.FC<RouteActivityViewProps> = ({
   onBack,
   onNavigateHome,
 }) => {
+  // 手機內建瀏覽器（LINE / Facebook / Instagram / 微信等）常禁止檔案下載，偵測後提示改用外部瀏覽器
+  const [showInAppHint, setShowInAppHint] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const isInAppBrowser = () =>
+    typeof navigator !== 'undefined' &&
+    /Line\/|FBAN|FBAV|FB_IAB|Instagram|MicroMessenger|Messenger/i.test(navigator.userAgent || '');
+  const handleGpxClick = () => {
+    if (isInAppBrowser()) setShowInAppHint(true);
+  };
+  const copyGpxLink = async () => {
+    try {
+      const href = new URL(activity.gpxUrl!.trim(), window.location.origin).href;
+      await navigator.clipboard.writeText(href);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2500);
+    } catch {
+      /* 複製失敗時忽略，使用者仍可長按連結 */
+    }
+  };
+
   const go = (e: React.MouseEvent<HTMLAnchorElement>, fn: () => void) => {
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
     e.preventDefault();
@@ -185,11 +205,28 @@ export const RouteActivityView: React.FC<RouteActivityViewProps> = ({
             <a
               href={activity.gpxUrl.trim()}
               download={activity.gpxFileName || undefined}
+              rel="noopener"
+              onClick={handleGpxClick}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold transition-colors"
             >
               <Download size={16} />
               <span>下載 GPX 航跡檔</span>
             </a>
+            {showInAppHint && (
+              <div className="mt-3 rounded-lg border border-amber-700/60 bg-amber-950/40 p-3 text-xs text-amber-200 leading-relaxed">
+                <p>
+                  偵測到您正在使用 App 內建瀏覽器（如 LINE、Facebook、Instagram），這類瀏覽器常會阻擋檔案下載。
+                  若沒有開始下載，請點右上角選單改用「Safari」或「Chrome」開啟本頁，或複製下載連結後貼到外部瀏覽器。
+                </p>
+                <button
+                  type="button"
+                  onClick={copyGpxLink}
+                  className="mt-2 inline-flex items-center px-2.5 py-1 rounded bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-amber-100 font-medium"
+                >
+                  {linkCopied ? '已複製下載連結' : '複製下載連結'}
+                </button>
+              </div>
+            )}
             <p className="mt-2 text-xs text-neutral-500 leading-relaxed">
               航跡僅供行程規劃與離線導航參考，實際路況、路跡與管制請以官方公告及現地狀況為準。
             </p>

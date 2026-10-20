@@ -171,15 +171,23 @@ export async function handleApiRequest(
       const rawName =
         (result.metadata && typeof result.metadata.fileName === 'string' && result.metadata.fileName) ||
         `${gpxId}.gpx`;
-      const asciiName = rawName.replace(/[^A-Za-z0-9._-]/g, '_') || 'route.gpx';
+      let asciiName = rawName.replace(/[^A-Za-z0-9._-]/g, '_');
+      // 檔名若幾乎全為中文，備用 ASCII 檔名改用 route.gpx，避免出現 ____.gpx
+      if (!/[A-Za-z0-9]/.test(asciiName.replace(/\.gpx$/i, ''))) asciiName = 'route.gpx';
+      // 手機相容性：
+      // 1. 使用 application/octet-stream，避免 iOS / Android 瀏覽器因不認得 application/gpx+xml 而嘗試預覽或擋下載
+      // 2. 不再使用 CSP sandbox（未帶 allow-downloads 時，部分手機瀏覽器會阻擋下載）
+      // 3. 附上 Content-Length，讓手機瀏覽器能正確顯示下載進度
+      const byteLength = (result.value as ArrayBuffer).byteLength;
       return new Response(method === 'HEAD' ? null : result.value, {
         status: 200,
         headers: {
-          'Content-Type': 'application/gpx+xml; charset=utf-8',
+          'Content-Type': 'application/octet-stream',
+          'Content-Length': String(byteLength),
           'Content-Disposition': `attachment; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(rawName)}`,
           'Cache-Control': 'public, max-age=31536000, immutable',
           'X-Content-Type-Options': 'nosniff',
-          'Content-Security-Policy': "sandbox; default-src 'none'",
+          'Content-Security-Policy': "default-src 'none'",
           'Access-Control-Allow-Origin': '*',
         },
       });

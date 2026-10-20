@@ -51,13 +51,18 @@ function checkButtonActive(
 export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyUrl, navButtons, navButtonActivities }) => {
   const [contactOpen, setContactOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const contactRef = useRef<HTMLDivElement>(null);
+  const moreRef = useRef<HTMLDivElement>(null);
 
   // Close contact dropdown on click outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (contactRef.current && !contactRef.current.contains(event.target as Node)) {
         setContactOpen(false);
+      }
+      if (moreRef.current && !moreRef.current.contains(event.target as Node)) {
+        setMoreOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -82,13 +87,14 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyU
     e.preventDefault();
     setMobileMenuOpen(false);
     setContactOpen(false);
+    setMoreOpen(false);
     onNavigate(path);
   };
 
-  // Process and sort enabled navigation buttons
-  const displayButtons: NavButtonItem[] = (
+  // Process and sort enabled navigation buttons（allButtons = 全部啟用的按鈕）
+  const allButtons: NavButtonItem[] = (
     navButtons && navButtons.length > 0
-      ? navButtons.filter((b) => b.enabled && !b.hideFromNav)
+      ? navButtons.filter((b) => b.enabled)
       : [
           { id: 'btn_calendar', title: '活動行事曆', url: '/', isExternal: false, sortOrder: 1, enabled: true },
           { id: 'btn_recent', title: '近期活動', url: 'https://amazon-trail.ai.studio/activity/', isExternal: true, sortOrder: 2, enabled: true },
@@ -100,6 +106,53 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyU
           { id: 'btn_routes', title: '行程總表', url: 'https://amazon-data.ai.studio/routes', isExternal: true, sortOrder: 8, enabled: true },
         ]
   ).sort((a, b) => a.sortOrder - b.sortOrder);
+
+  // 頂端按鈕列（電腦版按鈕列、手機快捷列）不畫出「不顯示在頂端按鈕列」的按鈕；
+  // 這些按鈕改放在電腦版的「更多」選單與手機版右上角「選單」裡。
+  const displayButtons: NavButtonItem[] = allButtons.filter((b) => !b.hideFromNav);
+  const hiddenButtons: NavButtonItem[] = allButtons.filter((b) => b.hideFromNav);
+
+  // 「更多」選單中的單一項目
+  const renderMoreItem = (btn: NavButtonItem) => {
+    const hasEnabledActivities = (navButtonActivities || []).some(
+      (a) => a.navButtonId === btn.id && a.enabled === true
+    );
+    const hasExternalUrl = Boolean(
+      btn.url && (btn.url.startsWith('http://') || btn.url.startsWith('https://'))
+    );
+    const effectiveIsExternal = hasEnabledActivities ? false : Boolean(btn.isExternal || hasExternalUrl);
+    if (effectiveIsExternal) {
+      return (
+        <a
+          key={btn.id}
+          href={normalizeUrl(btn.url)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center justify-between gap-2 px-4 py-2.5 text-left text-neutral-100 hover:bg-neutral-800 whitespace-nowrap text-base font-bold"
+          onClick={() => setMoreOpen(false)}
+        >
+          <span>{btn.title}</span>
+          <ExternalLink size={14} className="text-neutral-400 shrink-0" />
+        </a>
+      );
+    }
+    const buttonNavPath = btn.url && btn.url.startsWith('/nav/') ? btn.url : `/nav/${btn.id}`;
+    const targetUrl = hasEnabledActivities ? buttonNavPath : (btn.url || buttonNavPath);
+    const isActive = checkButtonActive(btn, currentPath, buttonNavPath, hasEnabledActivities, navButtonActivities);
+    return (
+      <a
+        key={btn.id}
+        href={targetUrl}
+        onClick={(e) => handleInternalLinkClick(e, targetUrl)}
+        aria-current={isActive ? 'page' : undefined}
+        className={`block px-4 py-2.5 text-left whitespace-nowrap text-base font-bold ${
+          isActive ? 'bg-neutral-800 text-emerald-400' : 'text-neutral-100 hover:bg-neutral-800'
+        }`}
+      >
+        {btn.title}
+      </a>
+    );
+  };
 
   // 手機版按鈕列：依後台設定（沒設定時取前 5 個），順序跟著按鈕排序
   const mobileBarButtons = displayButtons.filter((b) => isOnMobileBar(b, displayButtons));
@@ -298,6 +351,28 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyU
                 </a>
               );
             })}
+
+            {/* 電腦版：被設為「不顯示在頂端按鈕列」的按鈕，收進「更多」選單 */}
+            {hiddenButtons.length > 0 && (
+              <div className="relative shrink-0" ref={moreRef}>
+                <button
+                  type="button"
+                  onClick={() => setMoreOpen((o) => !o)}
+                  aria-expanded={moreOpen}
+                  aria-haspopup="true"
+                  id="nav-more-btn"
+                  className="flex items-center justify-center gap-1 px-2 lg:px-3.5 py-2.5 rounded-md text-neutral-200 hover:bg-neutral-800/80 hover:text-white transition-all whitespace-nowrap text-[15px] lg:text-base font-bold"
+                >
+                  <span>更多</span>
+                  <ChevronDown size={16} className={`transition-transform ${moreOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {moreOpen && (
+                  <div className="absolute right-0 top-full mt-1 min-w-[12rem] rounded-md border border-neutral-800 bg-neutral-900 shadow-lg z-50 py-1">
+                    {hiddenButtons.map((btn) => renderMoreItem(btn))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* 手機版：標題下方的快速按鈕列（可左右滑動；顯示哪些由後台「前台導覽按鈕」決定） */}
@@ -360,7 +435,7 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyU
           {/* Mobile Collapsible Navigation Menu */}
           {mobileMenuOpen && (
             <div className="md:hidden py-3 space-y-1.5 border-t border-neutral-800 text-base font-bold" id="mobile-nav-panel">
-              {displayButtons.map((btn, idx) => {
+              {allButtons.map((btn, idx) => {
                 const hasEnabledActivities = (navButtonActivities || []).some(
                   (a) => a.navButtonId === btn.id && a.enabled === true
                 );

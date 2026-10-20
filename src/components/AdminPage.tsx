@@ -2824,10 +2824,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                       }
                       className="accent-emerald-500"
                     />
-                    <span>不顯示在頂端按鈕列（電腦版與手機版都不顯示）</span>
+                    <span>不顯示在頂端按鈕列（改放進選單）</span>
                   </label>
                   <p className="text-[11px] text-neutral-400">
-                    勾選後，這個按鈕不會出現在網站頂端，但「啟用顯示在前台」請保持勾選：頁面、上文／下文、SEO 標題與描述、行程頁和 sitemap 都照常運作，也可以用內文超連結進入。要完全下架這個專區，才取消「啟用顯示在前台」。
+                    勾選後，這個按鈕不會出現在網站頂端的按鈕列（電腦版與手機快捷列都不顯示），改放在電腦版按鈕列最右邊的「更多」選單，以及手機版右上角的「選單」裡。「啟用顯示在前台」請保持勾選：頁面、上文／下文、SEO 標題與描述、行程頁和 sitemap 都照常運作。要完全下架這個專區，才取消「啟用顯示在前台」。
                   </p>
                 </div>
 

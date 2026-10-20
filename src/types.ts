@@ -67,7 +67,7 @@ export interface NavButtonItem {
   enabled: boolean;
   sortOrder: number;
   categorySlug?: string; // 新增：作為 /分類/活動/ 網址中的分類代稱，留空則由系統自動推導
-  hideFromNav?: boolean; // 不顯示在頂端按鈕列（電腦版與手機版都不畫出按鈕）；按鈕仍啟用，頁面、上文／下文、SEO 設定與連結照常運作
+  hideFromNav?: boolean; // 不顯示在頂端按鈕列（電腦版按鈕列、手機快捷列不畫出）；改放電腦版「更多」選單與手機右上角「選單」。按鈕仍啟用，頁面、上文／下文、SEO 設定與連結照常運作
   mobileBar?: boolean; // 手機版是否直接顯示在標題下方的按鈕列（未設定時：依排序取前 5 個啟用的按鈕）
   introContent?: string; // 列表頁導讀內容（空白行分段；選填）
   footerContent?: string; // 列表頁下方說明（顯示在列表下方，空白行分段；選填）

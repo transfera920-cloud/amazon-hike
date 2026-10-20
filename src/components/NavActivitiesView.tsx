@@ -12,6 +12,7 @@ import {
   BookOpen,
 } from 'lucide-react';
 import { normalizeUrl } from '../utils/url.js';
+import { renderLinkedText } from './PageTextBlock.js';
 import {
   getCategorySlug,
   isPeakTableButton,
@@ -231,7 +232,7 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
           (customIntro.length > 0 ? (
             <div className="mt-2 space-y-2 text-sm text-neutral-300 leading-relaxed">
               {customIntro.map((p, idx) => (
-                <p key={idx} className="whitespace-pre-line">{p}</p>
+                <p key={idx} className="whitespace-pre-line">{renderLinkedText(p)}</p>
               ))}
             </div>
           ) : (
@@ -626,7 +627,7 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
           className="mt-10 border-t border-neutral-800 pt-6 space-y-3 text-sm text-neutral-300 leading-relaxed"
         >
           {footerParagraphs.map((p, idx) => (
-            <p key={idx} className="whitespace-pre-line">{p}</p>
+            <p key={idx} className="whitespace-pre-line">{renderLinkedText(p)}</p>
           ))}
         </section>
       )}

@@ -21,29 +21,50 @@ interface RouteActivityViewProps {
   onNavigateHome: () => void;
 }
 
+// 偵測是否在 LINE / Facebook / Instagram / 微信等 App 內建瀏覽器中開啟（這類瀏覽器常禁止檔案下載）
+const detectInAppBrowser = (): boolean =>
+  typeof navigator !== 'undefined' &&
+  /Line\/|FBAN|FBAV|FB_IAB|Instagram|MicroMessenger|Messenger/i.test(navigator.userAgent || '');
+
 export const RouteActivityView: React.FC<RouteActivityViewProps> = ({
   activity,
   parentButton,
   onBack,
   onNavigateHome,
 }) => {
-  // 手機內建瀏覽器（LINE / Facebook / Instagram / 微信等）常禁止檔案下載，偵測後提示改用外部瀏覽器
-  const [showInAppHint, setShowInAppHint] = useState(false);
+  // 在內建瀏覽器開啟時，進頁面就直接顯示提示與「用 Chrome 開啟」按鈕
+  const [showInAppHint] = useState<boolean>(detectInAppBrowser);
   const [linkCopied, setLinkCopied] = useState(false);
-  const isInAppBrowser = () =>
-    typeof navigator !== 'undefined' &&
-    /Line\/|FBAN|FBAV|FB_IAB|Instagram|MicroMessenger|Messenger/i.test(navigator.userAgent || '');
-  const handleGpxClick = () => {
-    if (isInAppBrowser()) setShowInAppHint(true);
+
+  const getAbsoluteGpxUrl = () => new URL(activity.gpxUrl!.trim(), window.location.origin);
+
+  // 嘗試直接用 Chrome 開啟 GPX 下載網址（Android 用 intent、iPhone 用 googlechromes://）
+  const openInChrome = () => {
+    try {
+      const u = getAbsoluteGpxUrl();
+      const ua = navigator.userAgent || '';
+      const rest = `${u.host}${u.pathname}${u.search}`;
+      if (/Android/i.test(ua)) {
+        window.location.href =
+          `intent://${rest}#Intent;scheme=https;package=com.android.chrome;` +
+          `S.browser_fallback_url=${encodeURIComponent(u.href)};end`;
+      } else if (/iPhone|iPad|iPod/i.test(ua)) {
+        window.location.href = `googlechromes://${rest}`;
+      } else {
+        window.open(u.href, '_blank', 'noopener');
+      }
+    } catch {
+      /* 失敗時使用者仍可使用複製連結 */
+    }
   };
+
   const copyGpxLink = async () => {
     try {
-      const href = new URL(activity.gpxUrl!.trim(), window.location.origin).href;
-      await navigator.clipboard.writeText(href);
+      await navigator.clipboard.writeText(getAbsoluteGpxUrl().href);
       setLinkCopied(true);
       setTimeout(() => setLinkCopied(false), 2500);
     } catch {
-      /* 複製失敗時忽略，使用者仍可長按連結 */
+      /* 複製失敗時忽略 */
     }
   };
 
@@ -206,7 +227,6 @@ export const RouteActivityView: React.FC<RouteActivityViewProps> = ({
               href={activity.gpxUrl.trim()}
               download={activity.gpxFileName || undefined}
               rel="noopener"
-              onClick={handleGpxClick}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold transition-colors"
             >
               <Download size={16} />
@@ -216,15 +236,28 @@ export const RouteActivityView: React.FC<RouteActivityViewProps> = ({
               <div className="mt-3 rounded-lg border border-amber-700/60 bg-amber-950/40 p-3 text-xs text-amber-200 leading-relaxed">
                 <p>
                   您目前是在 LINE、Facebook、Instagram 等 App 裡面開啟本頁，這類 App 常常無法下載檔案。
-                  請點右上角選單，選「用 Chrome 開啟」或「在瀏覽器中開啟」；也可以先按下方「複製下載連結」，再打開 Chrome（Google 瀏覽器）貼上網址即可下載。
+                  請按下方按鈕，改用 Chrome（Google 瀏覽器）開啟並下載：
                 </p>
-                <button
-                  type="button"
-                  onClick={copyGpxLink}
-                  className="mt-2 inline-flex items-center px-2.5 py-1 rounded bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-amber-100 font-medium"
-                >
-                  {linkCopied ? '已複製下載連結' : '複製下載連結'}
-                </button>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={openInChrome}
+                    className="inline-flex items-center px-3 py-1.5 rounded bg-amber-600 hover:bg-amber-500 text-white font-semibold"
+                  >
+                    用 Chrome 開啟並下載
+                  </button>
+                  <button
+                    type="button"
+                    onClick={copyGpxLink}
+                    className="inline-flex items-center px-3 py-1.5 rounded bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-amber-100 font-medium"
+                  >
+                    {linkCopied ? '已複製下載連結' : '複製下載連結'}
+                  </button>
+                </div>
+                <p className="mt-2 text-amber-300/80">
+                  若按了沒有跳轉，請點右上角選單，選「用 Chrome 開啟」或「在瀏覽器中開啟」；
+                  或先複製下載連結，再打開 Chrome 貼到網址列。
+                </p>
               </div>
             )}
             <p className="mt-2 text-xs text-neutral-500 leading-relaxed">

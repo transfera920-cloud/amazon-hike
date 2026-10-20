@@ -215,8 +215,8 @@ export const RouteActivityView: React.FC<RouteActivityViewProps> = ({
             {showInAppHint && (
               <div className="mt-3 rounded-lg border border-amber-700/60 bg-amber-950/40 p-3 text-xs text-amber-200 leading-relaxed">
                 <p>
-                  偵測到您正在使用 App 內建瀏覽器（如 LINE、Facebook、Instagram），這類瀏覽器常會阻擋檔案下載。
-                  若沒有開始下載，請點右上角選單改用「Safari」或「Chrome」開啟本頁，或複製下載連結後貼到外部瀏覽器。
+                  您目前是在 LINE、Facebook、Instagram 等 App 裡面開啟本頁，這類 App 常常無法下載檔案。
+                  請點右上角選單，選「用 Chrome 開啟」或「在瀏覽器中開啟」；也可以先按下方「複製下載連結」，再打開 Chrome（Google 瀏覽器）貼上網址即可下載。
                 </p>
                 <button
                   type="button"

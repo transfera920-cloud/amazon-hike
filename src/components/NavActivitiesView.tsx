@@ -105,6 +105,40 @@ function parsePeakTitle(activity: NavButtonActivity): PeakRow {
   };
 }
 
+/* ------------------------------------------------------------------ *
+ * 依難度分組（易／中等／難）：標題含下列關鍵字的按鈕才啟用，改這裡即可調整
+ * 難度讀取後台行程的「難度等級」欄位，寫「易」「中等」「難」或常見同義字都會歸類
+ * ------------------------------------------------------------------ */
+const DIFFICULTY_GROUPED_TITLE_KEYWORDS = ['經典路線', '縱走', '連峰', '組合'];
+const DIFFICULTY_LEVELS = [
+  { level: '易', badge: 'border-emerald-500 bg-emerald-950 text-emerald-300' },
+  { level: '中等', badge: 'border-amber-500 bg-amber-950 text-amber-300' },
+  { level: '難', badge: 'border-rose-500 bg-rose-950 text-rose-300' },
+  { level: '未分級', badge: 'border-neutral-600 bg-neutral-900 text-neutral-300' },
+];
+
+function isDifficultyGroupedButton(button: NavButtonItem): boolean {
+  return DIFFICULTY_GROUPED_TITLE_KEYWORDS.some((k) => (button.title || '').includes(k));
+}
+
+function normalizeDifficulty(raw?: string): string {
+  const t = (raw || '').trim();
+  if (!t) return '未分級';
+  if (/中/.test(t)) return '中等'; // 中等、中級、中高
+  if (/難|進階|高/.test(t)) return '難'; // 難、高難度、進階
+  if (/易|入門|新手|簡單|初/.test(t)) return '易';
+  return '未分級';
+}
+
+function groupActivitiesByDifficulty(activities: NavButtonActivity[]) {
+  const groups = DIFFICULTY_LEVELS.map((d) => ({ ...d, items: [] as NavButtonActivity[] }));
+  for (const a of activities) {
+    const lv = normalizeDifficulty(a.itinerary?.difficulty);
+    groups.find((g) => g.level === lv)!.items.push(a); // 同組內維持後台排序
+  }
+  return groups.filter((g) => g.items.length > 0);
+}
+
 type SortKey = 'no' | 'elevation';
 type SortDir = 'asc' | 'desc';
 
@@ -202,7 +236,77 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
     [button.footerContent]
   );
 
+  // 「經典路線」類按鈕：依難度（易／中等／難）分組顯示；難度讀取行程的「難度等級」欄位
+  const difficultyGroups = useMemo(
+    () => (isDifficultyGroupedButton(button) ? groupActivitiesByDifficulty(activities) : null),
+    [button, activities]
+  );
+
   const detailHref = (slug: string) => `/${getCategorySlug(button)}/${slug}/`;
+
+  const renderCard = (activity: NavButtonActivity) => {
+      const hasContent = Boolean((activity.content || '').trim());
+      return (
+        <article
+          key={activity.id}
+          className="group p-3 sm:p-4 rounded-lg border border-neutral-800 bg-neutral-900/60 hover:border-neutral-700 hover:bg-neutral-900 transition-all flex flex-row items-center justify-between gap-3"
+        >
+          <div className="space-y-1 flex-1 min-w-0">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h2 className="text-base sm:text-xl font-bold text-neutral-100">
+                {onSelectActivity ? (
+                  <a
+                    href={`/${getCategorySlug(button)}/${activity.slug}/`}
+                    onClick={(e) => {
+                      if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+                      e.preventDefault();
+                      onSelectActivity(activity.slug);
+                    }}
+                    className={`inline-flex items-center gap-1 transition-colors text-left ${
+                      hasContent
+                        ? 'underline decoration-neutral-600 underline-offset-4 hover:decoration-emerald-400 hover:text-emerald-400'
+                        : 'hover:text-emerald-400'
+                    }`}
+                    title="查看活動詳細資訊"
+                  >
+                    <span>{activity.title}</span>
+                    {hasContent && (
+                      <ChevronRight
+                        size={16}
+                        className="text-neutral-500 group-hover:text-emerald-400 transition-colors shrink-0"
+                      />
+                    )}
+                  </a>
+                ) : (
+                  activity.title
+                )}
+              </h2>
+            </div>
+
+            {activity.description && (
+              <p className="text-sm text-neutral-300 leading-relaxed line-clamp-3">
+                {activity.description}
+              </p>
+            )}
+          </div>
+
+          {activity.externalUrl && (
+            <div className="flex items-center gap-2.5 shrink-0">
+              <a
+                href={normalizeUrl(activity.externalUrl)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-semibold transition-colors shadow-sm whitespace-nowrap"
+              >
+                <span>查看行程</span>
+                <ExternalLink size={14} className="text-emerald-200" />
+              </a>
+            </div>
+          )}
+        </article>
+      );
+  };
+
 
   return (
     <main
@@ -590,70 +694,20 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
       ) : (
         <>
       {activities.length > 0 ? (
-        <div className="space-y-2.5 sm:space-y-3">
-          {activities.map((activity) => {
-            const hasContent = Boolean((activity.content || '').trim());
-            return (
-              <article
-                key={activity.id}
-                className="group p-3 sm:p-4 rounded-lg border border-neutral-800 bg-neutral-900/60 hover:border-neutral-700 hover:bg-neutral-900 transition-all flex flex-row items-center justify-between gap-3"
-              >
-                <div className="space-y-1 flex-1 min-w-0">
-                  <div className="flex items-center gap-2.5 flex-wrap">
-                    <h2 className="text-base sm:text-xl font-bold text-neutral-100">
-                      {onSelectActivity ? (
-                        <a
-                          href={`/${getCategorySlug(button)}/${activity.slug}/`}
-                          onClick={(e) => {
-                            if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
-                            e.preventDefault();
-                            onSelectActivity(activity.slug);
-                          }}
-                          className={`inline-flex items-center gap-1 transition-colors text-left ${
-                            hasContent
-                              ? 'underline decoration-neutral-600 underline-offset-4 hover:decoration-emerald-400 hover:text-emerald-400'
-                              : 'hover:text-emerald-400'
-                          }`}
-                          title="查看活動詳細資訊"
-                        >
-                          <span>{activity.title}</span>
-                          {hasContent && (
-                            <ChevronRight
-                              size={16}
-                              className="text-neutral-500 group-hover:text-emerald-400 transition-colors shrink-0"
-                            />
-                          )}
-                        </a>
-                      ) : (
-                        activity.title
-                      )}
-                    </h2>
-                  </div>
-
-                  {activity.description && (
-                    <p className="text-sm text-neutral-300 leading-relaxed line-clamp-3">
-                      {activity.description}
-                    </p>
-                  )}
-                </div>
-
-                {activity.externalUrl && (
-                  <div className="flex items-center gap-2.5 shrink-0">
-                    <a
-                      href={normalizeUrl(activity.externalUrl)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-semibold transition-colors shadow-sm whitespace-nowrap"
-                    >
-                      <span>查看行程</span>
-                      <ExternalLink size={14} className="text-emerald-200" />
-                    </a>
-                  </div>
-                )}
-              </article>
-            );
-          })}
-        </div>
+        difficultyGroups ? (
+          <div className="space-y-8 sm:space-y-10">
+            {difficultyGroups.map((g) => (
+              <section key={g.level} aria-label={`難度：${g.level}`}>
+                <h2 className={`inline-flex items-center mb-3 px-3.5 py-1 rounded-full border text-base sm:text-lg font-extrabold ${g.badge}`}>
+                  {g.level}
+                </h2>
+                <div className="space-y-2.5 sm:space-y-3">{g.items.map(renderCard)}</div>
+              </section>
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-2.5 sm:space-y-3">{activities.map(renderCard)}</div>
+        )
       ) : (
         <div className="py-16 text-center border border-dashed border-neutral-800 rounded-lg bg-neutral-900/30">
           <p className="text-neutral-400 text-sm mb-4">目前此專區尚無發布中的活動行程。</p>

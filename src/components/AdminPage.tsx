@@ -101,6 +101,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
   const [batchImportButtonId, setBatchImportButtonId] = useState<string | null>(null);
   const [batchImportJsonText, setBatchImportJsonText] = useState('');
   const [peakPickInput, setPeakPickInput] = useState('');
+  const [peakLinkTemplate, setPeakLinkTemplate] = useState('');
   const [peakPickUnmatched, setPeakPickUnmatched] = useState<string[]>([]);
   const [peakPickSelectedNames, setPeakPickSelectedNames] = useState<string[]>([]);
   const [batchImportItems, setBatchImportItems] = useState<any[] | null>(null);
@@ -605,7 +606,19 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
       setBatchImportParseError('沒有挑到任何百岳，請檢查輸入的編號、山名或群組');
       return;
     }
-    const text = JSON.stringify({ peaks: selected }, null, 2);
+    // 連結網址規則（選填）：{no}=編號、{no3}=三位數編號、{elevation}=標高、{slug}=系統代稱
+    const tpl = peakLinkTemplate.trim();
+    const withLinks = tpl
+      ? selected.map((p: any) => ({
+          ...p,
+          externalUrl: tpl
+            .replace(/\{no3\}/g, String(p.no).padStart(3, '0'))
+            .replace(/\{no\}/g, String(p.no))
+            .replace(/\{elevation\}/g, String(p.elevation ?? ''))
+            .replace(/\{slug\}/g, String(p.slug ?? '')),
+        }))
+      : selected;
+    const text = JSON.stringify({ peaks: withLinks }, null, 2);
     setBatchImportJsonText(text);
     handlePreviewBatchImport(navButtonId, text);
   };
@@ -3249,6 +3262,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                                   setBatchImportButtonId(item.id);
                                   setBatchImportJsonText('');
                                   setPeakPickInput('');
+                                  setPeakLinkTemplate('');
                                   setPeakPickUnmatched([]);
                                   setPeakPickSelectedNames([]);
                                   setBatchImportItems(null);
@@ -3353,6 +3367,16 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                                   挑選並預覽
                                 </button>
                               </div>
+                              <input
+                                type="text"
+                                value={peakLinkTemplate}
+                                onChange={(e) => setPeakLinkTemplate(e.target.value)}
+                                placeholder="（選填）連結網址規則，例如 /baiyue-traverse/{elevation}"
+                                className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500"
+                              />
+                              <p className="text-[11px] text-neutral-500">
+                                連結規則可用 <code>{'{no}'}</code>（編號）、<code>{'{no3}'}</code>（三位數編號）、<code>{'{elevation}'}</code>（標高）、<code>{'{slug}'}</code>。填本站網址時，前台整列可點、同分頁開啟。沒填就不帶入連結。
+                              </p>
                               <p className="text-[11px] text-neutral-500">
                                 可輸入編號（<code>1, 8</code>）、範圍（<code>12-15</code>）、山名（需完全相同）或群組名稱（<code>五岳</code>、<code>十峻</code>），用逗號或空白分隔。
                               </p>

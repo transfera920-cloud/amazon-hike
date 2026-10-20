@@ -300,6 +300,7 @@ export function processBatchImportActivities(
     const overwrite = rawItem.overwrite === true;
     const incomingOgImage = String(rawItem.ogImage || '').trim();
     const incomingCoverImage = String(rawItem.coverImage || '').trim();
+    const incomingExternalUrl = String(rawItem.externalUrl || '').trim();
 
     const matched = workingButtonActs.find((act) => {
       const parsedAct = extractPeakNoAndName(act.title);
@@ -325,6 +326,10 @@ export function processBatchImportActivities(
       }
       if (incomingContent && (overwrite || !(matched.content || '').trim()) && matched.content !== incomingContent) {
         matched.content = incomingContent;
+        changed = true;
+      }
+      if (incomingExternalUrl && (overwrite || !(matched.externalUrl || '').trim()) && matched.externalUrl !== incomingExternalUrl) {
+        matched.externalUrl = incomingExternalUrl;
         changed = true;
       }
       if (incomingSeoTitle && (overwrite || !(matched.seoTitle || '').trim()) && matched.seoTitle !== incomingSeoTitle) {
@@ -413,7 +418,7 @@ export function processBatchImportActivities(
             }
           : undefined,
       sortOrder: Number(rawItem.sortOrder ?? rawItem.no ?? idx + 1) || 0,
-      externalUrl: '',
+      externalUrl: incomingExternalUrl,
       enabled: true,
       updatedAt: todayStr,
     };

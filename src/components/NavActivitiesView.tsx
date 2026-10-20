@@ -11,7 +11,7 @@ import {
   ArrowUpDown,
   BookOpen,
 } from 'lucide-react';
-import { normalizeUrl } from '../utils/url.js';
+import { normalizeUrl, isInternalUrl } from '../utils/url.js';
 import { renderLinkedText } from './PageTextBlock.js';
 import {
   getCategorySlug,
@@ -457,10 +457,28 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
                 </thead>
                 {peakRows.map(({ activity, no, name, elevation, group }) => {
                   const hasContent = Boolean((activity.content || '').trim());
+                  // 「外部網址」欄填的是本站網址（例如 /baiyue-traverse/3952）時，
+                  // 整列視為站內連結：山名與整列都可點，同分頁開啟，不需要頁面內文。
+                  const internalTarget =
+                    activity.externalUrl && isInternalUrl(activity.externalUrl)
+                      ? normalizeUrl(activity.externalUrl)
+                      : '';
                   return (
                     <tbody
                       key={activity.id}
-                      className="border-t border-neutral-800 odd:bg-neutral-900/40 even:bg-neutral-900/10 hover:bg-neutral-800/50 transition-colors"
+                      className={`border-t border-neutral-800 odd:bg-neutral-900/40 even:bg-neutral-900/10 hover:bg-neutral-800/50 transition-colors${
+                        internalTarget ? ' cursor-pointer' : ''
+                      }`}
+                      onClick={
+                        internalTarget
+                          ? (e) => {
+                              // 點到連結、按鈕時交給它們自己處理；選取文字時不跳轉
+                              if ((e.target as HTMLElement).closest('a,button')) return;
+                              if (window.getSelection()?.toString()) return;
+                              window.location.assign(internalTarget);
+                            }
+                          : undefined
+                      }
                     >
                       <tr className="align-top">
                         <td className="w-px whitespace-nowrap px-1 sm:px-3 py-2.5 text-center text-xs sm:text-sm text-neutral-500 tabular-nums">
@@ -468,7 +486,16 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
                         </td>
 
                         <td className="w-full md:w-auto md:whitespace-nowrap pl-1.5 pr-1 sm:px-3 py-2.5 text-left font-bold text-neutral-100">
-                          {onSelectActivity && hasContent ? (
+                          {internalTarget ? (
+                            <a
+                              href={internalTarget}
+                              className="inline-flex items-center gap-1 transition-colors underline decoration-neutral-600 underline-offset-4 hover:decoration-emerald-400 hover:text-emerald-400"
+                              title={`查看${name}`}
+                            >
+                              <span>{name}</span>
+                              <ChevronRight size={14} className="text-neutral-500 shrink-0" />
+                            </a>
+                          ) : onSelectActivity && hasContent ? (
                             <a
                               href={detailHref(activity.slug)}
                               onClick={(e) => {
@@ -514,13 +541,18 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
                           {activity.externalUrl && (
                             <a
                               href={normalizeUrl(activity.externalUrl)}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                              {...(internalTarget
+                                ? {}
+                                : { target: '_blank', rel: 'noopener noreferrer' })}
                               className="inline-flex items-center gap-1.5 px-2 py-1 sm:px-3 sm:py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition-colors shadow-sm"
-                              aria-label={`查看${name}行程（開新視窗）`}
+                              aria-label={
+                                internalTarget ? `查看${name}行程` : `查看${name}行程（開新視窗）`
+                              }
                             >
                               <span>查看行程</span>
-                              <ExternalLink size={13} className="hidden sm:inline text-emerald-200" />
+                              {!internalTarget && (
+                                <ExternalLink size={13} className="hidden sm:inline text-emerald-200" />
+                              )}
                             </a>
                           )}
                         </td>

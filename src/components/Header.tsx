@@ -1,108 +1,547 @@
-import React from 'react';
-import { Settings, ExternalLink } from 'lucide-react';
-import { SiteData } from '../types';
-import { PAGE_H1 } from '../data/seoContent';
+import React, { useState, useRef, useEffect } from 'react';
+import { ChevronDown, ChevronRight, Mail, Phone, ExternalLink, ShieldCheck, Menu, X } from 'lucide-react';
+import { normalizeUrl } from '../utils/url.js';
+import { getCategorySlug, getNavButtonPath, isOnMobileBar } from '../utils/activitySeo.js';
+import type { NavButtonItem, NavButtonActivity } from '../types.js';
 
 interface HeaderProps {
-  data: SiteData;
-  onOpenAdmin: () => void;
-  isCloudConnected?: boolean;
+  currentPath: string;
+  onNavigate: (path: string) => void;
+  surveyUrl?: string;
+  navButtons?: NavButtonItem[];
+  navButtonActivities?: NavButtonActivity[];
 }
 
-export const Header: React.FC<HeaderProps> = ({ data, onOpenAdmin, isCloudConnected = false }) => {
-  return (
-    <>
-      {/* 管理後台按鈕 (固定右上角) */}
-      <button
-        id="btn-admin-open"
-        onClick={onOpenAdmin}
-        className="absolute top-3 right-3 md:fixed md:top-4 md:right-4 z-40 bg-[#0a1b13]/90 hover:bg-[#102b1f] text-emerald-100 text-xs px-3.5 py-1.5 rounded-lg shadow-lg flex items-center gap-1.5 backdrop-blur-md transition-all border border-emerald-700/50 cursor-pointer"
-        title="開啟網站內容管理後台"
+function checkButtonActive(
+  btn: NavButtonItem,
+  currentPath: string,
+  buttonNavPath: string,
+  hasEnabledActivities: boolean,
+  navButtonActivities?: NavButtonActivity[]
+): boolean {
+  if (!hasEnabledActivities) {
+    return Boolean(btn.url) && currentPath === btn.url;
+  }
+  if (currentPath.startsWith(`/nav/${btn.id}`) || currentPath === buttonNavPath.replace(/\/+$/, '')) {
+    return true;
+  }
+  // Check two-segment path /{categorySlug}/{activitySlug}/
+  const segs = currentPath.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
+  if (segs.length === 2) {
+    const catSegment = segs[0].toLowerCase();
+    const actSegment = segs[1].toLowerCase();
+    if (catSegment === getCategorySlug(btn)) {
+      const hasMatch = (navButtonActivities || []).some(
+        (a) => a.navButtonId === btn.id && a.slug.toLowerCase() === actSegment && a.enabled
+      );
+      if (hasMatch) return true;
+    }
+  }
+  // Legacy /route/:slug fallback
+  if (currentPath.startsWith('/route/')) {
+    const routeSlug = currentPath.replace(/^\/route\//, '').replace(/\/+$/, '').toLowerCase();
+    const isRouteActive = (navButtonActivities || []).some(
+      (a) => a.navButtonId === btn.id && a.slug.toLowerCase() === routeSlug && a.enabled
+    );
+    if (isRouteActive) return true;
+  }
+  return false;
+}
+
+export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate, surveyUrl, navButtons, navButtonActivities }) => {
+  const [contactOpen, setContactOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const contactRef = useRef<HTMLDivElement>(null);
+  const moreRef = useRef<HTMLDivElement>(null);
+  const quickBarRef = useRef<HTMLDivElement>(null);
+  const [quickBarMore, setQuickBarMore] = useState(false);
+
+  // 手機版快速按鈕列：右邊還有按鈕沒看到時，顯示「可左右滑動」提示（滑到底就消失）
+  useEffect(() => {
+    const el = quickBarRef.current;
+    if (!el) {
+      setQuickBarMore(false);
+      return;
+    }
+    const update = () => setQuickBarMore(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+    update();
+    el.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    return () => {
+      el.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+    };
+  });
+
+  // Close contact dropdown on click outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (contactRef.current && !contactRef.current.contains(event.target as Node)) {
+        setContactOpen(false);
+      }
+      if (moreRef.current && !moreRef.current.contains(event.target as Node)) {
+        setMoreOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleNavClick = (path: string, externalUrl?: string) => {
+    setMobileMenuOpen(false);
+    setContactOpen(false);
+    if (externalUrl) {
+      window.open(normalizeUrl(externalUrl), '_blank', 'noopener,noreferrer');
+      return;
+    }
+    onNavigate(path);
+  };
+
+  const handleInternalLinkClick = (e: React.MouseEvent<HTMLAnchorElement>, path: string) => {
+    // Let browser handle special clicks: Ctrl, Cmd, Shift, Alt, or middle-click
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) {
+      return;
+    }
+    e.preventDefault();
+    setMobileMenuOpen(false);
+    setContactOpen(false);
+    setMoreOpen(false);
+    onNavigate(path);
+  };
+
+  // Process and sort enabled navigation buttons（allButtons = 全部啟用的按鈕）
+  const allButtons: NavButtonItem[] = (
+    navButtons && navButtons.length > 0
+      ? navButtons.filter((b) => b.enabled)
+      : [
+          { id: 'btn_calendar', title: '活動行事曆', url: '/', isExternal: false, sortOrder: 1, enabled: true },
+          { id: 'btn_recent', title: '近期活動', url: 'https://amazon-trail.ai.studio/activity/', isExternal: true, sortOrder: 2, enabled: true },
+          { id: 'btn_intro', title: '登山入門', url: '/intro', isExternal: false, sortOrder: 3, enabled: true },
+          { id: 'btn_tools', title: '登山工具', url: '/tools', isExternal: false, sortOrder: 4, enabled: true },
+          { id: 'btn_highlights', title: '活動花絮', url: '/highlights', isExternal: false, sortOrder: 5, enabled: true },
+          { id: 'btn_survey', title: '問卷調查', url: '/surveys', isExternal: false, sortOrder: 6, enabled: true },
+          { id: 'btn_policies', title: '政策與條款', url: '/policies', isExternal: false, sortOrder: 7, enabled: true },
+          { id: 'btn_routes', title: '行程總表', url: 'https://amazon-data.ai.studio/routes', isExternal: true, sortOrder: 8, enabled: true },
+        ]
+  ).sort((a, b) => a.sortOrder - b.sortOrder);
+
+  // 頂端按鈕列（電腦版按鈕列、手機快捷列）不畫出「不顯示在頂端按鈕列」的按鈕；
+  // 這些按鈕改放在電腦版的「更多」選單與手機版右上角「選單」裡。
+  const displayButtons: NavButtonItem[] = allButtons.filter((b) => !b.hideFromNav);
+  const hiddenButtons: NavButtonItem[] = allButtons.filter((b) => b.hideFromNav);
+
+  // 「更多」選單中的單一項目
+  const renderMoreItem = (btn: NavButtonItem) => {
+    const hasEnabledActivities = (navButtonActivities || []).some(
+      (a) => a.navButtonId === btn.id && a.enabled === true
+    );
+    const hasExternalUrl = Boolean(
+      btn.url && (btn.url.startsWith('http://') || btn.url.startsWith('https://'))
+    );
+    const effectiveIsExternal = hasEnabledActivities ? false : Boolean(btn.isExternal || hasExternalUrl);
+    if (effectiveIsExternal) {
+      return (
+        <a
+          key={btn.id}
+          href={normalizeUrl(btn.url)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center justify-between gap-2 px-4 py-2.5 text-left text-neutral-100 hover:bg-neutral-800 whitespace-nowrap text-base font-bold"
+          onClick={() => setMoreOpen(false)}
+        >
+          <span>{btn.title}</span>
+          <ExternalLink size={14} className="text-neutral-400 shrink-0" />
+        </a>
+      );
+    }
+    const buttonNavPath = getNavButtonPath(btn);
+    const targetUrl = hasEnabledActivities ? buttonNavPath : (btn.url || buttonNavPath);
+    const isActive = checkButtonActive(btn, currentPath, buttonNavPath, hasEnabledActivities, navButtonActivities);
+    return (
+      <a
+        key={btn.id}
+        href={targetUrl}
+        onClick={(e) => handleInternalLinkClick(e, targetUrl)}
+        aria-current={isActive ? 'page' : undefined}
+        className={`block px-4 py-2.5 text-left whitespace-nowrap text-base font-bold ${
+          isActive ? 'bg-neutral-800 text-emerald-400' : 'text-neutral-100 hover:bg-neutral-800'
+        }`}
       >
-        <i className="fa-solid fa-gear text-emerald-400" aria-hidden="true"></i>
-        <span>管理後台</span>
-        {isCloudConnected && (
-          <span
-            className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.8)]"
-            title="已連線至 Firebase Firestore 雲端共用資料庫"
-          ></span>
-        )}
-      </button>
+        {btn.title}
+      </a>
+    );
+  };
 
-      {/* 頁首區塊 Header */}
-      <header className="bg-gradient-to-b from-[#04110a] via-[#092215] to-[#0a1f14] text-white pt-12 md:pt-14 pb-6 md:pb-10 px-4 text-center relative shadow-xl border-b border-emerald-900/60 overflow-hidden">
-        {/* 背景裝飾光暈 */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 max-w-3xl h-56 bg-emerald-500/10 blur-3xl pointer-events-none rounded-full"></div>
+  // 手機版按鈕列：依後台設定（沒設定時取前 5 個），順序跟著按鈕排序
+  const mobileBarButtons = displayButtons.filter((b) => isOnMobileBar(b, displayButtons));
 
-        <div className="max-w-4xl mx-auto relative z-10">
-          {/* 品牌名稱超連結至主站 */}
-          <div className="mb-3">
-            <a
-              id="site-brand"
-              href="https://amazon-hike.com/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-emerald-300 hover:text-white transition-colors text-sm md:text-base tracking-widest font-semibold py-1 px-3.5 rounded-full hover:bg-emerald-900/40 border border-emerald-700/30 hover:border-emerald-500/60 group"
-              title="前往 亞馬遜高山接駁 官方主網站 (amazon-hike.com)"
-            >
-              <span>{data.siteTitle || "亞馬遜高山接駁"}</span>
-              <ExternalLink className="w-3.5 h-3.5 opacity-70 group-hover:opacity-100 transition-opacity" />
-            </a>
+  return (
+    <header className="border-b border-neutral-800 bg-neutral-950/95 backdrop-blur-md sticky top-0 z-40">
+      {/* Top Organization Header */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          {/* Brand Titles on Left & Legal/Mission on Right */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6 flex-1">
+            <div className="flex items-center justify-between sm:block shrink-0">
+              <a
+                href="/"
+                onClick={(e) => handleInternalLinkClick(e, '/')}
+                className="group inline-block text-left shrink-0"
+                id="brand-home-link"
+              >
+                {currentPath === '/' ? (
+                  <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-neutral-100 group-hover:text-emerald-400 transition-colors whitespace-nowrap">
+                    亞馬遜國家山岳協會
+                  </h1>
+                ) : (
+                  <p className="text-xl sm:text-2xl font-bold tracking-tight text-neutral-100 group-hover:text-emerald-400 transition-colors whitespace-nowrap">
+                    亞馬遜國家山岳協會
+                  </p>
+                )}
+                <p className="text-xs sm:text-sm font-medium tracking-wide text-neutral-400 group-hover:text-neutral-300 transition-colors">
+                  Amazon Alpine Association
+                </p>
+              </a>
+
+              {/* Mobile menu button */}
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="sm:hidden flex items-center gap-1.5 px-2.5 py-2 rounded-md text-neutral-300 hover:text-neutral-100 hover:bg-neutral-800 focus:outline-none"
+                aria-label="選單開關"
+                id="mobile-menu-toggle"
+              >
+                {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
+                <span className="text-sm font-medium">{mobileMenuOpen ? '關閉' : '選單'}</span>
+              </button>
+            </div>
+
+            {/* Placed to the RIGHT of 亞馬遜國家山岳協會 / Amazon Alpine Association */}
+            <div className="border-t sm:border-t-0 sm:border-l border-neutral-800 pt-2 sm:pt-0 sm:pl-5 space-y-1 text-left">
+              <div className="flex flex-wrap items-center gap-x-2 text-xs text-neutral-400">
+                <span className="text-emerald-400 font-semibold">社團法人</span>
+                <span>·</span>
+                <span>立案編號 台內團自第1130008137號</span>
+              </div>
+              <p className="text-xs text-neutral-300 leading-relaxed max-w-2xl">
+                協會宗旨：提倡全民運動、鍛鍊強健體魄、培養互助團隊精神，以及接觸大自然與山林相關知識及技能。
+              </p>
+            </div>
           </div>
 
-          {/* 網站大標題 (H1：頁面搜尋主題) */}
-          <h1
-            id="site-title"
-            className="text-3xl md:text-5xl font-extrabold tracking-wide mb-3.5 text-white drop-shadow-[0_2px_18px_rgba(0,200,83,0.35)]"
-          >
-            {PAGE_H1}
-          </h1>
+          {/* Quick utility controls (Contact & Admin) */}
+          <div className="hidden sm:flex items-center gap-2 shrink-0 self-end lg:self-center">
+            {/* Contact Dropdown */}
+            <div className="relative" ref={contactRef}>
+              <button
+                type="button"
+                onClick={() => setContactOpen(!contactOpen)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border border-neutral-700 bg-neutral-900 text-neutral-200 hover:bg-neutral-800 hover:text-white transition-colors"
+                id="contact-dropdown-btn"
+                aria-expanded={contactOpen}
+              >
+                <span>聯絡方式</span>
+                <ChevronDown size={14} className={`transition-transform duration-200 ${contactOpen ? 'rotate-180' : ''}`} />
+              </button>
 
-          {/* 副標題 / 標語 */}
-          <p
-            id="site-subtitle"
-            className="text-emerald-200 text-sm md:text-base tracking-widest mb-4 font-medium drop-shadow-xs"
-          >
-            {data.siteSubtitle}
-          </p>
-
-          {/* 大 LINE 按鈕 */}
-          <div className="flex justify-center">
-            <a
-              id="hero-line-link"
-              href={data.lineUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center justify-center bg-gradient-to-r from-[#00c853] to-[#00b248] hover:from-[#00e676] hover:to-[#00c853] text-white font-bold px-9 py-4 rounded-full text-base md:text-lg shadow-[0_4px_25px_rgba(0,200,83,0.4)] hover:shadow-[0_6px_35px_rgba(0,200,83,0.55)] transition-all duration-200 transform hover:-translate-y-0.5"
-            >
-              <i className="fa-brands fa-line text-2xl mr-2.5" aria-hidden="true"></i>
-              <span id="hero-line-text">{data.heroLineText || "點我加 LINE 官方帳號預約"}</span>
-            </a>
-          </div>
-
-          {/* 賣點/特色條標籤 */}
-          <div
-            id="features-container"
-            className="mt-6 md:mt-9 pt-5 md:pt-7 border-t border-emerald-800/40 flex flex-wrap justify-center gap-2.5 md:gap-3.5 text-xs md:text-sm text-emerald-200"
-          >
-            {data.features && data.features.length > 0 ? (
-              data.features.map((feat, idx) => (
-                <span
-                  key={idx}
-                  className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#0a2015]/80 border border-emerald-700/40 text-emerald-200 font-medium shadow-xs backdrop-blur-xs"
+              {contactOpen && (
+                <div
+                  className="absolute right-0 mt-1.5 w-64 rounded-md border border-neutral-800 bg-neutral-900 p-2 shadow-xl z-50 text-xs space-y-2"
+                  id="contact-dropdown-menu"
                 >
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#00e676] shadow-[0_0_6px_rgba(0,230,118,0.8)]"></span>
-                  <span>{feat}</span>
-                </span>
-              ))
-            ) : (
-              <span className="px-4 py-1.5 rounded-full bg-[#0a2015]/80 border border-emerald-700/40 text-emerald-200">
-                • 合法租賃營業車 • 職業駕照司機 • 準時接送不延誤 • 600萬乘客險
-              </span>
-            )}
+                  <a
+                    href="mailto:YY661003@GMAIL.COM"
+                    className="flex items-start gap-2.5 p-2 rounded hover:bg-neutral-800 transition-colors text-neutral-200"
+                    id="contact-email-link"
+                  >
+                    <Mail size={16} className="text-emerald-400 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-semibold text-neutral-300">EMAIL</div>
+                      <div className="text-neutral-400 break-all">YY661003@GMAIL.COM</div>
+                    </div>
+                  </a>
+
+                  <a
+                    href="tel:0972573495"
+                    className="flex items-start gap-2.5 p-2 rounded hover:bg-neutral-800 transition-colors text-neutral-200"
+                    id="contact-phone-link"
+                  >
+                    <Phone size={16} className="text-emerald-400 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-semibold text-neutral-300">電話</div>
+                      <div className="text-neutral-400">0972573495</div>
+                    </div>
+                  </a>
+
+                  <a
+                    href="https://lin.ee/TJJLV36"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-start gap-2.5 p-2 rounded hover:bg-neutral-800 transition-colors text-neutral-200"
+                    id="contact-line-link"
+                  >
+                    <div className="w-4 h-4 rounded-full bg-[#06C755] flex items-center justify-center text-black font-bold text-[9px] shrink-0 mt-0.5">
+                      L
+                    </div>
+                    <div>
+                      <div className="font-semibold text-neutral-300">LINE 官方</div>
+                      <div className="text-emerald-400 flex items-center gap-1 mt-0.5">
+                        <span>點擊加入好友諮詢</span>
+                        <ExternalLink size={11} />
+                      </div>
+                    </div>
+                  </a>
+                </div>
+              )}
+            </div>
+
+            {/* Admin link - 維持 <button> */}
+            <button
+              type="button"
+              onClick={() => {
+                setMobileMenuOpen(false);
+                setContactOpen(false);
+                onNavigate('/admin');
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border transition-colors ${
+                currentPath === '/admin'
+                  ? 'border-emerald-600 bg-emerald-950 text-emerald-300'
+                  : 'border-neutral-800 text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900'
+              }`}
+              id="header-admin-link"
+            >
+              <ShieldCheck size={14} />
+              <span>後台管理</span>
+            </button>
           </div>
         </div>
-      </header>
-    </>
+      </div>
+
+      {/* Navigation Bar: Dynamic Portals */}
+      <nav className="border-t border-neutral-800 bg-neutral-900/95 shadow-inner" aria-label="主要導覽">
+        <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
+          <div className="hidden md:flex items-center justify-between gap-1 lg:gap-1.5 py-2 w-full text-center flex-nowrap">
+            {displayButtons.map((btn) => {
+              const hasEnabledActivities = (navButtonActivities || []).some(
+                (a) => a.navButtonId === btn.id && a.enabled === true
+              );
+              const hasExternalUrl = Boolean(
+                btn.url && (btn.url.startsWith('http://') || btn.url.startsWith('https://'))
+              );
+              const effectiveIsExternal = hasEnabledActivities
+                ? false
+                : Boolean(btn.isExternal || hasExternalUrl);
+
+              if (effectiveIsExternal) {
+                return (
+                  <a
+                    key={btn.id}
+                    href={normalizeUrl(btn.url)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 flex items-center justify-center gap-1 px-2 lg:px-3.5 py-2.5 rounded-md text-neutral-200 hover:bg-neutral-800/80 hover:text-white transition-all whitespace-nowrap text-[15px] lg:text-base font-bold"
+                    id={`nav-btn-${btn.id}`}
+                  >
+                    <span>{btn.title}</span>
+                    <ExternalLink size={14} className="text-neutral-400 shrink-0" />
+                  </a>
+                );
+              }
+
+              const buttonNavPath = getNavButtonPath(btn);
+              const targetUrl = hasEnabledActivities ? buttonNavPath : (btn.url || buttonNavPath);
+              const isActive = checkButtonActive(btn, currentPath, buttonNavPath, hasEnabledActivities, navButtonActivities);
+
+              return (
+                <a
+                  key={btn.id}
+                  href={targetUrl}
+                  onClick={(e) => handleInternalLinkClick(e, targetUrl)}
+                  aria-current={isActive ? 'page' : undefined}
+                  className={`flex-1 flex items-center justify-center px-2 lg:px-3.5 py-2.5 rounded-md transition-all whitespace-nowrap text-[15px] lg:text-base font-bold ${
+                    isActive
+                      ? 'bg-neutral-800 text-emerald-400 font-bold border-b-2 border-emerald-400 shadow'
+                      : 'text-neutral-200 hover:bg-neutral-800/80 hover:text-white'
+                  }`}
+                  id={`nav-btn-${btn.id}`}
+                >
+                  {btn.title}
+                </a>
+              );
+            })}
+
+            {/* 電腦版：被設為「不顯示在頂端按鈕列」的按鈕，收進「更多」選單 */}
+            {hiddenButtons.length > 0 && (
+              <div className="relative shrink-0" ref={moreRef}>
+                <button
+                  type="button"
+                  onClick={() => setMoreOpen((o) => !o)}
+                  aria-expanded={moreOpen}
+                  aria-haspopup="true"
+                  id="nav-more-btn"
+                  className="flex items-center justify-center gap-1 px-2 lg:px-3.5 py-2.5 rounded-md text-neutral-200 hover:bg-neutral-800/80 hover:text-white transition-all whitespace-nowrap text-[15px] lg:text-base font-bold"
+                >
+                  <span>更多</span>
+                  <ChevronDown size={16} className={`transition-transform ${moreOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {moreOpen && (
+                  <div className="absolute right-0 top-full mt-1 min-w-[12rem] rounded-md border border-neutral-800 bg-neutral-900 shadow-lg z-50 py-1">
+                    {hiddenButtons.map((btn) => renderMoreItem(btn))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* 手機版：標題下方的快速按鈕列（可左右滑動；顯示哪些由後台「前台導覽按鈕」決定） */}
+          {mobileBarButtons.length > 0 && (
+            <div className="md:hidden relative">
+            <div
+              ref={quickBarRef}
+              className="flex items-center gap-2 overflow-x-auto py-2 -mx-1 px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              id="mobile-quick-bar"
+            >
+              {mobileBarButtons.map((btn) => {
+                const hasEnabledActivities = (navButtonActivities || []).some(
+                  (a) => a.navButtonId === btn.id && a.enabled === true
+                );
+                const hasExternalUrl = Boolean(
+                  btn.url && (btn.url.startsWith('http://') || btn.url.startsWith('https://'))
+                );
+                const effectiveIsExternal = hasEnabledActivities
+                  ? false
+                  : Boolean(btn.isExternal || hasExternalUrl);
+                const base =
+                  'shrink-0 inline-flex items-center gap-1 px-3.5 py-2 rounded-full border text-sm font-bold whitespace-nowrap transition-colors';
+
+                if (effectiveIsExternal) {
+                  return (
+                    <a
+                      key={btn.id}
+                      href={normalizeUrl(btn.url)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`${base} border-neutral-700 bg-neutral-900 text-neutral-100 hover:bg-neutral-800`}
+                    >
+                      <span>{btn.title}</span>
+                      <ExternalLink size={12} className="text-neutral-400 shrink-0" />
+                    </a>
+                  );
+                }
+
+                const buttonNavPath = getNavButtonPath(btn);
+                const targetUrl = hasEnabledActivities ? buttonNavPath : (btn.url || buttonNavPath);
+                const isActive = checkButtonActive(btn, currentPath, buttonNavPath, hasEnabledActivities, navButtonActivities);
+
+                return (
+                  <a
+                    key={btn.id}
+                    href={targetUrl}
+                    onClick={(e) => handleInternalLinkClick(e, targetUrl)}
+                    aria-current={isActive ? 'page' : undefined}
+                    className={`${base} ${
+                      isActive
+                        ? 'border-emerald-500 bg-emerald-950 text-emerald-300'
+                        : 'border-neutral-700 bg-neutral-900 text-neutral-100 hover:bg-neutral-800'
+                    }`}
+                  >
+                    {btn.title}
+                  </a>
+                );
+              })}
+            </div>
+            {quickBarMore && (
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute right-0 top-0 bottom-0 w-12 flex items-center justify-end pr-1 bg-gradient-to-l from-neutral-900 via-neutral-900/80 to-transparent"
+              >
+                <ChevronRight size={20} className="text-emerald-400 animate-pulse" />
+              </div>
+            )}
+            </div>
+          )}
+
+          {/* Mobile Collapsible Navigation Menu */}
+          {mobileMenuOpen && (
+            <div className="md:hidden py-3 space-y-1.5 border-t border-neutral-800 text-base font-bold" id="mobile-nav-panel">
+              {allButtons.map((btn, idx) => {
+                const hasEnabledActivities = (navButtonActivities || []).some(
+                  (a) => a.navButtonId === btn.id && a.enabled === true
+                );
+                const hasExternalUrl = Boolean(
+                  btn.url && (btn.url.startsWith('http://') || btn.url.startsWith('https://'))
+                );
+                const effectiveIsExternal = hasEnabledActivities
+                  ? false
+                  : Boolean(btn.isExternal || hasExternalUrl);
+
+                if (effectiveIsExternal) {
+                  return (
+                    <a
+                      key={btn.id}
+                      href={normalizeUrl(btn.url)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-between px-4 py-2.5 rounded text-neutral-100 hover:bg-neutral-800 whitespace-nowrap"
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      <span>{idx + 1}. {btn.title}</span>
+                      <ExternalLink size={16} className="text-neutral-400 shrink-0" />
+                    </a>
+                  );
+                }
+
+                const buttonNavPath = getNavButtonPath(btn);
+                const targetUrl = hasEnabledActivities ? buttonNavPath : (btn.url || buttonNavPath);
+                const isActive = checkButtonActive(btn, currentPath, buttonNavPath, hasEnabledActivities, navButtonActivities);
+
+                return (
+                  <a
+                    key={btn.id}
+                    href={targetUrl}
+                    onClick={(e) => handleInternalLinkClick(e, targetUrl)}
+                    aria-current={isActive ? 'page' : undefined}
+                    className={`block w-full text-left px-4 py-2.5 rounded whitespace-nowrap ${
+                      isActive ? 'bg-neutral-800 text-emerald-400 font-bold' : 'text-neutral-100 hover:bg-neutral-800'
+                    }`}
+                  >
+                    {idx + 1}. {btn.title}
+                  </a>
+                );
+              })}
+
+              {/* Mobile Contact & Admin */}
+              <div className="pt-3 mt-2 border-t border-neutral-800 space-y-1">
+                <div className="px-4 py-1 text-xs text-neutral-500 font-semibold">聯絡方式</div>
+                <a href="mailto:YY661003@GMAIL.COM" className="flex items-center gap-2 px-4 py-2 text-sm text-neutral-300">
+                  <Mail size={16} className="text-emerald-400" />
+                  <span>EMAIL: YY661003@GMAIL.COM</span>
+                </a>
+                <a href="tel:0972573495" className="flex items-center gap-2 px-4 py-2 text-sm text-neutral-300">
+                  <Phone size={16} className="text-emerald-400" />
+                  <span>電話: 0972573495</span>
+                </a>
+                <a href="https://lin.ee/TJJLV36" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-4 py-2 text-sm text-neutral-300">
+                  <span className="w-4 h-4 rounded-full bg-[#06C755] flex items-center justify-center text-black font-bold text-[9px]">L</span>
+                  <span>LINE 官方好友諮詢</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onNavigate('/admin');
+                  }}
+                  className="w-full text-left flex items-center gap-2 px-4 py-2.5 mt-2 text-sm text-emerald-400 font-medium bg-neutral-900 rounded"
+                >
+                  <ShieldCheck size={16} />
+                  <span>後台管理</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </nav>
+    </header>
   );
 };

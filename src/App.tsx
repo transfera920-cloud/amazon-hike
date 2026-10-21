@@ -1,218 +1,825 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Header } from './components/Header.js';
+import { Footer } from './components/Footer.js';
+import { CalendarSection } from './components/CalendarSection.js';
+import { findPageNavButton } from './utils/activitySeo.js';
+import { IntroView } from './components/IntroView.js';
+import { ChapterView } from './components/ChapterView.js';
+import { ToolsView } from './components/ToolsView.js';
+import { HighlightsView } from './components/HighlightsView.js';
+import { PoliciesView } from './components/PoliciesView.js';
+import { SurveysView } from './components/SurveysView.js';
+import { AdminPage } from './components/AdminPage.js';
+import { NavActivitiesView } from './components/NavActivitiesView.js';
+import { RouteActivityView } from './components/RouteActivityView.js';
+import {
+  getCategorySlug,
+  getNavButtonPath,
+  isPossibleNavListSlug,
+  resolveActivitySeo,
+  resolveNavButtonSeo,
+  CHAPTER_SLUG_SOURCE,
+  DEFAULT_OG_IMAGE,
+  isThinMainChapter,
+} from './utils/activitySeo.js';
+import type { AssociationDatabase, CalendarActivity, NavButtonItem } from './types.js';
 
-import React, { useState, useEffect } from 'react';
-import { SiteData, ActiveModalType } from './types';
-import { DEFAULT_DATA } from './data/defaultData';
-import {
-  getLocalCachedData,
-  loadSiteDataFromCloud,
-  saveSiteDataToCloud,
-  subscribeToSiteData,
-  testConnection
-} from './firebase';
-import { Header } from './components/Header';
-import { CardsGrid } from './components/CardsGrid';
-import { AboutSection } from './components/AboutSection';
-import { Footer } from './components/Footer';
-import { AdminModal } from './components/AdminModal';
-import { AdminLoginModal } from './components/AdminLoginModal';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { auth } from './firebase';
-import { ADMIN_EMAIL } from './data/adminConfig';
-import { PriceCalcModal } from './components/PriceCalcModal';
-import { D0LodgingModal } from './components/D0LodgingModal';
-import { FeastModal } from './components/FeastModal';
-import { RoadStatusModal } from './components/RoadStatusModal';
-import {
-  TrailheadCharterSection,
-  PopularRoutesSection,
-  MoreRoutesSection,
-  OneWayTripSection,
-  ServiceProcessSection,
-  RoadStatusGuideSection,
-  HomeFaqSection
-} from './components/ServiceSections';
+const KNOWN_PATHS = new Set(['/', '/intro', '/tools', '/highlights', '/policies', '/surveys', '/admin']);
+const CHAPTER_PATH_RE = new RegExp(`^/${CHAPTER_SLUG_SOURCE}$`, 'i');
+const SITE_ORIGIN = 'https://amazon-hike.com';
+
+function normalizePath(p: string): string {
+  if (!p || p === '/') return '/';
+  const stripped = p.replace(/\/+$/, '');
+  return stripped === '' ? '/' : stripped;
+}
 
 export default function App() {
-  // Initialize with local cache for instant paint, then update with Cloud data
-  const [siteData, setSiteData] = useState<SiteData>(() => getLocalCachedData());
-  const [isCloudConnected, setIsCloudConnected] = useState<boolean>(false);
-  const [activeModal, setActiveModal] = useState<ActiveModalType>(null);
-  
-  // Admin Login authentication state
-  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState<boolean>(false);
+  const [currentPath, setCurrentPath] = useState<string>(() => {
+    return normalizePath(window.location.pathname || '/');
+  });
 
-  // 以 Firebase Authentication 判斷登入狀態（真正的寫入權限由 Firestore 規則把關）
-  useEffect(() => {
-    return onAuthStateChanged(auth, (user) => {
-      setIsAdminLoggedIn(!!user && user.email === ADMIN_EMAIL);
-    });
+  const [publicData, setPublicData] = useState<AssociationDatabase>({
+    version: 1,
+    surveyUrl: '',
+    intros: [],
+    tools: [],
+    highlights: [],
+    policies: [],
+    surveys: [],
+    navButtons: [],
+    navButtonEntries: [],
+    navButtonActivities: [],
+    chapters: [],
+  });
+
+  // 章節資料是否已載入完成（避免資料載入前誤判章節不存在 → 404 / noindex）
+  const [publicDataLoaded, setPublicDataLoaded] = useState(false);
+  const [activities, setActivities] = useState<CalendarActivity[]>([]);
+  const [activitiesLoading, setActivitiesLoading] = useState(true);
+  const [activitiesError, setActivitiesError] = useState<string | null>(null);
+
+  // Fetch baseline / dynamic public data (tools, policies, highlights, navButtons, chapters)
+  const fetchPublicData = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/public-data?_t=${Date.now()}`, {
+        cache: 'no-store',
+      });
+      const contentType = res.headers.get('content-type') || '';
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
+      if (!contentType.includes('application/json')) {
+        throw new Error(`非預期的回應格式: ${contentType}`);
+      }
+      const json = await res.json();
+      if (json.success && json.data) {
+        setPublicData(json.data);
+      } else {
+        throw new Error(json.error || '無法取得協會公開資料');
+      }
+    } catch (err) {
+      console.warn('Failed to load public data:', err);
+    } finally {
+      setPublicDataLoaded(true);
+    }
   }, []);
-  const [isLoginOpen, setIsLoginOpen] = useState(false);
-  const [isAdminOpen, setIsAdminOpen] = useState(false);
 
-  const handleOpenAdmin = () => {
-    if (isAdminLoggedIn) {
-      setIsAdminOpen(true);
-    } else {
-      setIsLoginOpen(true);
+  // Fetch calendar activities from API proxy
+  const fetchActivities = useCallback(async () => {
+    setActivitiesLoading(true);
+    setActivitiesError(null);
+    try {
+      const res = await fetch('/api/calendar-activities');
+      const contentType = res.headers.get('content-type') || '';
+      if (!res.ok) {
+        if (!contentType.includes('application/json')) {
+          const text = await res.text();
+          throw new Error(`伺服器錯誤 (HTTP ${res.status} ${contentType})：${text.slice(0, 80)}`);
+        }
+        const errJson = await res.json();
+        throw new Error(errJson.error || `HTTP error ${res.status}`);
+      }
+      if (!contentType.includes('application/json')) {
+        const text = await res.text();
+        throw new Error(`預期收到 JSON，但收到 ${contentType} (HTTP ${res.status})：${text.slice(0, 80)}`);
+      }
+      const json = await res.json();
+      if (json.success && Array.isArray(json.activities)) {
+        setActivities(json.activities);
+      } else {
+        setActivitiesError(json.error || '無法取得行事曆資料');
+      }
+    } catch (err: any) {
+      setActivitiesError(err.message || '無法連線至活動資料庫');
+    } finally {
+      setActivitiesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPublicData();
+    fetchActivities();
+  }, [fetchPublicData, fetchActivities]);
+
+  // Handle browser popstate (back / forward buttons)
+  useEffect(() => {
+    const handlePopState = () => {
+      setCurrentPath(normalizePath(window.location.pathname || '/'));
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Routing navigation helper
+  const navigate = (path: string) => {
+    const m = path.match(new RegExp(`^/intro/(${CHAPTER_SLUG_SOURCE})/?$`, 'i'));
+    if (m) {
+      window.location.assign(`/${m[1].toLowerCase()}/`);
+      return;
+    }
+
+    // 站內仍寫著舊的 /nav/按鈕id 時，直接換成好看的 /代稱/ 網址
+    const navM = path.match(/^\/nav\/([^/?#]+)\/?$/);
+    if (navM) {
+      const navBtn = (publicData.navButtons || []).find((b) => b.id === navM[1] && b.enabled);
+      if (navBtn) path = getNavButtonPath(navBtn);
+    }
+
+    const target = normalizePath(path);
+    if (target !== currentPath) {
+      // 分類列表頁（/代稱/）與活動頁（/代稱/活動/）的正式網址帶結尾斜線，網址列也保持一致
+      const keepSlash =
+        /^\/[^/]+(\/[^/]+)?$/.test(target) &&
+        !KNOWN_PATHS.has(target) &&
+        !/^\/(nav|intro|route|admin)(\/|$)/.test(target) &&
+        !CHAPTER_PATH_RE.test(target);
+      window.history.pushState({}, '', keepSlash ? `${target}/` : target);
+      setCurrentPath(target);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
-  const handleLoginSuccess = () => {
-    setIsAdminLoggedIn(true);
-    setIsLoginOpen(false);
-    setIsAdminOpen(true);
+  // Parse dynamic chapter slug if route matches /intro/:slug
+  const currentChapterSlug = useMemo(() => {
+    if (currentPath.startsWith('/intro/')) {
+      const slug = currentPath.replace(/^\/intro\//, '').replace(/\/+$/, '');
+      return slug.toLowerCase();
+    }
+    if (CHAPTER_PATH_RE.test(currentPath)) {
+      return currentPath.slice(1).toLowerCase();
+    }
+    return null;
+  }, [currentPath]);
+
+  // Current chapter and adjacent chapters for Prev/Next
+  const sortedChapters = useMemo(() => {
+    return (publicData.chapters || []).slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  }, [publicData.chapters]);
+
+  const currentChapterIndex = useMemo(() => {
+    if (!currentChapterSlug) return -1;
+    return sortedChapters.findIndex((c) => c.slug.toLowerCase() === currentChapterSlug);
+  }, [sortedChapters, currentChapterSlug]);
+
+  const currentChapter = currentChapterIndex >= 0 ? sortedChapters[currentChapterIndex] : null;
+  const prevChapter = currentChapterIndex > 0 ? sortedChapters[currentChapterIndex - 1] : undefined;
+  const nextChapter = currentChapterIndex >= 0 && currentChapterIndex < sortedChapters.length - 1 ? sortedChapters[currentChapterIndex + 1] : undefined;
+
+  // 各頁面的「上文／下文」：取自後台「前台導覽按鈕」的導讀內容與下方說明
+  const pageText = (path: string): { intro: string; footer: string } => {
+    const btn = findPageNavButton<NavButtonItem>(publicData.navButtons, path);
+    return { intro: btn?.introContent || '', footer: btn?.footerContent || '' };
   };
 
-  const handleLogout = () => {
-    signOut(auth).catch((e) => console.warn(e));
-    setIsAdminLoggedIn(false);
-    setIsAdminOpen(false);
-  };
+  // 單層網址 /:categorySlug/（按鈕列表頁的好看網址，例如 /traverse/）
+  const currentCategoryListSlug = useMemo<string | null>(() => {
+    if (
+      KNOWN_PATHS.has(currentPath) ||
+      currentPath.startsWith('/intro/') ||
+      currentPath.startsWith('/nav/') ||
+      currentPath.startsWith('/route/') ||
+      currentPath.startsWith('/admin')
+    ) {
+      return null;
+    }
+    const segs = currentPath.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
+    if (segs.length !== 1) return null;
+    return isPossibleNavListSlug(segs[0]) ? segs[0].toLowerCase() : null;
+  }, [currentPath]);
 
-  // <title> 與 meta description 皆以 index.html 內的固定內容為準，
-  // 避免 JS 執行後與原始 HTML 不一致（Googlebot 會同時看原始與渲染後版本）
-
-  // Connect to Firestore and subscribe to live changes across all devices
-  useEffect(() => {
-    let isMounted = true;
-
-    // Validate connection
-    testConnection();
-
-    // Initial load from cloud with automatic localStorage fallback
-    loadSiteDataFromCloud()
-      .then(({ data, fromCloud }) => {
-        if (isMounted) {
-          setSiteData(data);
-          setIsCloudConnected(fromCloud);
-        }
-      })
-      .catch((err) => {
-        console.warn('Initial cloud fetch error, relying on local cache:', err);
-      });
-
-    // Real-time multi-device sync listener
-    const unsubscribe = subscribeToSiteData(
-      (updatedData) => {
-        if (isMounted) {
-          setSiteData(updatedData);
-          setIsCloudConnected(true);
-        }
-      },
-      (err) => {
-        console.warn('Realtime sync subscription status:', err);
-      }
+  const currentCategoryListButton = useMemo(() => {
+    if (!currentCategoryListSlug) return null;
+    return (
+      (publicData.navButtons || []).find(
+        (b) => b.enabled && getNavButtonPath(b) === `/${currentCategoryListSlug}/`
+      ) || null
     );
+  }, [currentCategoryListSlug, publicData.navButtons]);
 
-    return () => {
-      isMounted = false;
-      unsubscribe();
-    };
-  }, []);
+  // Dynamic nav button ID if route matches /nav/:buttonId，或單層代稱網址 /:categorySlug/
+  const currentNavButtonId = useMemo(() => {
+    if (currentPath.startsWith('/nav/')) {
+      return currentPath.replace(/^\/nav\//, '').replace(/\/+$/, '');
+    }
+    if (currentCategoryListButton) return currentCategoryListButton.id;
+    return null;
+  }, [currentPath, currentCategoryListButton]);
 
-  // Support legacy global toggleAdminModal if referenced by external inline onclick
+  // Current nav button: matches by id or by url matching /nav/:buttonId
+  const currentNavButton = useMemo(() => {
+    if (!currentNavButtonId) return null;
+    return (
+      (publicData.navButtons || []).find((b) => {
+        if (b.id === currentNavButtonId) return true;
+        if (b.url === currentPath) return true;
+        if (b.url === `/nav/${currentNavButtonId}`) return true;
+        const stripped = (b.url || '').replace(/^\/nav\//, '').replace(/\/+$/, '');
+        if (stripped && stripped === currentNavButtonId) return true;
+        return false;
+      }) || null
+    );
+  }, [publicData.navButtons, currentNavButtonId, currentPath]);
+
+  // Enabled activities for current nav button
+  const currentNavActivities = useMemo(() => {
+    if (!currentNavButton) return [];
+    return (publicData.navButtonActivities || [])
+      .filter((a) => a.navButtonId === currentNavButton.id && a.enabled)
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  }, [publicData.navButtonActivities, currentNavButton]);
+
+  // Entries for current nav button
+  const currentNavEntries = useMemo(() => {
+    if (!currentNavButton) return [];
+    return (publicData.navButtonEntries || [])
+      .filter((e) => e.navButtonId === currentNavButton.id)
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  }, [publicData.navButtonEntries, currentNavButton]);
+
+  // Dynamic two-segment category and activity route: /{categorySlug}/{activitySlug}/
+  const currentCategoryActivitySegments = useMemo<[string, string] | null>(() => {
+    if (
+      KNOWN_PATHS.has(currentPath) ||
+      CHAPTER_PATH_RE.test(currentPath) ||
+      currentPath.startsWith('/intro/') ||
+      currentPath.startsWith('/nav/') ||
+      currentPath.startsWith('/route/') ||
+      currentPath.startsWith('/admin')
+    ) {
+      return null;
+    }
+    const segs = currentPath.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
+    if (segs.length !== 2) return null;
+    if (!segs[0].trim() || !segs[1].trim()) return null;
+    return [segs[0].toLowerCase(), segs[1].toLowerCase()];
+  }, [currentPath]);
+
+  // Current category button matching first segment
+  const currentCategoryButton = useMemo(() => {
+    if (!currentCategoryActivitySegments) return null;
+    const [catSlug] = currentCategoryActivitySegments;
+    return (
+      (publicData.navButtons || []).find(
+        (btn) => btn.enabled && getCategorySlug(btn) === catSlug
+      ) || null
+    );
+  }, [currentCategoryActivitySegments, publicData.navButtons]);
+
+  // Current category activity matching second segment under currentCategoryButton
+  const currentCategoryActivity = useMemo(() => {
+    if (!currentCategoryButton || !currentCategoryActivitySegments) return null;
+    const [, actSlug] = currentCategoryActivitySegments;
+    return (
+      (publicData.navButtonActivities || []).find(
+        (a) =>
+          a.navButtonId === currentCategoryButton.id &&
+          a.slug.toLowerCase() === actSlug &&
+          a.enabled
+      ) || null
+    );
+  }, [currentCategoryButton, currentCategoryActivitySegments, publicData.navButtonActivities]);
+
+  // Sibling activities under the same category
+  const currentCategorySiblingActivities = useMemo(() => {
+    if (!currentCategoryButton || !currentCategoryActivity) return [];
+    return (publicData.navButtonActivities || [])
+      .filter(
+        (a) =>
+          a.navButtonId === currentCategoryButton.id &&
+          a.enabled &&
+          a.id !== currentCategoryActivity.id
+      )
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+      .slice(0, 4);
+  }, [currentCategoryButton, currentCategoryActivity, publicData.navButtonActivities]);
+
+  // Dynamic route slug if route matches /route/:slug (legacy fallback)
+  const currentRouteSlug = useMemo(() => {
+    if (currentPath.startsWith('/route/')) {
+      return currentPath.replace(/^\/route\//, '').replace(/\/+$/, '').toLowerCase();
+    }
+    return null;
+  }, [currentPath]);
+
+  // Current route activity (legacy fallback)
+  const currentRouteActivity = useMemo(() => {
+    if (!currentRouteSlug) return null;
+    return (
+      (publicData.navButtonActivities || []).find(
+        (a) => a.slug.toLowerCase() === currentRouteSlug && a.enabled
+      ) || null
+    );
+  }, [publicData.navButtonActivities, currentRouteSlug]);
+
+  const currentRouteParentButton = useMemo(() => {
+    if (!currentRouteActivity) return undefined;
+    return (publicData.navButtons || []).find((b) => b.id === currentRouteActivity.navButtonId);
+  }, [publicData.navButtons, currentRouteActivity]);
+
+  // Determine if current route is an unknown path
+  const isUnknownPath = useMemo(() => {
+    if (KNOWN_PATHS.has(currentPath)) return false;
+    if (currentPath.startsWith('/intro/')) return false; // Handled by dynamic chapter view or chapter 404
+    if (CHAPTER_PATH_RE.test(currentPath)) return false; // 正式章節網址 /chapterXX/
+    if (currentPath.startsWith('/nav/')) {
+      if (!publicDataLoaded) return false;
+      return !currentNavButton;
+    }
+    if (currentPath.startsWith('/route/')) {
+      if (!publicDataLoaded) return false;
+      return !currentRouteActivity;
+    }
+    if (currentCategoryActivitySegments) {
+      if (!publicDataLoaded) return false;
+      return !currentCategoryButton || !currentCategoryActivity;
+    }
+    if (currentCategoryListSlug) {
+      if (!publicDataLoaded) return false;
+      return !currentCategoryListButton;
+    }
+    return true;
+  }, [
+    currentPath,
+    publicDataLoaded,
+    currentCategoryListSlug,
+    currentCategoryListButton,
+    currentNavButton,
+    currentRouteActivity,
+    currentCategoryActivitySegments,
+    currentCategoryButton,
+    currentCategoryActivity,
+  ]);
+
+  // SEO: Update page title, meta description, canonical, og:url, twitter:title, twitter:description, and robots
   useEffect(() => {
-    (window as any).toggleAdminModal = () => {
-      handleOpenAdmin();
-    };
-    return () => {
-      delete (window as any).toggleAdminModal;
-    };
-  }, [isAdminLoggedIn]);
+    if (currentChapterSlug && !currentChapter && !publicDataLoaded) return;
+    if (currentNavButtonId && !currentNavButton && !publicDataLoaded) return;
+    if (currentCategoryListSlug && !currentCategoryListButton && !publicDataLoaded) return;
+    if (currentRouteSlug && !currentRouteActivity && !publicDataLoaded) return;
+    if (currentCategoryActivitySegments && !currentCategoryActivity && !publicDataLoaded) return;
 
-  const handleSaveData = async (newData: SiteData) => {
-    // Save to Firestore cloud database (and auto-update localStorage backup)
-    await saveSiteDataToCloud(newData);
-    setSiteData(newData);
-    setIsCloudConnected(true);
-  };
+    const seoMap: Record<string, { title: string; description: string }> = {
+      '/': {
+        title: '亞馬遜國家山岳協會 | Amazon Alpine Association',
+        description: '亞馬遜國家山岳協會（Amazon Alpine Association）官方入口網站與活動行事曆，提倡全民運動、團隊互助，並推廣山林知識與技能。',
+      },
+      '/intro': {
+        title: '登山入門指南 | 亞馬遜國家山岳協會',
+        description: '專為登山新手與山友整理的登山入門指南，涵蓋高山裝備清單、行前體能鍛鍊、山林安全自保守則與無痕山林（LNT）準則，助您安全開啟山岳旅程。',
+      },
+      '/tools': {
+        title: '登山工具與氣象服務 | 亞馬遜國家山岳協會',
+        description: '登山實用數位工具與氣象服務專區，即時整合高山氣象預報、國家公園入山入園線上申辦、步道路況通報及離線地圖軌跡等數位資源。',
+      },
+      '/highlights': {
+        title: '百岳登山影片與活動花絮 | 亞馬遜國家山岳協會',
+        description: '亞馬遜國家山岳協會歷年登山行程精選花絮與影音專區，收錄百岳縱走記錄、山友精彩回顧、自然風光縮時與活動實況影片分享。',
+      },
+      '/policies': {
+        title: '政策與章程條款 | 亞馬遜國家山岳協會',
+        description: '亞馬遜國家山岳協會章程、活動報名規範、費用與退費標準、山域活動安全責任守則及個人資料保護聲明，維護全體山友權益。',
+      },
+      '/surveys': {
+        title: '問卷調查專區 | 亞馬遜國家山岳協會',
+        description: '亞馬遜國家山岳協會意見回饋與問卷調查專區，歡迎山友填寫活動滿意度調查及山岳發展建議，共同打造優質山岳社群。',
+      },
+      '/admin': {
+        title: '後台管理系統 | 亞馬遜國家山岳協會',
+        description: '亞馬遜國家山岳協會後台管理系統。',
+      },
+    };
+
+    let currentMeta: { title: string; description: string; ogImage?: string } | undefined = seoMap[currentPath];
+    // 固定頁面：後台「前台導覽按鈕」有填 SEO 標題／描述就優先使用
+    if (currentMeta && ['/', '/intro', '/tools', '/highlights', '/policies', '/surveys'].includes(currentPath)) {
+      const btn = findPageNavButton<NavButtonItem>(publicData.navButtons, currentPath);
+      const t = (btn?.seoTitle || '').trim();
+      const d = (btn?.metaDescription || '').trim();
+      if (t || d) currentMeta = { ...currentMeta, title: t || currentMeta.title, description: d || currentMeta.description };
+    }
+    let is404 = false;
+    let customCanonicalUrl: string | undefined;
+
+    if (isUnknownPath) {
+      is404 = true;
+      customCanonicalUrl = `${SITE_ORIGIN}/`;
+      if (currentCategoryActivitySegments) {
+        currentMeta = {
+          title: '找不到此活動 | 亞馬遜國家山岳協會',
+          description: '找不到該行程活動，可能已下架、網址錯誤或分類已異動。',
+        };
+      } else {
+        currentMeta = {
+          title: '找不到此頁面 | 亞馬遜國家山岳協會',
+          description: '很抱歉，您所尋找的頁面不存在或已被移除。請返回首頁或瀏覽其他專題專區。',
+        };
+      }
+    } else if (!currentMeta && currentCategoryActivity && currentCategoryButton) {
+      const catSlug = getCategorySlug(currentCategoryButton);
+      customCanonicalUrl = `${SITE_ORIGIN}/${catSlug}/${currentCategoryActivity.slug}/`;
+      const resolved = resolveActivitySeo(currentCategoryActivity, currentCategoryButton);
+      currentMeta = {
+        title: resolved.title,
+        description: resolved.description,
+        ogImage: resolved.image,
+      };
+    } else if (!currentMeta && currentRouteActivity) {
+      if (currentRouteParentButton && currentRouteParentButton.enabled) {
+        const catSlug = getCategorySlug(currentRouteParentButton);
+        customCanonicalUrl = `${SITE_ORIGIN}/${catSlug}/${currentRouteActivity.slug}/`;
+        const resolved = resolveActivitySeo(currentRouteActivity, currentRouteParentButton);
+        currentMeta = {
+          title: resolved.title,
+          description: resolved.description,
+          ogImage: resolved.image,
+        };
+      } else {
+        customCanonicalUrl = `${SITE_ORIGIN}/route/${currentRouteActivity.slug}`;
+        currentMeta = {
+          title: `${currentRouteActivity.title} | 亞馬遜國家山岳協會`,
+          description:
+            currentRouteActivity.description ||
+            `${currentRouteActivity.title} - 亞馬遜國家山岳協會登山行程活動說明與完整報名資訊。`,
+          ogImage: currentRouteActivity.ogImage || currentRouteActivity.coverImage || undefined,
+        };
+      }
+    } else if (!currentMeta && currentNavButton) {
+      customCanonicalUrl = `${SITE_ORIGIN}${getNavButtonPath(currentNavButton)}`;
+      currentMeta = resolveNavButtonSeo(currentNavButton);
+    } else if (!currentMeta && currentChapter) {
+      const isOfficialChapter = CHAPTER_PATH_RE.test('/' + currentChapter.slug);
+      customCanonicalUrl = isOfficialChapter
+        ? `${SITE_ORIGIN}/${currentChapter.slug.toLowerCase()}/`
+        : `${SITE_ORIGIN}/intro/${currentChapter.slug}`;
+      currentMeta = {
+        title: `${currentChapter.title} | 亞馬遜國家山岳協會`,
+        description: currentChapter.description || `${currentChapter.title} - 亞馬遜國家山岳協會登山入門教學專文。`,
+        ogImage: currentChapter.coverImage || undefined,
+      };
+    } else if (!currentMeta && currentChapterSlug) {
+      is404 = true;
+      customCanonicalUrl = `${SITE_ORIGIN}/`;
+      currentMeta = {
+        title: '找不到此章節 | 亞馬遜國家山岳協會',
+        description: '抱歉，您所尋找的登山入門章節不存在或已被下架。',
+      };
+    } else if (!currentMeta) {
+      currentMeta = seoMap['/'];
+    }
+
+    document.title = currentMeta.title;
+
+    // Update meta description
+    const metaDesc = document.querySelector('meta[name="description"]');
+    if (metaDesc) metaDesc.setAttribute('content', currentMeta.description);
+
+    // Update og:title
+    const ogTitle = document.querySelector('meta[property="og:title"]');
+    if (ogTitle) ogTitle.setAttribute('content', currentMeta.title);
+
+    // Update og:description
+    const ogDesc = document.querySelector('meta[property="og:description"]');
+    if (ogDesc) ogDesc.setAttribute('content', currentMeta.description);
+
+    // Update twitter:title & twitter:description
+    const twitterTitle = document.querySelector('meta[name="twitter:title"]');
+    if (twitterTitle) twitterTitle.setAttribute('content', currentMeta.title);
+
+    const twitterDesc = document.querySelector('meta[name="twitter:description"]');
+    if (twitterDesc) twitterDesc.setAttribute('content', currentMeta.description);
+
+    // Update canonical link: 各頁面指向自己的網址，/admin 不產生可索引 canonical
+    let canonicalUrl: string | undefined;
+    if (currentPath === '/admin') {
+      canonicalUrl = undefined;
+    } else if (is404) {
+      canonicalUrl = `${SITE_ORIGIN}/`;
+    } else if (customCanonicalUrl) {
+      canonicalUrl = customCanonicalUrl;
+    } else if (currentPath === '/') {
+      canonicalUrl = `${SITE_ORIGIN}/`;
+    } else {
+      canonicalUrl = `${SITE_ORIGIN}${currentPath}`;
+    }
+
+    const canonicalLink = document.querySelector('link[rel="canonical"]');
+    if (canonicalUrl) {
+      if (canonicalLink) {
+        canonicalLink.setAttribute('href', canonicalUrl);
+      } else {
+        const link = document.createElement('link');
+        link.setAttribute('rel', 'canonical');
+        link.setAttribute('href', canonicalUrl);
+        document.head.appendChild(link);
+      }
+    } else {
+      if (canonicalLink) {
+        canonicalLink.remove();
+      }
+    }
+
+    // Update og:url: 與 canonical 使用相同 URL
+    let ogUrl = document.querySelector('meta[property="og:url"]');
+    if (canonicalUrl) {
+      if (!ogUrl) {
+        ogUrl = document.createElement('meta');
+        ogUrl.setAttribute('property', 'og:url');
+        document.head.appendChild(ogUrl);
+      }
+      ogUrl.setAttribute('content', canonicalUrl);
+    } else {
+      if (ogUrl) {
+        ogUrl.remove();
+      }
+    }
+
+    // Update og:image & twitter:image: 有頁面專屬的合法 http/https 圖片就用它，否則用全站預設分享圖
+    const isValidHttpUrl = (s?: string) => Boolean(s && /^https?:\/\//i.test(s.trim()));
+    const validOgImage = isValidHttpUrl(currentMeta.ogImage) ? currentMeta.ogImage!.trim() : DEFAULT_OG_IMAGE;
+
+    let ogImageEl = document.querySelector('meta[property="og:image"]');
+    let twitterImageEl = document.querySelector('meta[name="twitter:image"]');
+    if (validOgImage) {
+      if (!ogImageEl) {
+        ogImageEl = document.createElement('meta');
+        ogImageEl.setAttribute('property', 'og:image');
+        document.head.appendChild(ogImageEl);
+      }
+      ogImageEl.setAttribute('content', validOgImage);
+
+      if (!twitterImageEl) {
+        twitterImageEl = document.createElement('meta');
+        twitterImageEl.setAttribute('name', 'twitter:image');
+        document.head.appendChild(twitterImageEl);
+      }
+      twitterImageEl.setAttribute('content', validOgImage);
+    }
+
+    // Update robots meta tag: /admin 設為 noindex, nofollow；404 設為 noindex, follow
+    let robotsMeta = document.querySelector('meta[name="robots"]');
+    if (!robotsMeta) {
+      robotsMeta = document.createElement('meta');
+      robotsMeta.setAttribute('name', 'robots');
+      document.head.appendChild(robotsMeta);
+    }
+    const activeActivity = currentCategoryActivity || currentRouteActivity;
+    const isThinActivity = Boolean(activeActivity && !(activeActivity.content || '').trim());
+    const isThinChapterPage = Boolean(currentChapter && isThinMainChapter(currentChapter));
+    if (currentPath === '/admin') {
+      robotsMeta.setAttribute('content', 'noindex, nofollow');
+    } else if (is404 || isThinActivity || isThinChapterPage) {
+      robotsMeta.setAttribute('content', 'noindex, follow');
+    } else {
+      robotsMeta.setAttribute('content', 'index, follow');
+    }
+  }, [
+    currentPath,
+    currentChapter,
+    currentChapterSlug,
+    isUnknownPath,
+    publicDataLoaded,
+    currentCategoryActivitySegments,
+    currentCategoryButton,
+    currentCategoryActivity,
+    currentRouteActivity,
+    currentRouteParentButton,
+    currentNavButton,
+    currentCategoryListSlug,
+    currentCategoryListButton,
+  ]);
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#07130e] text-slate-100 relative selection:bg-emerald-600 selection:text-white bg-[radial-gradient(ellipse_80%_60%_at_50%_-10%,rgba(16,185,129,0.15),rgba(7,19,14,0))]">
-      {/* 頁首區塊 Header & 後台按鈕 */}
+    <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col font-sans selection:bg-emerald-800 selection:text-white">
+      {/* 1. 主導覽 (Header) with Organization details and 8 portals */}
       <Header
-        data={siteData}
-        onOpenAdmin={handleOpenAdmin}
-        isCloudConnected={isCloudConnected}
+        currentPath={currentPath}
+        onNavigate={navigate}
+        surveyUrl={publicData.surveyUrl}
+        navButtons={publicData.navButtons}
+        navButtonActivities={publicData.navButtonActivities}
       />
 
-      {/* 主要內容區 Main Content */}
-      <main className="max-w-5xl mx-auto px-3 md:px-4 py-4 md:py-10 flex-grow w-full">
-        {/* 板塊網格 (百岳與高山登山接駁) */}
-        <CardsGrid
-          sectionTitle={siteData.sectionTitle || "百岳與高山登山接駁"}
-          cards={siteData.cards}
-          onOpenModal={(modalType) => setActiveModal(modalType)}
-        />
+      {/* 2. Main Content based on route */}
+      <div className="flex-1">
+        {/* 未知路徑 404 畫面 */}
+        {isUnknownPath && (
+          <main className="max-w-4xl mx-auto px-4 py-20 text-center">
+            <h1 className="text-3xl font-extrabold text-neutral-100 mb-3">找不到此頁面</h1>
+            <p className="text-base text-neutral-400 mb-8 max-w-lg mx-auto">
+              很抱歉，您輸入或點選的網址不存在或已被移除。請返回協會首頁或使用上方主導覽前往其他專區。
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-4">
+              <button
+                type="button"
+                onClick={() => navigate('/')}
+                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md text-sm font-semibold transition-colors shadow-lg shadow-emerald-950"
+              >
+                返回協會首頁
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate('/intro')}
+                className="px-5 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 rounded-md text-sm font-semibold transition-colors border border-neutral-700"
+              >
+                瀏覽登山入門指南
+              </button>
+            </div>
+          </main>
+        )}
 
-        <TrailheadCharterSection />
-        <PopularRoutesSection
-          title={siteData.popularRoutesTitle || "熱門百岳登山接駁路線"}
-          routes={siteData.popularRoutes}
-        />
-        <MoreRoutesSection />
-        <OneWayTripSection />
-        <ServiceProcessSection />
-        <RoadStatusGuideSection />
-        <HomeFaqSection />
+        {/* 首頁: 活動行事曆 ONLY (沒有任何堆疊的多餘區塊) */}
+        {!isUnknownPath && currentPath === '/' && (
+          <CalendarSection
+            activities={activities}
+            loading={activitiesLoading}
+            error={activitiesError}
+            introContent={pageText('/').intro}
+            bottomContent={pageText('/').footer}
+          />
+        )}
 
-        {/* 關於我們區塊 */}
-        <AboutSection
-          title={siteData.aboutTitle || "關於我們"}
-          content={siteData.aboutContent}
-        />
-      </main>
+        {/* 登山入門 獨立專區 */}
+        {!isUnknownPath && currentPath === '/intro' && (
+          <IntroView
+            chapters={publicData.chapters}
+            intros={publicData.intros}
+            introContent={pageText('/intro').intro}
+            bottomContent={pageText('/intro').footer}
+            onBack={() => navigate('/')}
+            onSelectChapter={(slug) => navigate(`/intro/${slug}`)}
+          />
+        )}
 
-      {/* 底部預約 Bar (Sticky/Fixed Footer) */}
-      <Footer data={siteData} />
+        {/* 登山入門 單篇章節頁面 /intro/:slug */}
+        {!isUnknownPath && currentChapterSlug && currentChapter && (
+          <ChapterView
+            chapter={currentChapter}
+            prevChapter={prevChapter}
+            nextChapter={nextChapter}
+            onBack={() => navigate('/intro')}
+            onNavigateChapter={(slug) => navigate(`/intro/${slug}`)}
+          />
+        )}
 
-      {/* 後台登入彈出視窗 (Admin Login Modal) */}
-      <AdminLoginModal
-        isOpen={isLoginOpen}
-        onClose={() => setIsLoginOpen(false)}
-        onLoginSuccess={handleLoginSuccess}
-      />
+        {/* 登山入門 章節 404 狀態 */}
+        {!isUnknownPath && currentChapterSlug && !currentChapter && (
+          <main className="max-w-4xl mx-auto px-4 py-16 text-center">
+            <h1 className="text-2xl font-bold text-neutral-200 mb-2">找不到該專文章節</h1>
+            <p className="text-sm text-neutral-400 mb-6">
+              您輸入的章節網址「{currentPath}」不存在或目前未發布。
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate('/intro')}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-sm font-medium transition-colors"
+            >
+              返回登山入門目錄
+            </button>
+          </main>
+        )}
 
-      {/* 後台管理彈出視窗 (Admin Modal) */}
-      <AdminModal
-        isOpen={isAdminOpen}
-        onClose={() => setIsAdminOpen(false)}
-        data={siteData}
-        onSave={handleSaveData}
-        isCloudConnected={isCloudConnected}
-        onLogout={handleLogout}
-      />
+        {/* 按鈕活動列表專區 /nav/:buttonId */}
+        {!isUnknownPath && currentNavButtonId && currentNavButton && (
+          <NavActivitiesView
+            button={currentNavButton}
+            activities={currentNavActivities}
+            entries={currentNavEntries}
+            onBack={() => navigate('/')}
+            onSelectActivity={(slug) => navigate(`/${getCategorySlug(currentNavButton)}/${slug}/`)}
+            onNavigateEntry={(url) => navigate(url)}
+          />
+        )}
 
-      {/* 互動工具彈出視窗: 價格估算系統 */}
-      <PriceCalcModal
-        isOpen={activeModal === 'calc'}
-        onClose={() => setActiveModal(null)}
-        lineUrl={siteData.lineUrl}
-        phone={siteData.phone}
-      />
+        {/* 兩層式行程活動內部頁面 /:categorySlug/:activitySlug/ */}
+        {!isUnknownPath && currentCategoryButton && currentCategoryActivity && (
+          <RouteActivityView
+            activity={currentCategoryActivity}
+            parentButton={currentCategoryButton}
+            siblingActivities={currentCategorySiblingActivities}
+            onBack={() => navigate(getNavButtonPath(currentCategoryButton))}
+            onNavigateHome={() => navigate('/')}
+          />
+        )}
 
-      {/* 互動工具彈出視窗: D0 住宿查詢 */}
-      <D0LodgingModal
-        isOpen={activeModal === 'hotel'}
-        onClose={() => setActiveModal(null)}
-      />
+        {/* 找不到行程活動 404 狀態 */}
+        {isUnknownPath && currentCategoryActivitySegments && (
+          <main className="max-w-4xl mx-auto px-4 py-16 text-center">
+            <h1 className="text-2xl font-bold text-neutral-200 mb-2">找不到該行程活動</h1>
+            <p className="text-sm text-neutral-400 mb-6">
+              找不到該行程活動，可能已下架、網址錯誤或分類已異動。
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate('/')}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-sm font-medium transition-colors"
+            >
+              返回協會首頁
+            </button>
+          </main>
+        )}
 
-      {/* 互動工具彈出視窗: 下山慶功宴查詢 */}
-      <FeastModal
-        isOpen={activeModal === 'food'}
-        onClose={() => setActiveModal(null)}
-      />
+        {/* 單一活動內部頁面 /route/:slug（舊版相容） */}
+        {!isUnknownPath && currentRouteSlug && currentRouteActivity && (
+          <RouteActivityView
+            activity={currentRouteActivity}
+            parentButton={currentRouteParentButton}
+            onBack={() => {
+              if (currentRouteParentButton) {
+                navigate(getNavButtonPath(currentRouteParentButton));
+              } else if (currentRouteActivity.navButtonId) {
+                navigate(`/nav/${currentRouteActivity.navButtonId}`);
+              } else {
+                navigate('/');
+              }
+            }}
+            onNavigateHome={() => navigate('/')}
+          />
+        )}
 
-      {/* 互動工具彈出視窗: 道路路線管制查詢 */}
-      <RoadStatusModal
-        isOpen={activeModal === 'road'}
-        onClose={() => setActiveModal(null)}
-      />
+        {/* 登山工具 獨立專區 */}
+        {!isUnknownPath && currentPath === '/tools' && (
+          <ToolsView
+            tools={publicData.tools}
+            introContent={pageText('/tools').intro}
+            bottomContent={pageText('/tools').footer}
+            onBack={() => navigate('/')}
+          />
+        )}
+
+        {/* 活動花絮 YouTube 影音專區 */}
+        {!isUnknownPath && currentPath === '/highlights' && (
+          <HighlightsView
+            highlights={publicData.highlights}
+            introContent={
+              (
+                (publicData.navButtons || []).find(
+                  (b) => b.id === 'btn_highlights' || b.url === '/highlights'
+                )?.introContent || ''
+              ).trim()
+            }
+            footerContent={
+              (
+                (publicData.navButtons || []).find(
+                  (b) => b.id === 'btn_highlights' || b.url === '/highlights'
+                )?.footerContent || ''
+              ).trim()
+            }
+            onBack={() => navigate('/')}
+          />
+        )}
+
+        {/* 政策與條款 獨立專區 */}
+        {!isUnknownPath && currentPath === '/policies' && (
+          <PoliciesView
+            policies={publicData.policies}
+            introContent={pageText('/policies').intro}
+            bottomContent={pageText('/policies').footer}
+            onBack={() => navigate('/')}
+          />
+        )}
+
+        {/* 問卷調查 獨立選單專區 */}
+        {!isUnknownPath && currentPath === '/surveys' && (
+          <SurveysView
+            surveys={publicData.surveys}
+            introContent={pageText('/surveys').intro}
+            bottomContent={pageText('/surveys').footer}
+            onBack={() => navigate('/')}
+          />
+        )}
+
+        {/* 後台管理 /admin */}
+        {!isUnknownPath && currentPath === '/admin' && (
+          <AdminPage
+            onBack={() => navigate('/')}
+            onDataUpdated={fetchPublicData}
+          />
+        )}
+      </div>
+
+      {/* 3. 頁尾資訊列 (FOOT: 亞馬遜國家山岳協會 ｜ LINE 官方諮詢) */}
+      <Footer onNavigate={navigate} />
     </div>
   );
 }

@@ -545,8 +545,18 @@ export async function handleApiRequest(
           sortOrder: Number(item.sortOrder) || 0,
         };
         const idx = db.highlights.findIndex((h) => h.id === cleanItem.id);
-        if (idx >= 0) db.highlights[idx] = cleanItem;
-        else db.highlights.push(cleanItem);
+        if (idx >= 0) {
+          db.highlights[idx] = cleanItem;
+        } else {
+          // 新增：越晚新增的越前面（# 數字越小）。
+          // 新項目若排在序號 N，原本序號 >= N 的項目全部順延 +1，避免重複序號。
+          const insertAt = cleanItem.sortOrder >= 1 ? cleanItem.sortOrder : 1;
+          cleanItem.sortOrder = insertAt;
+          db.highlights.forEach((h) => {
+            if ((h.sortOrder ?? 0) >= insertAt) h.sortOrder = (h.sortOrder ?? 0) + 1;
+          });
+          db.highlights.push(cleanItem);
+        }
 
         await saveDatabaseWorker(db, env);
         return jsonResponse({ success: true, item: cleanItem });

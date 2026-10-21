@@ -1986,7 +1986,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                   id: '',
                   youtubeUrl: '',
                   enabled: true,
-                  sortOrder: (adminData.highlights.length || 0) + 1,
+                  sortOrder: 1, // 新增的排最前面（#1），舊的自動順延
                 })
               }
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold bg-emerald-800 hover:bg-emerald-700 text-white transition-colors"

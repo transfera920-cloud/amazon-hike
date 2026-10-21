@@ -416,6 +416,12 @@ apiRouter.post('/admin/save-highlight', requireAdmin, (req: Request, res: Respon
     if (existingIndex >= 0) {
       db.highlights[existingIndex] = cleanItem;
     } else {
+      // 新增：越晚新增的越前面（# 數字越小），原本序號 >= 新序號的項目順延 +1
+      const insertAt = cleanItem.sortOrder >= 1 ? cleanItem.sortOrder : 1;
+      cleanItem.sortOrder = insertAt;
+      db.highlights.forEach((h) => {
+        if ((h.sortOrder ?? 0) >= insertAt) h.sortOrder = (h.sortOrder ?? 0) + 1;
+      });
       db.highlights.push(cleanItem);
     }
 

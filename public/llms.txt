@@ -1,21 +1,41 @@
-# 亞馬遜國家山岳協會（Amazon Alpine Association）
+# 亞馬遜高山接駁（登山接駁）
 
-> 提倡全民運動、團隊互助，並推廣山林知識與技能的山岳團體。網站提供活動行事曆、登山入門教學、台灣百岳介紹與路線、登山工具與活動花絮。
+> 提供全台灣熱門百岳與高山步道的登山口包車接送。合法租賃營業車、職業駕照司機、600 萬乘客平安險。可從北中南主要縣市與宜蘭出發，提供來回包車、單程（含 A進B出）、夜間或 D0 跨夜出發。
 
-聯絡：LINE https://lin.ee/TJJLV36 ｜ 電話 0972573495 ｜ Email yy661003@gmail.com
+車型：9 人座商務車、7 人座休旅車、適合林道碎石路段的高底盤四驅車。
+預約：LINE https://lin.ee/TJJLV36 ｜ 電話 0972573495 ｜ Email amazonchiayi@gmail.com
+服務地區：台北、新北、桃園、新竹、台中、彰化、嘉義、台南、高雄、宜蘭出發，前往全台登山口。
+注意：路況與管制時間以官方公告為準。
 
-## 主要內容
-- [活動行事曆](https://amazon-hike.com/)
-- [登山入門教學](https://amazon-hike.com/intro)
-- [登山工具與氣象服務](https://amazon-hike.com/tools)
-- [活動花絮影音](https://amazon-hike.com/highlights)
-- [政策與條款](https://amazon-hike.com/policies)
+## 路線頁
+- [合歡山群峰｜武嶺｜小奇萊](https://transfer.amazon-hike.com/hehuanshan/)
+- [雪山登山口服務站｜雪山主東峰](https://transfer.amazon-hike.com/xueshan/)
+- [武陵山莊｜武陵四秀](https://transfer.amazon-hike.com/wulingshanzhuang/)
+- [玉山｜塔塔加](https://transfer.amazon-hike.com/yushan/)
+- [嘉明湖｜向陽](https://transfer.amazon-hike.com/jiaminghu/)
+- [奇萊南華｜屯原](https://transfer.amazon-hike.com/qilai-nanhua/)
+- [大霸尖山｜觀霧](https://transfer.amazon-hike.com/dabajianshan/)
+- [郡大山｜望鄉部落](https://transfer.amazon-hike.com/jundashan/)
 
-## 相關服務與工具（不同網域）
-- [亞馬遜高山接駁：全台登山口包車接送](https://transfer.amazon-hike.com/)
-- [登山接駁費用試算](https://price.amazon-hike.com/)
-- [登山路況與道路管制查詢](https://road.amazon-hike.com/)
-- [台灣林道通行狀況查詢](https://forestroad.amazon-hike.com/)
+## 更多百岳路線
+- [大小劍｜仁壽橋停車場](https://transfer.amazon-hike.com/dajianshan/)
+- [志佳陽山｜環山部落](https://transfer.amazon-hike.com/zhijiayang/)
+- [南湖大山｜勝光登山口](https://transfer.amazon-hike.com/nanhu/)
+- [白姑大山｜紅香部落｜最後農家](https://transfer.amazon-hike.com/baigu/)
+- [閂山鈴鳴山｜730 林道接駁 11.7K](https://transfer.amazon-hike.com/shuanshan/)
+- [畢羊縱走｜820 林道起點｜慈恩隧道口](https://transfer.amazon-hike.com/biyang/)
+- [能高安東軍｜屯原雲天宮、奧萬大森林遊樂區](https://transfer.amazon-hike.com/nenggao-andongjun/)
+- [干卓萬｜萬大林道、武界林道](https://transfer.amazon-hike.com/wanda/)
+- [八通關｜八通關登山口](https://transfer.amazon-hike.com/batongguan/)
+- [南橫三星｜南橫登山口｜特生中心](https://transfer.amazon-hike.com/nanhengsanxing/)
+- [北大武山｜北大武登山口](https://transfer.amazon-hike.com/beidawu/)
 
-## 說明
-亞馬遜高山接駁為獨立品牌的接駁服務，與本協會互相推薦；登山教學與百岳介紹以本站為準，包車與接駁報價以接駁站為準。
+## 相關工具
+- [價格估算系統](https://price.amazon-hike.com/)
+- [郡大山・西巒大山接駁與共乘專站](https://shuttle.amazon-hike.com/)
+- [D0 住宿查詢](https://stays.amazon-hike.com/trailhead-stays)
+- [下山慶功宴查詢](https://feast.amazon-hike.com/)
+- [道路路線管制查詢](https://road.amazon-hike.com/)
+
+## 相關組織
+- [亞馬遜國家山岳協會](https://amazon-hike.com/)：登山入門教學、百岳介紹、活動行事曆與花絮。亞馬遜高山接駁與協會是同一位經營者營運的兩個獨立單位，接駁並非協會旗下服務。

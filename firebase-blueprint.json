@@ -1,0 +1,32 @@
+{
+  "entities": {
+    "SiteSettings": {
+      "title": "SiteSettings",
+      "description": "Global website configuration and content for Amazon High Mountain Transfer",
+      "type": "object",
+      "properties": {
+        "phone": { "type": "string", "maxLength": 50 },
+        "lineUrl": { "type": "string", "maxLength": 500 },
+        "email": { "type": "string", "maxLength": 150 },
+        "siteTitle": { "type": "string", "maxLength": 100 },
+        "siteSubtitle": { "type": "string", "maxLength": 200 },
+        "heroLineText": { "type": "string", "maxLength": 100 },
+        "sectionTitle": { "type": "string", "maxLength": 100 },
+        "seoDesc": { "type": "string", "maxLength": 1000 },
+        "features": { "type": "array" },
+        "aboutTitle": { "type": "string", "maxLength": 100 },
+        "aboutContent": { "type": "string", "maxLength": 5000 },
+        "footerBannerTitle": { "type": "string", "maxLength": 100 },
+        "footerBannerSub": { "type": "string", "maxLength": 200 },
+        "cards": { "type": "array" }
+      },
+      "required": ["siteTitle", "phone", "lineUrl"]
+    }
+  },
+  "firestore": {
+    "/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/SiteSettings" },
+      "description": "Public site content and configuration documents"
+    }
+  }
+}

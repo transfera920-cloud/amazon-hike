@@ -1,0 +1,33 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidSiteSettings(data) {
+      return data.siteTitle is string && data.siteTitle.size() <= 200
+        && data.phone is string && data.phone.size() <= 100
+        && data.lineUrl is string && data.lineUrl.size() <= 500
+        && data.email is string && data.email.size() <= 200;
+    }
+
+    // 只有管理員（Firebase Authentication 登入的指定 Email）可以寫入；任何人都可讀取
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email == 'amazonchiayi@gmail.com';
+    }
+
+    match /settings/{settingId} {
+      allow get: if isValidId(settingId);
+      allow list: if true;
+      allow create, update: if isAdmin() && isValidId(settingId) && isValidSiteSettings(request.resource.data);
+      allow delete: if false;
+    }
+  }
+}

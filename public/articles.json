@@ -1,0 +1,28 @@
+{
+  "_說明": "每條路線放一個陣列，每篇文章 {title, url, show}。貼上網址、show 設 true 就會顯示；文章還沒做好就設 false 或留空，頁面不會出現。key 是路線資料夾名稱。",
+  "baigu": [],
+  "batongguan": [],
+  "beidawu": [],
+  "biyang": [],
+  "dabajianshan": [],
+  "dajianshan": [],
+  "hehuanshan": [],
+  "jiaminghu": [],
+  "jundashan": [],
+  "nanhengsanxing": [],
+  "nanhu": [],
+  "nenggao-andongjun": [],
+  "qilai-nanhua": [],
+  "shuanshan": [],
+  "wanda": [],
+  "wulingshanzhuang": [],
+  "xueshan": [],
+  "yushan": [
+    {
+      "title": "玉山百岳登山攻略｜排雲山莊2天1夜｜亞馬遜國家山岳協會",
+      "url": "https://amazon-hike.com/baiyue-traverse/3952",
+      "show": true
+    }
+  ],
+  "zhijiayang": []
+}

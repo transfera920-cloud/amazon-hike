@@ -97,12 +97,9 @@ function formatMultilineHtml(text: string): string {
  * 後台「前台導覽按鈕」的上文（introContent）與下文（footerContent），轉成初始 HTML 段落，
  * 讓搜尋引擎不必執行 JavaScript 就能讀到。找不到或沒填就回傳空字串。
  */
-/** 與前台相同規則：[文字](網址) 轉成 <a>，只允許站內路徑與 amazon-hike.com（含子網域） */
+/** 與前台相同規則：[文字](網址) 轉成 <a>，允許站內路徑與 http/https 網址 */
 function formatLinkedMultilineHtml(text: string): string {
-  const isSafe = (h: string) =>
-    /^\/(?!\/)/.test(h) ||
-    /^https:\/\/([a-z0-9-]+\.)*amazon-hike\.com(\/|$)/i.test(h) ||
-    /^https:\/\/mountain-vigil\.lovable\.app(\/|$)/i.test(h);
+  const isSafe = (h: string) => /^\/(?!\/)/.test(h) || /^https?:\/\/[^\s]+$/i.test(h);
   const linkRe = /\[([^\]]+)\]\(([^)\s]+)\)/g;
   const renderLine = (line: string): string => {
     let out = '';

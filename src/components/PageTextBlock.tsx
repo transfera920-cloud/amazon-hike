@@ -1,13 +1,8 @@
 import React from 'react';
 
-/** 只允許站內連結（/ 開頭）、amazon-hike.com 與其子網域（https），以及白名單中的指定外部工具網址，避免後台文字被塞入外部或危險連結 */
+/** 允許站內連結（/ 開頭）與 http/https 網址；擋掉 javascript: 等危險寫法 */
 export function isSafePageTextHref(href: string): boolean {
-  return (
-    /^\/(?!\/)/.test(href) ||
-    /^https:\/\/([a-z0-9-]+\.)*amazon-hike\.com(\/|$)/i.test(href) ||
-    // 例外：山區天氣預報工具（僅開放這一個網址，不開放整個 lovable.app）
-    /^https:\/\/mountain-vigil\.lovable\.app(\/|$)/i.test(href)
-  );
+  return /^\/(?!\/)/.test(href) || /^https?:\/\/[^\s]+$/i.test(href);
 }
 
 /** 把 [文字](網址) 轉成連結，其餘維持純文字（不使用 dangerouslySetInnerHTML） */

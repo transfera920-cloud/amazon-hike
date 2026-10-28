@@ -31,6 +31,7 @@ export const RESERVED_SLUGS = new Set([
   'tools',
   'highlights',
   'policies',
+  'rules',
   'surveys',
   'admin',
   'nav',

@@ -10,6 +10,14 @@
 - [登山工具與氣象服務](https://amazon-hike.com/tools)
 - [活動花絮影音](https://amazon-hike.com/highlights)
 - [政策與條款](https://amazon-hike.com/policies)
+- [出團須知](https://amazon-hike.com/rules/)
+- [登山團退費與取消規定怎麼算？](https://amazon-hike.com/rules/refund/)
+- [登山互助小組怎麼編組？禁止獨走與視線範圍規定](https://amazon-hike.com/rules/buddy-team/)
+- [登山行進紀律：領隊指揮、行進節奏與落後者停損](https://amazon-hike.com/rules/discipline/)
+- [登山遇到繩索與危險地形怎麼通過？使用原則與檢查](https://amazon-hike.com/rules/rope/)
+- [登山隊員失聯或迷航時怎麼處置？](https://amazon-hike.com/rules/lost-contact/)
+- [登山緊急聯絡人與留守人怎麼設定？出發前與入山後的回報](https://amazon-hike.com/rules/emergency-contact/)
+- [登山團糧食怎麼準備？餐數、秤重與預備糧流程](https://amazon-hike.com/rules/food-weigh/)
 
 ## 相關服務與工具（不同網域）
 - [亞馬遜高山接駁：全台登山口包車接送](https://transfer.amazon-hike.com/)

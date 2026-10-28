@@ -929,6 +929,14 @@ async function buildLlmsTxt(env: WorkerEnv): Promise<string> {
   lines.push(`- [登山工具與氣象服務](${SITE_ORIGIN}/tools)：登山計算工具與氣象、路況查詢`);
   lines.push(`- [活動花絮影音](${SITE_ORIGIN}/highlights)：歷年登山活動影片`);
   lines.push(`- [政策與條款](${SITE_ORIGIN}/policies)：章程、活動參與安全守則、退費規範與隱私權聲明`);
+  lines.push(`- [出團須知](${SITE_ORIGIN}/rules/)：登山活動的報名審核、退費與取消規則、交通接駁、行進紀律與登山安全規定`);
+  lines.push(`- [登山團退費與取消規定怎麼算？](${SITE_ORIGIN}/rules/refund/)`);
+  lines.push(`- [登山互助小組怎麼編組？禁止獨走與視線範圍規定](${SITE_ORIGIN}/rules/buddy-team/)`);
+  lines.push(`- [登山行進紀律：領隊指揮、行進節奏與落後者停損](${SITE_ORIGIN}/rules/discipline/)`);
+  lines.push(`- [登山遇到繩索與危險地形怎麼通過？使用原則與檢查](${SITE_ORIGIN}/rules/rope/)`);
+  lines.push(`- [登山隊員失聯或迷航時怎麼處置？](${SITE_ORIGIN}/rules/lost-contact/)`);
+  lines.push(`- [登山緊急聯絡人與留守人怎麼設定？出發前與入山後的回報](${SITE_ORIGIN}/rules/emergency-contact/)`);
+  lines.push(`- [登山團糧食怎麼準備？餐數、秤重與預備糧流程](${SITE_ORIGIN}/rules/food-weigh/)`);
   lines.push('');
 
   const buttons = (db.navButtons || []).filter((b) => b.enabled).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
@@ -1190,6 +1198,54 @@ Sitemap: https://amazon-hike.com/sitemap.xml
     <loc>https://amazon-hike.com/policies</loc>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://amazon-hike.com/rules/</loc>
+    <lastmod>2026-10-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://amazon-hike.com/rules/refund/</loc>
+    <lastmod>2026-10-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://amazon-hike.com/rules/buddy-team/</loc>
+    <lastmod>2026-10-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://amazon-hike.com/rules/discipline/</loc>
+    <lastmod>2026-10-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://amazon-hike.com/rules/rope/</loc>
+    <lastmod>2026-10-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://amazon-hike.com/rules/lost-contact/</loc>
+    <lastmod>2026-10-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://amazon-hike.com/rules/emergency-contact/</loc>
+    <lastmod>2026-10-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://amazon-hike.com/rules/food-weigh/</loc>
+    <lastmod>2026-10-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
   </url>
   <url>
     <loc>https://amazon-hike.com/surveys</loc>

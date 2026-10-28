@@ -381,8 +381,8 @@ export default function App() {
 
     const seoMap: Record<string, { title: string; description: string }> = {
       '/': {
-        title: '亞馬遜國家山岳協會 | Amazon Alpine Association',
-        description: '亞馬遜國家山岳協會（Amazon Alpine Association）官方入口網站與活動行事曆，提倡全民運動、團隊互助，並推廣山林知識與技能。',
+        title: '亞馬遜國家山岳協會｜登山活動行事曆、百岳行程與登山教學',
+        description: '想找適合自己的登山活動嗎？這裡整理了亞馬遜國家山岳協會（Amazon Alpine Association）近期的活動行事曆、台灣百岳行程介紹與登山入門教學，也提供行前準備與安全小提醒，陪您安心踏出第一步。',
       },
       '/intro': {
         title: '登山入門指南 | 亞馬遜國家山岳協會',

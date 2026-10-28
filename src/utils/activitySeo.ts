@@ -97,7 +97,7 @@ export function resolveActivitySeo(
 
   const description =
     (activity.metaDescription || '').trim() ||
-    (activity.description || '').slice(0, 160) ||
+    summarizeForMeta(activity.description || '', 160) ||
     `${activity.title} - 亞馬遜國家山岳協會登山健行行程詳細說明與線上報名資訊。`;
 
   const image =

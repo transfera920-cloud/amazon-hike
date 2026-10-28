@@ -15,6 +15,7 @@ import {
   DEFAULT_OG_IMAGE,
   isThinMainChapter,
   MAIN_WORKER_CHAPTER_SLUGS,
+  extractPeakNoAndName,
 } from '../src/utils/activitySeo.js';
 import type { NavButtonActivity } from '../src/types.js';
 import { getYouTubeVideoId, normalizeToolUrl } from '../src/utils/url.js';
@@ -356,6 +357,18 @@ function buildActivityJsonLd(
         author: { '@id': ORG_ID },
         publisher: { '@id': ORG_ID },
         isPartOf: { '@id': `${SITE_ORIGIN}/#website` },
+        // 百岳頁：標明文章談的是哪一座山、位於哪個國家公園，方便搜尋引擎與 AI 對應實體
+        ...(isPeak
+          ? {
+              about: {
+                '@type': 'Mountain',
+                name: extractPeakNoAndName(act.title).name || headline,
+                ...((act.nationalPark || '').trim()
+                  ? { containedInPlace: { '@type': 'Place', name: act.nationalPark!.trim() } }
+                  : {}),
+              },
+            }
+          : {}),
       },
       {
         '@type': 'BreadcrumbList',
@@ -567,6 +580,64 @@ async function buildPoliciesShellHtml(env: WorkerEnv, title: string, description
 }
 
 /**
+ * 首頁「近期活動」：把後台行事曆中尚未結束的活動放進初始 HTML，並輸出 Event 結構化資料。
+ * 讓不執行 JS 的爬蟲與生成式 AI 也能讀到近期有哪些活動、何時舉辦。
+ * 沒有符合的活動時回傳空字串，不會輸出空白區塊。
+ */
+async function buildHomeEvents(env: WorkerEnv): Promise<{ html: string; jsonLd: string }> {
+  try {
+    const db = await loadDatabaseWorker(env);
+    // 以台灣時間（UTC+8）的今天為準
+    const today = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
+    const isDate = (s?: string) => /^\d{4}-\d{2}-\d{2}$/.test((s || '').trim());
+    const upcoming = (db.calendarActivities || [])
+      .filter((c) => c.enabled && (c.title || '').trim() && isDate(c.startDate))
+      .filter((c) => (isDate(c.endDate) ? c.endDate : c.startDate) >= today)
+      .sort((a, b) => a.startDate.localeCompare(b.startDate))
+      .slice(0, 20);
+    if (upcoming.length === 0) return { html: '', jsonLd: '' };
+
+    const toAbs = (raw?: string): string => {
+      const href = resolveToolHref(raw);
+      if (!href) return '';
+      return href.startsWith('/') ? SITE_ORIGIN + href : href;
+    };
+    const range = (c: { startDate: string; endDate: string }) =>
+      isDate(c.endDate) && c.endDate !== c.startDate ? `${c.startDate} 至 ${c.endDate}` : c.startDate;
+
+    const items = upcoming
+      .map((c) => {
+        const abs = toAbs(c.url);
+        const name = escapeHtml(c.title.trim());
+        const label = /^https?:\/\//i.test(abs) ? `<a href="${escapeHtml(abs)}">${name}</a>` : name;
+        return `<li>${label}（${range(c)}）</li>`;
+      })
+      .join('');
+    const html = `<section><h2>近期活動</h2><ul>${items}</ul></section>`;
+
+    const nodes = upcoming.map((c) => {
+      const abs = toAbs(c.url);
+      return {
+        '@type': 'Event',
+        name: c.title.trim(),
+        startDate: c.startDate,
+        endDate: isDate(c.endDate) ? c.endDate : c.startDate,
+        eventStatus: 'https://schema.org/EventScheduled',
+        eventAttendanceMode: 'https://schema.org/OfflineEventAttendanceMode',
+        inLanguage: 'zh-TW',
+        organizer: { '@id': ORG_ID },
+        ...(/^https?:\/\//i.test(abs) ? { url: abs } : {}),
+      };
+    });
+    const jsonLd = JSON.stringify({ '@context': 'https://schema.org', '@graph': nodes }).replace(/</g, '\\u003c');
+    return { html, jsonLd };
+  } catch (err) {
+    console.error('Error building home events:', err);
+    return { html: '', jsonLd: '' };
+  }
+}
+
+/**
  * 建立 /intro 頁面初始 HTML 的章節導覽清單
  * 注意：不要加入任何 <h1>、<h2> 或其他標題標籤，/intro 既有的 H1 維持由前端渲染，不要重新設計標題結構。
  */
@@ -601,8 +672,8 @@ async function buildIntroLinksHtml(env: WorkerEnv): Promise<string> {
  */
 const ROUTE_META_MAP: Record<string, RouteMetadata> = {
   '/': {
-    title: '亞馬遜國家山岳協會 | Amazon Alpine Association',
-    description: '亞馬遜國家山岳協會（Amazon Alpine Association）官方入口網站與活動行事曆，提倡全民運動、團隊互助，並推廣山林知識與技能。',
+    title: '亞馬遜國家山岳協會｜登山活動行事曆、百岳行程與登山教學',
+    description: '想找適合自己的登山活動嗎？這裡整理了亞馬遜國家山岳協會（Amazon Alpine Association）近期的活動行事曆、台灣百岳行程介紹與登山入門教學，也提供行前準備與安全小提醒，陪您安心踏出第一步。',
   },
   '/intro': {
     title: '登山入門指南 | 亞馬遜國家山岳協會',
@@ -1544,7 +1615,18 @@ ${activityUrls}
             normalizedPath === '/' || normalizedPath === '/surveys'
               ? await loadPageTextHtml(env, normalizedPath)
               : { top: '', bottom: '' };
-          rootHtml = buildSectionShellHtml(routeMeta.title, routeMeta.description, pageText.top, pageText.bottom);
+          let homeEventsHtml = '';
+          if (normalizedPath === '/') {
+            const ev = await buildHomeEvents(env);
+            homeEventsHtml = ev.html;
+            if (ev.jsonLd) chapterJsonLd = ev.jsonLd;
+          }
+          rootHtml = buildSectionShellHtml(
+            routeMeta.title,
+            routeMeta.description,
+            pageText.top + homeEventsHtml,
+            pageText.bottom
+          );
         }
 
         const isNotFound = isChapterNotFound || isNavNotFound || isRouteNotFound || isCategoryActivityNotFound;

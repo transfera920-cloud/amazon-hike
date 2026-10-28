@@ -1,8 +1,13 @@
 import React from 'react';
 
-/** 允許站內連結（/ 開頭）與 http/https 網址；擋掉 javascript: 等危險寫法 */
+/** 允許站內連結（/ 開頭）、http/https 網址、電話（tel:+886...）與電子郵件（mailto:）；擋掉 javascript: 等危險寫法 */
 export function isSafePageTextHref(href: string): boolean {
-  return /^\/(?!\/)/.test(href) || /^https?:\/\/[^\s]+$/i.test(href);
+  return (
+    /^\/(?!\/)/.test(href) ||
+    /^https?:\/\/[^\s]+$/i.test(href) ||
+    /^tel:\+?[0-9]{6,15}$/.test(href) ||
+    /^mailto:[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']+$/i.test(href)
+  );
 }
 
 /** 把 [文字](網址) 轉成連結，其餘維持純文字（不使用 dangerouslySetInnerHTML） */

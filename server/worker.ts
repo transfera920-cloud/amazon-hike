@@ -100,7 +100,11 @@ function formatMultilineHtml(text: string): string {
  */
 /** 與前台相同規則：[文字](網址) 轉成 <a>，允許站內路徑與 http/https 網址 */
 function formatLinkedMultilineHtml(text: string): string {
-  const isSafe = (h: string) => /^\/(?!\/)/.test(h) || /^https?:\/\/[^\s]+$/i.test(h);
+  const isSafe = (h: string) =>
+    /^\/(?!\/)/.test(h) ||
+    /^https?:\/\/[^\s]+$/i.test(h) ||
+    /^tel:\+?[0-9]{6,15}$/.test(h) ||
+    /^mailto:[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']+$/i.test(h);
   const linkRe = /\[([^\]]+)\]\(([^)\s]+)\)/g;
   const renderLine = (line: string): string => {
     let out = '';

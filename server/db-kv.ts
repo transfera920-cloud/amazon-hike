@@ -100,6 +100,17 @@ function ensureCalendarActivities(db: AssociationDatabase): boolean {
 }
 
 /**
+ * 確保資料庫包含 homeBlocks（首頁內容區塊）集合欄位；若缺失，補一個空陣列。
+ */
+function ensureHomeBlocks(db: AssociationDatabase): boolean {
+  if (!Array.isArray(db.homeBlocks)) {
+    db.homeBlocks = [];
+    return true;
+  }
+  return false;
+}
+
+/**
  * 「KV 優先 + 安全容錯」讀取機制：
  * 1. 若環境有綁定 ASSOCIATION_DB，優先讀取 Cloudflare KV (association_data)。
  * 2. 若 KV 內已有資料，直接返回線上權威資料，絕不覆蓋。
@@ -123,7 +134,9 @@ export async function loadDatabaseWorker(env?: WorkerEnv): Promise<AssociationDa
         const needsSaveEntries = ensureNavButtonEntries(kvValue);
         const needsSaveActivities = ensureNavButtonActivities(kvValue);
         const needsSaveCalendar = ensureCalendarActivities(kvValue);
-        const needsSave = needsSaveChapters || needsSaveEntries || needsSaveActivities || needsSaveCalendar;
+        const needsSaveHomeBlocks = ensureHomeBlocks(kvValue);
+        const needsSave =
+          needsSaveChapters || needsSaveEntries || needsSaveActivities || needsSaveCalendar || needsSaveHomeBlocks;
         if (needsSave) {
           try {
             await env.ASSOCIATION_DB.put(KV_KEY, JSON.stringify(kvValue, null, 2));
@@ -142,6 +155,7 @@ export async function loadDatabaseWorker(env?: WorkerEnv): Promise<AssociationDa
       ensureNavButtonEntries(seed);
       ensureNavButtonActivities(seed);
       ensureCalendarActivities(seed);
+      ensureHomeBlocks(seed);
       try {
         await env.ASSOCIATION_DB.put(KV_KEY, JSON.stringify(seed, null, 2));
         console.log('✅ [Cloudflare KV] 初始種子資料已成功存入 Cloudflare KV');
@@ -166,6 +180,7 @@ export async function loadDatabaseWorker(env?: WorkerEnv): Promise<AssociationDa
     ensureNavButtonEntries(memoryWorkerDb);
     ensureNavButtonActivities(memoryWorkerDb);
     ensureCalendarActivities(memoryWorkerDb);
+    ensureHomeBlocks(memoryWorkerDb);
     return memoryWorkerDb;
   }
 
@@ -174,6 +189,7 @@ export async function loadDatabaseWorker(env?: WorkerEnv): Promise<AssociationDa
   ensureNavButtonEntries(seed);
   ensureNavButtonActivities(seed);
   ensureCalendarActivities(seed);
+  ensureHomeBlocks(seed);
   memoryWorkerDb = seed;
   return seed;
 }
@@ -244,6 +260,9 @@ export function formatPublicData(db: AssociationDatabase): PublicDataResponse {
       .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
     policies: (db.policies || [])
       .filter((p) => p.enabled)
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
+    homeBlocks: (db.homeBlocks || [])
+      .filter((b) => b.enabled)
       .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
     calendarActivities: (db.calendarActivities || [])
       .filter((a) => a.enabled)

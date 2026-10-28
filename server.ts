@@ -15,6 +15,7 @@ import type {
   ToolItem,
   HighlightItem,
   PolicyItem,
+  HomeBlockItem,
   SurveyItem,
   NavButtonItem,
   NavButtonEntry,
@@ -766,6 +767,38 @@ apiRouter.post('/admin/save-policy', requireAdmin, (req: Request, res: Response)
   }
 });
 
+// Save Home Block（首頁內容區塊：新增／編輯）
+apiRouter.post('/admin/save-home-block', requireAdmin, (req: Request, res: Response) => {
+  try {
+    const db = loadDatabase();
+    const item: Partial<HomeBlockItem> = req.body || {};
+    const title = String(item.title || '').trim();
+    const content = String(item.content || '').trim();
+    if (!title) return res.status(400).json({ error: '區塊標題為必填欄位' });
+    if (!content) return res.status(400).json({ error: '區塊內容為必填欄位' });
+    if (title.length > 100) return res.status(400).json({ error: '區塊標題請控制在 100 字以內' });
+    if (content.length > 10000) return res.status(400).json({ error: '區塊內容請控制在 10000 字以內' });
+
+    const cleanItem: HomeBlockItem = {
+      id: item.id || `hb_${Date.now()}`,
+      title,
+      content,
+      enabled: item.enabled ?? true,
+      sortOrder: Number(item.sortOrder) || 0,
+      updatedAt: new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10),
+    };
+    if (!Array.isArray(db.homeBlocks)) db.homeBlocks = [];
+    const idx = db.homeBlocks.findIndex((b) => b.id === cleanItem.id);
+    if (idx >= 0) db.homeBlocks[idx] = cleanItem;
+    else db.homeBlocks.push(cleanItem);
+
+    saveDatabase(db);
+    res.json({ success: true, item: cleanItem });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Save Calendar Activity (Add / Edit)
 apiRouter.post('/admin/save-calendar-activity', requireAdmin, (req: Request, res: Response) => {
   try {
@@ -839,6 +872,8 @@ function executeDeleteItem(type: string, id: string): { success: boolean; error?
     db.highlights = (db.highlights || []).filter((h) => String(h.id) !== targetId);
   } else if (normalizedType === 'policy') {
     db.policies = (db.policies || []).filter((p) => String(p.id) !== targetId);
+  } else if (normalizedType === 'homeblock' || normalizedType === 'home_block') {
+    db.homeBlocks = (db.homeBlocks || []).filter((b) => String(b.id) !== targetId);
   } else if (normalizedType === 'survey') {
     db.surveys = (db.surveys || []).filter((s) => String(s.id) !== targetId);
     const firstEnabled = db.surveys.find((s) => s.enabled);

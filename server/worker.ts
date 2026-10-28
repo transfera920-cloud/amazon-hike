@@ -638,6 +638,25 @@ async function buildHomeEvents(env: WorkerEnv): Promise<{ html: string; jsonLd: 
 }
 
 /**
+ * 首頁「內容區塊」（後台「首頁區塊管理」）→ 初始 HTML：每個區塊一個 <section><h2>…</h2><p>…</p></section>，
+ * 順序與前台相同（sortOrder），只輸出啟用且標題、內容都有填的區塊。
+ */
+async function buildHomeBlocksHtml(env: WorkerEnv): Promise<string> {
+  try {
+    const db = await loadDatabaseWorker(env);
+    return (db.homeBlocks || [])
+      .filter((b) => b.enabled && (b.title || '').trim() && (b.content || '').trim())
+      .slice()
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+      .map((b) => `<section><h2>${escapeHtml(b.title.trim())}</h2>${formatLinkedMultilineHtml(b.content.trim())}</section>`)
+      .join('');
+  } catch (err) {
+    console.error('Error building home blocks:', err);
+    return '';
+  }
+}
+
+/**
  * 建立 /intro 頁面初始 HTML 的章節導覽清單
  * 注意：不要加入任何 <h1>、<h2> 或其他標題標籤，/intro 既有的 H1 維持由前端渲染，不要重新設計標題結構。
  */
@@ -1616,16 +1635,18 @@ ${activityUrls}
               ? await loadPageTextHtml(env, normalizedPath)
               : { top: '', bottom: '' };
           let homeEventsHtml = '';
+          let homeBlocksHtml = '';
           if (normalizedPath === '/') {
             const ev = await buildHomeEvents(env);
             homeEventsHtml = ev.html;
             if (ev.jsonLd) chapterJsonLd = ev.jsonLd;
+            homeBlocksHtml = await buildHomeBlocksHtml(env);
           }
           rootHtml = buildSectionShellHtml(
             routeMeta.title,
             routeMeta.description,
             pageText.top + homeEventsHtml,
-            pageText.bottom
+            pageText.bottom + homeBlocksHtml
           );
         }
 

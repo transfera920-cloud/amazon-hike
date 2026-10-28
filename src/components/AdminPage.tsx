@@ -22,7 +22,8 @@ import {
   ChevronRight,
   CornerDownRight,
   Compass,
-  Calendar
+  Calendar,
+  LayoutTemplate
 } from 'lucide-react';
 import type {
   IntroItem,
@@ -30,6 +31,7 @@ import type {
   ToolItem,
   HighlightItem,
   PolicyItem,
+  HomeBlockItem,
   SurveyItem,
   NavButtonItem,
   NavButtonEntry,
@@ -61,7 +63,7 @@ interface AdminPageProps {
   onDataUpdated: () => void;
 }
 
-type AdminTab = 'chapters' | 'intro' | 'tools' | 'highlights' | 'survey' | 'policies' | 'buttons' | 'calendar';
+type AdminTab = 'chapters' | 'intro' | 'tools' | 'highlights' | 'survey' | 'policies' | 'buttons' | 'calendar' | 'homeBlocks';
 
 export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) => {
   // Auth state
@@ -88,6 +90,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
   const [surveyUrlInput, setSurveyUrlInput] = useState('');
   const [editingSurvey, setEditingSurvey] = useState<Partial<SurveyItem> | null>(null);
   const [editingPolicy, setEditingPolicy] = useState<Partial<PolicyItem> | null>(null);
+  const [editingHomeBlock, setEditingHomeBlock] = useState<Partial<HomeBlockItem> | null>(null);
   const [editingNavButton, setEditingNavButton] = useState<Partial<NavButtonItem> | null>(null);
   const [categorySlugManuallyEdited, setCategorySlugManuallyEdited] = useState(false);
   const [editingNavEntry, setEditingNavEntry] = useState<Partial<NavButtonEntry> | null>(null);
@@ -886,6 +889,37 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
   };
 
   // ---------------------------------------------------------
+  // Home Block CRUD（首頁內容區塊）
+  // ---------------------------------------------------------
+  const handleSaveHomeBlock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingHomeBlock || !(editingHomeBlock.title || '').trim()) return;
+
+    try {
+      const res = await fetch('/api/admin/save-home-block', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(editingHomeBlock),
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        showFeedback('首頁區塊已成功寫入永久資料庫');
+        setEditingHomeBlock(null);
+        await fetchAdminData(token);
+        onDataUpdated();
+      } else {
+        showFeedback(json.error || '儲存失敗', true);
+      }
+    } catch (err: any) {
+      showFeedback(err.message || '連線儲存失敗', true);
+    }
+  };
+
+  // ---------------------------------------------------------
   // Generic Delete (In-App Modal Confirmation)
   // ---------------------------------------------------------
   const handleDeleteItem = (type: string, id: string, name: string) => {
@@ -947,6 +981,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
             next.surveyUrl = first ? first.url : '';
           } else if (targetType === 'policy') {
             next.policies = (next.policies || []).filter((p) => String(p.id) !== targetId);
+          } else if (targetType === 'homeblock' || targetType === 'home_block') {
+            next.homeBlocks = (next.homeBlocks || []).filter((b) => String(b.id) !== targetId);
           } else if (targetType === 'navbutton' || targetType === 'nav_button') {
             next.navButtons = (next.navButtons || []).filter((b) => String(b.id) !== targetId);
             next.navButtonActivities = (next.navButtonActivities || []).filter((a) => String(a.navButtonId) !== targetId);
@@ -978,6 +1014,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
         if (editingHighlight?.id === deleteTarget.id) setEditingHighlight(null);
         if (editingSurvey?.id === deleteTarget.id) setEditingSurvey(null);
         if (editingPolicy?.id === deleteTarget.id) setEditingPolicy(null);
+        if (editingHomeBlock?.id === deleteTarget.id) setEditingHomeBlock(null);
         if (editingNavButton?.id === deleteTarget.id) setEditingNavButton(null);
         if (editingNavEntry?.id === deleteTarget.id) setEditingNavEntry(null);
         if (editingNavButtonActivity?.id === deleteTarget.id) setEditingNavButtonActivity(null);
@@ -1204,6 +1241,19 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
         >
           <Shield size={14} />
           <span>政策與條款管理</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('homeBlocks')}
+          className={`px-3.5 py-2 border-b-2 transition-colors whitespace-nowrap flex items-center gap-1.5 ${
+            activeTab === 'homeBlocks'
+              ? 'border-emerald-500 text-emerald-400 font-semibold'
+              : 'border-transparent text-neutral-400 hover:text-neutral-200'
+          }`}
+        >
+          <LayoutTemplate size={14} />
+          <span>首頁區塊管理</span>
         </button>
 
         <button
@@ -2674,6 +2724,203 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================
+          TAB: 首頁區塊管理 (Home Content Blocks)
+          在首頁行事曆下方新增任意數量的文字區塊（H2 標題＋內文），
+          可排序、停用、刪除；同步輸出到首頁原始 HTML 供搜尋引擎讀取
+          ========================================================= */}
+      {activeTab === 'homeBlocks' && adminData && (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-bold text-neutral-200">
+                首頁內容區塊 ({(adminData.homeBlocks || []).length})
+              </h2>
+              <p className="text-xs text-neutral-500 mt-1">
+                顯示在首頁行事曆下方，依排序序號由小到大排列。標題會成為 H2，內文空一行分段，可用 [文字](網址) 加連結。
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                setEditingHomeBlock({
+                  id: '',
+                  title: '',
+                  content: '',
+                  enabled: true,
+                  sortOrder: (adminData.homeBlocks || []).reduce((m, b) => Math.max(m, b.sortOrder ?? 0), 0) + 1,
+                })
+              }
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold bg-emerald-800 hover:bg-emerald-700 text-white transition-colors shrink-0"
+            >
+              <Plus size={14} />
+              <span>新增區塊</span>
+            </button>
+          </div>
+
+          {/* New block form (edit form of existing blocks renders inline in its row) */}
+          {editingHomeBlock && (
+            <InlineEditorPortal kind="homeblock" editId={editingHomeBlock.id}>
+              <div className="border border-emerald-700/80 rounded bg-neutral-900 p-5 space-y-4">
+                <h3 className="text-sm font-bold text-emerald-400">
+                  {editingHomeBlock.id ? '編輯首頁區塊' : '新增首頁區塊'}
+                </h3>
+                <form onSubmit={handleSaveHomeBlock} className="space-y-3 text-xs">
+                  <div>
+                    <label className="block text-neutral-300 font-medium mb-1">
+                      區塊標題（H2）*
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      maxLength={100}
+                      value={editingHomeBlock.title || ''}
+                      onChange={(e) =>
+                        setEditingHomeBlock({ ...editingHomeBlock, title: e.target.value })
+                      }
+                      placeholder="例如：台灣百岳行程怎麼選"
+                      className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-neutral-300 font-medium mb-1">
+                      區塊內容 *
+                    </label>
+                    <textarea
+                      rows={10}
+                      required
+                      maxLength={10000}
+                      value={editingHomeBlock.content || ''}
+                      onChange={(e) =>
+                        setEditingHomeBlock({ ...editingHomeBlock, content: e.target.value })
+                      }
+                      placeholder={'第一段文字。\n\n空一行就會分成下一段，連結寫法：[登山入門教學](/intro)'}
+                      className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 leading-relaxed"
+                    />
+                    <p className="text-[11px] text-neutral-500 mt-1">
+                      已輸入 {(editingHomeBlock.content || '').length} 字（上限 10000）
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-6 pt-1">
+                    <div>
+                      <label className="block text-neutral-300 font-medium mb-1">
+                        排序序號
+                      </label>
+                      <input
+                        type="number"
+                        value={editingHomeBlock.sortOrder ?? 0}
+                        onChange={(e) =>
+                          setEditingHomeBlock({
+                            ...editingHomeBlock,
+                            sortOrder: parseInt(e.target.value) || 0,
+                          })
+                        }
+                        className="w-24 px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-2 mt-5">
+                      <input
+                        type="checkbox"
+                        id="homeblock-enabled"
+                        checked={editingHomeBlock.enabled ?? true}
+                        onChange={(e) =>
+                          setEditingHomeBlock({
+                            ...editingHomeBlock,
+                            enabled: e.target.checked,
+                          })
+                        }
+                        className="rounded border-neutral-700 text-emerald-600 focus:ring-0"
+                      />
+                      <label htmlFor="homeblock-enabled" className="text-neutral-300 font-medium">
+                        啟用顯示
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-3">
+                    <button
+                      type="submit"
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-semibold transition-colors"
+                    >
+                      <Save size={14} />
+                      <span>儲存至永久資料庫</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingHomeBlock(null)}
+                      className="px-3 py-2 rounded bg-neutral-800 text-neutral-300 hover:text-white transition-colors"
+                    >
+                      取消
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </InlineEditorPortal>
+          )}
+
+          {/* Blocks list */}
+          <div className="border border-neutral-800 rounded bg-neutral-900/40 overflow-hidden">
+            {(adminData.homeBlocks || []).length === 0 ? (
+              <div className="p-6 text-xs text-neutral-500 text-center">
+                目前還沒有首頁區塊，按右上角「新增區塊」開始建立。
+              </div>
+            ) : (
+              <div className="divide-y divide-neutral-800">
+                {(adminData.homeBlocks || [])
+                  .slice()
+                  .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+                  .map((item) => (
+                    <div key={item.id}>
+                      <div data-edit-slot={editSlotKey('homeblock', item.id)} />
+                      <div className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="space-y-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 font-mono">
+                              #{item.sortOrder}
+                            </span>
+                            <span className="font-bold text-neutral-100">{item.title}</span>
+                            {!item.enabled && (
+                              <span className="text-[10px] px-1.5 py-0.2 rounded bg-rose-950 text-rose-300 border border-rose-800">
+                                已停用
+                              </span>
+                            )}
+                            {item.updatedAt && (
+                              <span className="text-[10px] text-neutral-500">更新於 {item.updatedAt}</span>
+                            )}
+                          </div>
+                          <p className="text-xs text-neutral-400 line-clamp-2">{item.content}</p>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setEditingHomeBlock(item)}
+                            className="p-1.5 rounded text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors"
+                            title="編輯"
+                          >
+                            <Edit2 size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteItem('homeblock', item.id, item.title)}
+                            className="p-1.5 rounded text-rose-400 hover:text-rose-300 hover:bg-neutral-800 transition-colors"
+                            title="刪除"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            )}
           </div>
         </div>
       )}

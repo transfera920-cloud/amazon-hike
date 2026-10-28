@@ -50,6 +50,16 @@ export interface PolicyItem {
   sortOrder: number;
 }
 
+/** 首頁「內容區塊」：顯示在首頁行事曆下方，標題為 H2，內文以空白行分段，支援 [文字](網址) 連結 */
+export interface HomeBlockItem {
+  id: string;
+  title: string;
+  content: string;
+  enabled: boolean;
+  sortOrder: number;
+  updatedAt?: string; // YYYY-MM-DD
+}
+
 export interface SurveyItem {
   id: string;
   title: string;
@@ -179,6 +189,7 @@ export interface AssociationDatabase {
   highlights: HighlightItem[];
   policies: PolicyItem[];
   calendarActivities?: CalendarActivity[];
+  homeBlocks?: HomeBlockItem[];
 }
 
 export interface CalendarActivity {
@@ -205,4 +216,5 @@ export interface PublicDataResponse {
   highlights: HighlightItem[];
   policies: PolicyItem[];
   calendarActivities?: CalendarActivity[];
+  homeBlocks?: HomeBlockItem[];
 }

@@ -10,6 +10,7 @@ import type {
   ToolItem,
   HighlightItem,
   PolicyItem,
+  HomeBlockItem,
   SurveyItem,
   NavButtonItem,
   NavButtonEntry,
@@ -887,6 +888,37 @@ export async function handleApiRequest(
     }
 
 
+    // POST /api/admin/save-home-block（首頁內容區塊：新增／編輯）
+    if (path === '/api/admin/save-home-block' && method === 'POST') {
+      try {
+        const db = await loadDatabaseWorker(env);
+        const item: Partial<HomeBlockItem> = await request.json();
+        const title = String(item.title || '').trim();
+        const content = String(item.content || '').trim();
+        if (!title) return jsonResponse({ error: '區塊標題為必填欄位' }, 400);
+        if (!content) return jsonResponse({ error: '區塊內容為必填欄位' }, 400);
+        if (title.length > 100) return jsonResponse({ error: '區塊標題請控制在 100 字以內' }, 400);
+        if (content.length > 10000) return jsonResponse({ error: '區塊內容請控制在 10000 字以內' }, 400);
+        const cleanItem: HomeBlockItem = {
+          id: item.id || `hb_${Date.now()}`,
+          title,
+          content,
+          enabled: item.enabled ?? true,
+          sortOrder: Number(item.sortOrder) || 0,
+          updatedAt: new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10),
+        };
+        if (!Array.isArray(db.homeBlocks)) db.homeBlocks = [];
+        const idx = db.homeBlocks.findIndex((b) => b.id === cleanItem.id);
+        if (idx >= 0) db.homeBlocks[idx] = cleanItem;
+        else db.homeBlocks.push(cleanItem);
+
+        await saveDatabaseWorker(db, env);
+        return jsonResponse({ success: true, item: cleanItem });
+      } catch (err: any) {
+        return jsonResponse({ error: err.message }, 500);
+      }
+    }
+
     // DELETE or POST item deletion
     const isDeleteRoute =
       (method === 'DELETE' && path.startsWith('/api/admin/item/')) ||
@@ -924,6 +956,8 @@ export async function handleApiRequest(
           db.highlights = (db.highlights || []).filter((h) => String(h.id) !== targetId);
         } else if (normType === 'policy') {
           db.policies = (db.policies || []).filter((p) => String(p.id) !== targetId);
+        } else if (normType === 'homeblock' || normType === 'home_block') {
+          db.homeBlocks = (db.homeBlocks || []).filter((b) => String(b.id) !== targetId);
         } else if (normType === 'survey') {
           db.surveys = (db.surveys || []).filter((s) => String(s.id) !== targetId);
           const first = db.surveys.find((s) => s.enabled);

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Header } from './components/Header.js';
 import { Footer } from './components/Footer.js';
 import { CalendarSection } from './components/CalendarSection.js';
+import { HomeBlocksSection } from './components/HomeBlocksSection.js';
 import { findPageNavButton } from './utils/activitySeo.js';
 import { IntroView } from './components/IntroView.js';
 import { ChapterView } from './components/ChapterView.js';
@@ -46,6 +47,7 @@ export default function App() {
     tools: [],
     highlights: [],
     policies: [],
+    homeBlocks: [],
     surveys: [],
     navButtons: [],
     navButtonEntries: [],
@@ -657,6 +659,9 @@ export default function App() {
             introContent={pageText('/').intro}
             bottomContent={pageText('/').footer}
           />
+        )}
+        {!isUnknownPath && currentPath === '/' && (
+          <HomeBlocksSection blocks={publicData.homeBlocks} />
         )}
 
         {/* 登山入門 獨立專區 */}

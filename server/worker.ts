@@ -633,7 +633,8 @@ async function buildPoliciesShellHtml(env: WorkerEnv, title: string, description
 /**
  * 首頁「近期活動」：把後台行事曆中尚未結束的活動放進初始 HTML，並輸出 Event 結構化資料。
  * 讓不執行 JS 的爬蟲與生成式 AI 也能讀到近期有哪些活動、何時舉辦。
- * 沒有符合的活動時回傳空字串，不會輸出空白區塊。
+ * 沒有即將舉辦的活動時，改列最近 90 天內結束的活動（只有即將舉辦的活動才輸出 Event 結構化資料）。
+ * 兩者都沒有時回傳空字串，不會輸出空白區塊。
  */
 async function buildHomeEvents(env: WorkerEnv): Promise<{ html: string; jsonLd: string }> {
   try {
@@ -641,12 +642,21 @@ async function buildHomeEvents(env: WorkerEnv): Promise<{ html: string; jsonLd: 
     // 以台灣時間（UTC+8）的今天為準
     const today = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
     const isDate = (s?: string) => /^\d{4}-\d{2}-\d{2}$/.test((s || '').trim());
-    const upcoming = (db.calendarActivities || [])
-      .filter((c) => c.enabled && (c.title || '').trim() && isDate(c.startDate))
-      .filter((c) => (isDate(c.endDate) ? c.endDate : c.startDate) >= today)
+    const endOf = (c: { startDate: string; endDate: string }) => (isDate(c.endDate) ? c.endDate : c.startDate);
+    const valid = (db.calendarActivities || []).filter(
+      (c) => c.enabled && (c.title || '').trim() && isDate(c.startDate)
+    );
+    const upcoming = valid
+      .filter((c) => endOf(c) >= today)
       .sort((a, b) => a.startDate.localeCompare(b.startDate))
       .slice(0, 20);
-    if (upcoming.length === 0) return { html: '', jsonLd: '' };
+    // 沒有即將舉辦的活動時，首頁仍列出最近 90 天內結束的活動，避免行事曆區塊在爬蟲眼中是空的
+    const recentCutoff = new Date(Date.now() + 8 * 3600 * 1000 - 90 * 86400 * 1000).toISOString().slice(0, 10);
+    const recent = valid
+      .filter((c) => endOf(c) < today && endOf(c) >= recentCutoff)
+      .sort((a, b) => b.startDate.localeCompare(a.startDate))
+      .slice(0, 10);
+    if (upcoming.length === 0 && recent.length === 0) return { html: '', jsonLd: '' };
 
     const toAbs = (raw?: string): string => {
       const href = resolveToolHref(raw);
@@ -656,15 +666,20 @@ async function buildHomeEvents(env: WorkerEnv): Promise<{ html: string; jsonLd: 
     const range = (c: { startDate: string; endDate: string }) =>
       isDate(c.endDate) && c.endDate !== c.startDate ? `${c.startDate} 至 ${c.endDate}` : c.startDate;
 
-    const items = upcoming
-      .map((c) => {
-        const abs = toAbs(c.url);
-        const name = escapeHtml(c.title.trim());
-        const label = /^https?:\/\//i.test(abs) ? `<a href="${escapeHtml(abs)}">${name}</a>` : name;
-        return `<li>${label}（${range(c)}）</li>`;
-      })
-      .join('');
-    const html = `<section><h2>近期活動</h2><ul>${items}</ul></section>`;
+    const renderItems = (list: typeof upcoming) =>
+      list
+        .map((c) => {
+          const abs = toAbs(c.url);
+          const name = escapeHtml(c.title.trim());
+          const label = /^https?:\/\//i.test(abs) ? `<a href="${escapeHtml(abs)}">${name}</a>` : name;
+          return `<li>${label}（${range(c)}）</li>`;
+        })
+        .join('');
+    const html =
+      (upcoming.length ? `<section><h2>近期活動</h2><ul>${renderItems(upcoming)}</ul></section>` : '') +
+      (recent.length ? `<section><h2>近期已結束活動</h2><ul>${renderItems(recent)}</ul></section>` : '');
+
+    if (upcoming.length === 0) return { html, jsonLd: '' };
 
     const nodes = upcoming.map((c) => {
       const abs = toAbs(c.url);

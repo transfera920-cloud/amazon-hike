@@ -562,6 +562,8 @@ apiRouter.post('/admin/save-nav-button', requireAdmin, (req: Request, res: Respo
       footerContent: (item.footerContent || '').trim().slice(0, 3000) || undefined,
       seoTitle: (item.seoTitle || '').trim().slice(0, 120) || undefined,
       metaDescription: (item.metaDescription || '').trim().slice(0, 200) || undefined,
+      heroImage: (item.heroImage || '').trim().slice(0, 500) || undefined,
+      heroImageAlt: (item.heroImageAlt || '').trim().slice(0, 120) || undefined,
     };
 
     const existingIndex = db.navButtons.findIndex((b) => b.id === cleanItem.id);

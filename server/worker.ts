@@ -132,7 +132,7 @@ function formatLinkedMultilineHtml(text: string): string {
     /^https?:\/\/[^\s]+$/i.test(h) ||
     /^tel:\+?[0-9]{6,15}$/.test(h) ||
     /^mailto:[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']+$/i.test(h);
-  const linkRe = /\[([^\]]+)\]\(([^)\s]+)\)/g;
+  const linkRe = /(!?)\[([^\]]*)\]\(([^)\s]+)\)/g;
   const renderLine = (line: string): string => {
     let out = '';
     let last = 0;
@@ -140,7 +140,14 @@ function formatLinkedMultilineHtml(text: string): string {
     linkRe.lastIndex = 0;
     while ((m = linkRe.exec(line)) !== null) {
       out += escapeHtml(line.slice(last, m.index));
-      out += isSafe(m[2]) ? `<a href="${escapeHtml(m[2])}">${escapeHtml(m[1])}</a>` : escapeHtml(m[1]);
+      if (m[1] === '!') {
+        // 圖片：![說明](網址) → <img>，只允許站內路徑與 http/https
+        if (/^\/(?!\/)/.test(m[3]) || /^https?:\/\/[^\s]+$/i.test(m[3])) {
+          out += `<img src="${escapeHtml(m[3])}" alt="${escapeHtml(m[2])}" loading="lazy">`;
+        }
+      } else if (m[2]) {
+        out += isSafe(m[3]) ? `<a href="${escapeHtml(m[3])}">${escapeHtml(m[2])}</a>` : escapeHtml(m[2]);
+      }
       last = m.index + m[0].length;
     }
     return out + escapeHtml(line.slice(last));
@@ -1773,24 +1780,22 @@ ${activityUrls}
               .join('');
             // 導讀文字放進初始 HTML 本文，不只出現在 meta description
             const introHtml = btn
-              ? resolveNavButtonIntroParagraphs(btn)
-                  .map((p) => `<p>${escapeHtml(p)}</p>`)
-                  .join('')
+              ? formatLinkedMultilineHtml(resolveNavButtonIntroParagraphs(btn).join('\n\n'))
               : '';
             // 下方說明同樣放進初始 HTML 本文
             const footerHtml = btn
-              ? (btn.footerContent || '')
-                  .split(/\n\s*\n/)
-                  .map((p) => p.trim())
-                  .filter(Boolean)
-                  .map((p) => `<p>${escapeHtml(p)}</p>`)
-                  .join('')
+              ? formatLinkedMultilineHtml((btn.footerContent || '').trim())
               : '';
+            // 按鈕分頁頂部大圖（後台「頂部大圖」欄位）
+            const heroHtml =
+              btn && /^https?:\/\//i.test((btn.heroImage || '').trim())
+                ? `<img src="${escapeHtml(btn.heroImage!.trim())}" alt="${escapeHtml((btn.heroImageAlt || btn.title).trim())}">`
+                : '';
             // 該按鈕的「區塊管理」內容區塊（H2＋內文）
             const blocksHtml = buildNavButtonBlocksHtml(db, btn?.id);
             const listOrTableHtml =
               btn && isPeak && acts.length > 0 ? buildPeakTableHtml(btn, acts, catSlug) : `<ul>${listHtml}</ul>`;
-            rootHtml = `<main><h1>${escapeHtml(btn ? btn.title : '活動列表')}</h1>${introHtml}${listOrTableHtml}${footerHtml}${blocksHtml}${buildSiteNavHtml()}</main>`;
+            rootHtml = `<main><h1>${escapeHtml(btn ? btn.title : '活動列表')}</h1>${heroHtml}${introHtml}${listOrTableHtml}${footerHtml}${blocksHtml}${buildSiteNavHtml()}</main>`;
             if (btn) {
               chapterJsonLd = buildNavListJsonLd(btn, acts, catSlug, isPeak, canonicalUrl);
             }

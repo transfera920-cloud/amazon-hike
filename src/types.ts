@@ -97,6 +97,8 @@ export interface NavButtonItem {
   footerContent?: string; // 列表頁下方說明（顯示在列表下方，空白行分段；選填）
   seoTitle?: string; // 列表頁自訂 SEO 標題（選填）
   metaDescription?: string; // 列表頁自訂 meta description（選填，建議 80–120 字）
+  heroImage?: string; // 列表頁頂部大圖網址（選填）
+  heroImageAlt?: string; // 頂部大圖的替代文字 alt（建議填寫，圖片 SEO 重點）
 }
 
 export interface NavButtonEntry {

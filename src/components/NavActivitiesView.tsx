@@ -335,6 +335,15 @@ export const NavActivitiesView: React.FC<NavActivitiesViewProps> = ({
         <h1 className="text-2xl sm:text-3xl font-extrabold text-neutral-100 tracking-tight">
           {button.title}
         </h1>
+        {(button.heroImage || '').trim() && /^(https?:\/\/|\/(?!\/))/i.test(button.heroImage!.trim()) && (
+          <img
+            src={button.heroImage!.trim()}
+            alt={(button.heroImageAlt || button.title).trim()}
+            fetchPriority="high"
+            decoding="async"
+            className="mt-4 w-full max-h-80 object-cover rounded-xl border border-neutral-800"
+          />
+        )}
         {!isPeakOverview &&
           (customIntro.length > 0 ? (
             <div className="mt-2 space-y-2 text-sm text-neutral-300 leading-relaxed">

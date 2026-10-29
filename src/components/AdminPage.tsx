@@ -3278,6 +3278,45 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                   </div>
                 </div>
 
+                {/* 頂部大圖：顯示在此按鈕列表頁標題下方 */}
+                <div className="rounded-lg border border-emerald-900/50 bg-emerald-950/10 p-3 space-y-2">
+                  <label htmlFor="button-hero-image" className="block text-emerald-400 font-semibold">
+                    頂部大圖（選填）
+                  </label>
+                  <input
+                    id="button-hero-image"
+                    type="text"
+                    value={editingNavButton.heroImage || ''}
+                    onChange={(e) => setEditingNavButton({ ...editingNavButton, heroImage: e.target.value })}
+                    placeholder="貼上圖片網址，或按下方「上傳照片」"
+                    className="w-full px-3 py-2 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 font-mono text-[11px]"
+                  />
+                  <ImageUploadButton
+                    token={token}
+                    value={editingNavButton.heroImage || ''}
+                    onUploaded={(url) =>
+                      setEditingNavButton((prev) => (prev ? { ...prev, heroImage: url } : prev))
+                    }
+                  />
+                  <label htmlFor="button-hero-image-alt" className="block text-neutral-300 font-medium">
+                    圖片說明 alt（建議填寫）
+                  </label>
+                  <input
+                    id="button-hero-image-alt"
+                    type="text"
+                    maxLength={120}
+                    value={editingNavButton.heroImageAlt || ''}
+                    onChange={(e) => setEditingNavButton({ ...editingNavButton, heroImageAlt: e.target.value })}
+                    placeholder="例如：玉山主峰日出，亞馬遜登山隊員合影"
+                    className="w-full px-3 py-2 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                  />
+                  <p className="text-[11px] text-neutral-400">
+                    內文（上文、下文、內容區塊）也能插入圖片：獨立一段寫
+                    <code className="mx-1 text-emerald-300">![圖片說明](圖片網址)</code>
+                    ，圖片就會出現在那一段的位置。方括號裡的說明會成為 alt 文字。
+                  </p>
+                </div>
+
                 <div className="flex flex-wrap items-center gap-6 pt-1">
                   <div>
                     <label className="block text-neutral-300 font-medium mb-1">

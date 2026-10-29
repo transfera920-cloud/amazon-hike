@@ -10,27 +10,49 @@ export function isSafePageTextHref(href: string): boolean {
   );
 }
 
-/** 把 [文字](網址) 轉成連結，其餘維持純文字（不使用 dangerouslySetInnerHTML） */
+/** 圖片網址只允許站內路徑（/ 開頭）或 https/http；不允許 data: 或 javascript: */
+export function isSafeImageSrc(src: string): boolean {
+  return /^\/(?!\/)/.test(src) || /^https?:\/\/[^\s]+$/i.test(src);
+}
+
+/**
+ * 把 [文字](網址) 轉成連結、![說明](圖片網址) 轉成圖片，其餘維持純文字（不使用 dangerouslySetInnerHTML）。
+ * 圖片的「說明」會成為 alt 文字（圖片 SEO 重點），請務必填寫。
+ */
 export function renderLinkedText(text: string): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];
-  const re = /\[([^\]]+)\]\(([^)\s]+)\)/g;
+  const re = /(!?)\[([^\]]*)\]\(([^)\s]+)\)/g;
   let last = 0;
   let i = 0;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
     if (m.index > last) nodes.push(text.slice(last, m.index));
-    if (isSafePageTextHref(m[2])) {
+    const isImage = m[1] === '!';
+    if (isImage) {
+      if (isSafeImageSrc(m[3])) {
+        nodes.push(
+          <img
+            key={`i-${i++}`}
+            src={m[3]}
+            alt={m[2]}
+            loading="lazy"
+            decoding="async"
+            className="block w-full max-w-2xl h-auto rounded-lg border border-neutral-800 my-4"
+          />
+        );
+      }
+    } else if (m[2] && isSafePageTextHref(m[3])) {
       nodes.push(
         <a
           key={`l-${i++}`}
-          href={m[2]}
+          href={m[3]}
           className="text-emerald-400 underline underline-offset-2 hover:text-emerald-300"
         >
-          {m[1]}
+          {m[2]}
         </a>
       );
-    } else {
-      nodes.push(m[1]);
+    } else if (m[2]) {
+      nodes.push(m[2]);
     }
     last = m.index + m[0].length;
   }

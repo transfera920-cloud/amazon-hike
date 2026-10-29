@@ -226,7 +226,7 @@ async function loadPageTextHtml(env: WorkerEnv, path: string): Promise<{ top: st
 function buildActivityShellHtml(act: NavButtonActivity): string {
   let contentHtml = '';
   if ((act.content || '').trim()) {
-    contentHtml = formatMultilineHtml(act.content!);
+    contentHtml = formatLinkedMultilineHtml(act.content!);
   }
 
   let itineraryExtraHtml = '';

@@ -51,6 +51,7 @@ import {
 } from '../utils/activitySeo.js';
 import { PEAK_INTRO_PARAGRAPHS, isOnMobileBar, extractPeakNoAndName, isPeakTableButton } from '../utils/activitySeo.js';
 import { ImageUploadButton } from './ImageUploadButton.js';
+import { InsertImageButton } from './InsertImageButton.js';
 import { GpxUploadButton } from './GpxUploadButton.js';
 import InlineEditorPortal, { editSlotKey } from './InlineEditorPortal.js';
 import peaksTop100Data from '../../data/peaks-top100.json';
@@ -2834,6 +2835,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                       區塊內容 *
                     </label>
                     <textarea
+                      id="home-block-content"
                       rows={10}
                       required
                       maxLength={10000}
@@ -2843,6 +2845,12 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                       }
                       placeholder={'第一段文字。\n\n空一行就會分成下一段，連結寫法：[登山入門教學](/intro)'}
                       className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 leading-relaxed"
+                    />
+                    <InsertImageButton
+                      token={token}
+                      targetId="home-block-content"
+                      value={editingHomeBlock.content || ''}
+                      onChange={(next) => setEditingHomeBlock({ ...editingHomeBlock, content: next })}
                     />
                     <p className="text-[11px] text-neutral-500 mt-1">
                       已輸入 {(editingHomeBlock.content || '').length} 字（上限 10000）
@@ -3200,6 +3208,12 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                     placeholder={'例如：介紹這個專區是什麼、適合誰、如何使用。\n\n空一行即分成下一段。'}
                     className="w-full px-3 py-2 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 leading-relaxed resize-y"
                   />
+                  <InsertImageButton
+                    token={token}
+                    targetId="button-intro-content"
+                    value={editingNavButton.introContent || ''}
+                    onChange={(next) => setEditingNavButton({ ...editingNavButton, introContent: next })}
+                  />
                   <div className="flex items-center justify-between text-[11px] text-neutral-400">
                     <span>
                       顯示在這個按鈕對應頁面的標題下方（活動行事曆、登山入門教學、登山工具等都適用）；空一行代表分段；要放連結請寫成 [顯示文字](/網址路徑)，只能連到本站（含 road.amazon-hike.com 這類子網域）。標題含「百岳總表」的按鈕留空時，會使用系統預設導讀。
@@ -3231,6 +3245,12 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                     }
                     placeholder={'例如：補充說明、注意事項、使用提醒。\n\n空一行即分成下一段。'}
                     className="w-full px-3 py-2 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 leading-relaxed resize-y"
+                  />
+                  <InsertImageButton
+                    token={token}
+                    targetId="button-footer-content"
+                    value={editingNavButton.footerContent || ''}
+                    onChange={(next) => setEditingNavButton({ ...editingNavButton, footerContent: next })}
                   />
                   <div className="flex items-center justify-between text-[11px] text-neutral-400">
                     <span>顯示在這個按鈕對應頁面的內容下方（例如行事曆下方的空白處）；空一行代表分段；留空則不顯示。</span>
@@ -4325,6 +4345,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                               <div>
                                 <label className="block text-neutral-400 mb-1">完整活動詳細介紹（選填，支援分段）</label>
                                 <textarea
+                                  id="activity-content-textarea"
                                   ref={activityContentTextareaRef}
                                   rows={14}
                                   value={editingNavButtonActivity.content || ''}
@@ -4337,6 +4358,15 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                                   }}
                                   placeholder="填寫每日行程、路線難度、裝備建議與注意事項..."
                                   className="w-full px-2.5 py-1.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-emerald-500 resize-y min-h-[320px] max-h-[70vh] text-sm leading-relaxed overflow-y-auto"
+                                />
+                                <InsertImageButton
+                                  token={token}
+                                  targetId="activity-content-textarea"
+                                  value={editingNavButtonActivity.content || ''}
+                                  onChange={(next) => {
+                                    setEditingNavButtonActivity((prev) => ({ ...prev, content: next }));
+                                    setTimeout(() => adjustActivityContentTextareaHeight(), 0);
+                                  }}
                                 />
                               </div>
 
@@ -4769,6 +4799,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                               <div>
                                 <label className="block text-neutral-300 font-medium mb-1">區塊內容 *</label>
                                 <textarea
+                                  id="nav-block-content"
                                   rows={8}
                                   required
                                   maxLength={10000}
@@ -4776,6 +4807,12 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                                   onChange={(e) => setEditingNavBlock({ ...editingNavBlock, content: e.target.value })}
                                   placeholder={'第一段文字。\n\n空一行就會分成下一段，連結寫法：[登山入門教學](/intro)'}
                                   className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 leading-relaxed"
+                                />
+                                <InsertImageButton
+                                  token={token}
+                                  targetId="nav-block-content"
+                                  value={editingNavBlock.content || ''}
+                                  onChange={(next) => setEditingNavBlock({ ...editingNavBlock, content: next })}
                                 />
                                 <p className="text-[11px] text-neutral-500 mt-1">
                                   已輸入 {(editingNavBlock.content || '').length} 字（上限 10000）

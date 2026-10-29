@@ -11,6 +11,7 @@ import type {
   HighlightItem,
   PolicyItem,
   HomeBlockItem,
+  NavButtonBlock,
   SurveyItem,
   NavButtonItem,
   NavButtonEntry,
@@ -919,6 +920,47 @@ export async function handleApiRequest(
       }
     }
 
+    // POST /api/admin/save-nav-button-block（各按鈕專屬的內容區塊：新增／編輯）
+    if (path === '/api/admin/save-nav-button-block' && method === 'POST') {
+      try {
+        const db = await loadDatabaseWorker(env);
+        const item: Partial<NavButtonBlock> = await request.json();
+        const navButtonId = String(item.navButtonId || '').trim();
+        const title = String(item.title || '').trim();
+        const content = String(item.content || '').trim();
+        if (!navButtonId) return jsonResponse({ error: '所屬按鈕為必填欄位' }, 400);
+        if (!(db.navButtons || []).some((b) => b.id === navButtonId)) {
+          return jsonResponse({ error: '找不到所屬的前台按鈕' }, 400);
+        }
+        if (!title) return jsonResponse({ error: '區塊標題為必填欄位' }, 400);
+        if (!content) return jsonResponse({ error: '區塊內容為必填欄位' }, 400);
+        if (title.length > 100) return jsonResponse({ error: '區塊標題請控制在 100 字以內' }, 400);
+        if (content.length > 10000) return jsonResponse({ error: '區塊內容請控制在 10000 字以內' }, 400);
+        if (!Array.isArray(db.navButtonBlocks)) db.navButtonBlocks = [];
+        const existing = item.id ? db.navButtonBlocks.find((b) => b.id === item.id) : undefined;
+        if (existing && existing.navButtonId !== navButtonId) {
+          return jsonResponse({ error: '不能變更區塊所屬的按鈕' }, 400);
+        }
+        const cleanItem: NavButtonBlock = {
+          id: item.id || `nb_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          navButtonId,
+          title,
+          content,
+          enabled: item.enabled ?? true,
+          sortOrder: Number(item.sortOrder) || 0,
+          updatedAt: new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10),
+        };
+        const idx = db.navButtonBlocks.findIndex((b) => b.id === cleanItem.id);
+        if (idx >= 0) db.navButtonBlocks[idx] = cleanItem;
+        else db.navButtonBlocks.push(cleanItem);
+
+        await saveDatabaseWorker(db, env);
+        return jsonResponse({ success: true, item: cleanItem });
+      } catch (err: any) {
+        return jsonResponse({ error: err.message }, 500);
+      }
+    }
+
     // DELETE or POST item deletion
     const isDeleteRoute =
       (method === 'DELETE' && path.startsWith('/api/admin/item/')) ||
@@ -958,6 +1000,12 @@ export async function handleApiRequest(
           db.policies = (db.policies || []).filter((p) => String(p.id) !== targetId);
         } else if (normType === 'homeblock' || normType === 'home_block') {
           db.homeBlocks = (db.homeBlocks || []).filter((b) => String(b.id) !== targetId);
+        } else if (
+          normType === 'navbuttonblock' ||
+          normType === 'nav_button_block' ||
+          normType === 'navbuttonblocks'
+        ) {
+          db.navButtonBlocks = (db.navButtonBlocks || []).filter((b) => String(b.id) !== targetId);
         } else if (normType === 'survey') {
           db.surveys = (db.surveys || []).filter((s) => String(s.id) !== targetId);
           const first = db.surveys.find((s) => s.enabled);
@@ -966,6 +1014,7 @@ export async function handleApiRequest(
           removeCalendarActivitiesForNavButton(db, targetId);
           db.navButtons = (db.navButtons || []).filter((b) => String(b.id) !== targetId);
           db.navButtonActivities = (db.navButtonActivities || []).filter((a) => String(a.navButtonId) !== targetId);
+          db.navButtonBlocks = (db.navButtonBlocks || []).filter((b) => String(b.navButtonId) !== targetId);
         } else if (
           normType === 'navbuttonentry' ||
           normType === 'nav_button_entry' ||

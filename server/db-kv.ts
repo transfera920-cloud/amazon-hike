@@ -111,6 +111,17 @@ function ensureHomeBlocks(db: AssociationDatabase): boolean {
 }
 
 /**
+ * 確保資料庫包含 navButtonBlocks（各按鈕專屬的內容區塊）集合欄位；若缺失，補一個空陣列。
+ */
+function ensureNavButtonBlocks(db: AssociationDatabase): boolean {
+  if (!Array.isArray(db.navButtonBlocks)) {
+    db.navButtonBlocks = [];
+    return true;
+  }
+  return false;
+}
+
+/**
  * 「KV 優先 + 安全容錯」讀取機制：
  * 1. 若環境有綁定 ASSOCIATION_DB，優先讀取 Cloudflare KV (association_data)。
  * 2. 若 KV 內已有資料，直接返回線上權威資料，絕不覆蓋。
@@ -135,8 +146,14 @@ export async function loadDatabaseWorker(env?: WorkerEnv): Promise<AssociationDa
         const needsSaveActivities = ensureNavButtonActivities(kvValue);
         const needsSaveCalendar = ensureCalendarActivities(kvValue);
         const needsSaveHomeBlocks = ensureHomeBlocks(kvValue);
+        const needsSaveNavBlocks = ensureNavButtonBlocks(kvValue);
         const needsSave =
-          needsSaveChapters || needsSaveEntries || needsSaveActivities || needsSaveCalendar || needsSaveHomeBlocks;
+          needsSaveChapters ||
+          needsSaveEntries ||
+          needsSaveActivities ||
+          needsSaveCalendar ||
+          needsSaveHomeBlocks ||
+          needsSaveNavBlocks;
         if (needsSave) {
           try {
             await env.ASSOCIATION_DB.put(KV_KEY, JSON.stringify(kvValue, null, 2));
@@ -156,6 +173,7 @@ export async function loadDatabaseWorker(env?: WorkerEnv): Promise<AssociationDa
       ensureNavButtonActivities(seed);
       ensureCalendarActivities(seed);
       ensureHomeBlocks(seed);
+      ensureNavButtonBlocks(seed);
       try {
         await env.ASSOCIATION_DB.put(KV_KEY, JSON.stringify(seed, null, 2));
         console.log('✅ [Cloudflare KV] 初始種子資料已成功存入 Cloudflare KV');
@@ -181,6 +199,7 @@ export async function loadDatabaseWorker(env?: WorkerEnv): Promise<AssociationDa
     ensureNavButtonActivities(memoryWorkerDb);
     ensureCalendarActivities(memoryWorkerDb);
     ensureHomeBlocks(memoryWorkerDb);
+    ensureNavButtonBlocks(memoryWorkerDb);
     return memoryWorkerDb;
   }
 
@@ -190,6 +209,7 @@ export async function loadDatabaseWorker(env?: WorkerEnv): Promise<AssociationDa
   ensureNavButtonActivities(seed);
   ensureCalendarActivities(seed);
   ensureHomeBlocks(seed);
+  ensureNavButtonBlocks(seed);
   memoryWorkerDb = seed;
   return seed;
 }
@@ -262,6 +282,9 @@ export function formatPublicData(db: AssociationDatabase): PublicDataResponse {
       .filter((p) => p.enabled)
       .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
     homeBlocks: (db.homeBlocks || [])
+      .filter((b) => b.enabled)
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
+    navButtonBlocks: (db.navButtonBlocks || [])
       .filter((b) => b.enabled)
       .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
     calendarActivities: (db.calendarActivities || [])

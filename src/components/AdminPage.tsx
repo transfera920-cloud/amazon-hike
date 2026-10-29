@@ -32,6 +32,7 @@ import type {
   HighlightItem,
   PolicyItem,
   HomeBlockItem,
+  NavButtonBlock,
   SurveyItem,
   NavButtonItem,
   NavButtonEntry,
@@ -98,6 +99,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
   const [editingNavButtonActivity, setEditingNavButtonActivity] = useState<Partial<NavButtonActivity> | null>(null);
   const [activitySlugManuallyEdited, setActivitySlugManuallyEdited] = useState(false);
   const [expandedActivityButtonId, setExpandedActivityButtonId] = useState<string | null>(null);
+  const [expandedBlockButtonId, setExpandedBlockButtonId] = useState<string | null>(null);
+  const [editingNavBlock, setEditingNavBlock] = useState<Partial<NavButtonBlock> | null>(null);
   const [editingCalendarActivity, setEditingCalendarActivity] = useState<Partial<CalendarActivity> | null>(null);
 
   // Batch Import state for navButtonActivities
@@ -920,6 +923,37 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
   };
 
   // ---------------------------------------------------------
+  // Nav Button Block CRUD（各按鈕專屬的內容區塊）
+  // ---------------------------------------------------------
+  const handleSaveNavBlock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingNavBlock || !editingNavBlock.navButtonId || !(editingNavBlock.title || '').trim()) return;
+
+    try {
+      const res = await fetch('/api/admin/save-nav-button-block', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(editingNavBlock),
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        showFeedback('按鈕區塊已成功寫入永久資料庫');
+        setEditingNavBlock(null);
+        await fetchAdminData(token);
+        onDataUpdated();
+      } else {
+        showFeedback(json.error || '儲存失敗', true);
+      }
+    } catch (err: any) {
+      showFeedback(err.message || '連線儲存失敗', true);
+    }
+  };
+
+  // ---------------------------------------------------------
   // Generic Delete (In-App Modal Confirmation)
   // ---------------------------------------------------------
   const handleDeleteItem = (type: string, id: string, name: string) => {
@@ -983,9 +1017,16 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
             next.policies = (next.policies || []).filter((p) => String(p.id) !== targetId);
           } else if (targetType === 'homeblock' || targetType === 'home_block') {
             next.homeBlocks = (next.homeBlocks || []).filter((b) => String(b.id) !== targetId);
+          } else if (
+            targetType === 'navbuttonblock' ||
+            targetType === 'nav_button_block' ||
+            targetType === 'navbuttonblocks'
+          ) {
+            next.navButtonBlocks = (next.navButtonBlocks || []).filter((b) => String(b.id) !== targetId);
           } else if (targetType === 'navbutton' || targetType === 'nav_button') {
             next.navButtons = (next.navButtons || []).filter((b) => String(b.id) !== targetId);
             next.navButtonActivities = (next.navButtonActivities || []).filter((a) => String(a.navButtonId) !== targetId);
+            next.navButtonBlocks = (next.navButtonBlocks || []).filter((b) => String(b.navButtonId) !== targetId);
           } else if (
             targetType === 'navbuttonentry' ||
             targetType === 'nav_button_entry' ||
@@ -1015,6 +1056,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
         if (editingSurvey?.id === deleteTarget.id) setEditingSurvey(null);
         if (editingPolicy?.id === deleteTarget.id) setEditingPolicy(null);
         if (editingHomeBlock?.id === deleteTarget.id) setEditingHomeBlock(null);
+        if (editingNavBlock?.id === deleteTarget.id || editingNavBlock?.navButtonId === deleteTarget.id) setEditingNavBlock(null);
         if (editingNavButton?.id === deleteTarget.id) setEditingNavButton(null);
         if (editingNavEntry?.id === deleteTarget.id) setEditingNavEntry(null);
         if (editingNavButtonActivity?.id === deleteTarget.id) setEditingNavButtonActivity(null);
@@ -3321,6 +3363,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
               {((adminData.navButtons || []).slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))).map((item) => {
                 const isExpanded = Boolean(expandedButtonIds[item.id]);
                 const isActivityExpanded = expandedActivityButtonId === item.id;
+                const isBlockExpanded = expandedBlockButtonId === item.id;
+                const isHomeButton = ((item.url || '').replace(/\/+$/, '') || '/') === '/' && !item.isExternal;
+                const buttonBlocks = (adminData.navButtonBlocks || [])
+                  .filter((b) => b.navButtonId === item.id)
+                  .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
                 const buttonEntries = (adminData.navButtonEntries || [])
                   .filter((e) => e.navButtonId === item.id)
                   .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
@@ -3389,6 +3436,34 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                           <Compass size={14} />
                           <span>管理活動 ({buttonActivities.length})</span>
                         </button>
+                        {isHomeButton ? (
+                          <button
+                            type="button"
+                            onClick={() => setActiveTab('homeBlocks')}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium transition-colors border bg-neutral-900 text-neutral-300 border-neutral-800 hover:bg-neutral-800 hover:text-white"
+                            title="首頁的內容區塊在「首頁區塊管理」分頁管理"
+                          >
+                            <LayoutTemplate size={14} />
+                            <span>區塊管理（前往首頁區塊）</span>
+                          </button>
+                        ) : !item.isExternal ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingNavBlock(null);
+                              setExpandedBlockButtonId((prev) => (prev === item.id ? null : item.id));
+                            }}
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium transition-colors border ${
+                              isBlockExpanded
+                                ? 'bg-neutral-800 text-emerald-300 border-emerald-600/60'
+                                : 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:bg-neutral-800 hover:text-white'
+                            }`}
+                            title="管理此按鈕頁面下方的內容區塊"
+                          >
+                            <LayoutTemplate size={14} />
+                            <span>區塊管理 ({buttonBlocks.length})</span>
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           onClick={() => {
@@ -4589,6 +4664,166 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                         ) : (
                           <div className="p-3 rounded border border-dashed border-neutral-800 text-xs text-neutral-500 text-center">
                             此按鈕尚無活動，可點擊上方「新增活動」建立。
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Expanded Blocks Management（此按鈕頁面下方的內容區塊） */}
+                    {isBlockExpanded && !isHomeButton && !item.isExternal && (
+                      <div className="bg-neutral-950/70 p-4 border-t border-neutral-800/80 pl-6 sm:pl-10 space-y-4">
+                        <div className="flex items-center justify-between gap-3 flex-wrap">
+                          <div className="flex items-center gap-2">
+                            <LayoutTemplate size={14} className="text-emerald-500 shrink-0" />
+                            <span className="text-xs font-semibold text-neutral-300">
+                              「{item.title}」頁面內容區塊 ({buttonBlocks.length})
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditingNavBlock({
+                                id: '',
+                                navButtonId: item.id,
+                                title: '',
+                                content: '',
+                                enabled: true,
+                                sortOrder: buttonBlocks.reduce((m, b) => Math.max(m, b.sortOrder ?? 0), 0) + 1,
+                              })
+                            }
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium bg-emerald-900/80 hover:bg-emerald-800 text-emerald-200 border border-emerald-700/60 transition-colors"
+                          >
+                            <Plus size={13} />
+                            <span>新增區塊</span>
+                          </button>
+                        </div>
+                        <p className="text-[11px] text-neutral-500">
+                          區塊會顯示在「{item.title}」頁面下方（在「下方說明」之後），標題為 H2，也會寫進原始 HTML 供搜尋引擎讀取。
+                        </p>
+
+                        {editingNavBlock && editingNavBlock.navButtonId === item.id && (
+                          <div className="border border-emerald-700/60 rounded bg-neutral-900/95 p-4 space-y-3">
+                            <h4 className="text-xs font-bold text-emerald-400">
+                              {editingNavBlock.id ? '編輯區塊' : '新增區塊'}（所屬按鈕：{item.title}）
+                            </h4>
+                            <form onSubmit={handleSaveNavBlock} className="space-y-3 text-xs">
+                              <div>
+                                <label className="block text-neutral-300 font-medium mb-1">區塊標題（H2）*</label>
+                                <input
+                                  type="text"
+                                  required
+                                  maxLength={100}
+                                  value={editingNavBlock.title || ''}
+                                  onChange={(e) => setEditingNavBlock({ ...editingNavBlock, title: e.target.value })}
+                                  placeholder="例如：第一次參加怎麼選路線"
+                                  className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 font-bold"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-neutral-300 font-medium mb-1">區塊內容 *</label>
+                                <textarea
+                                  rows={8}
+                                  required
+                                  maxLength={10000}
+                                  value={editingNavBlock.content || ''}
+                                  onChange={(e) => setEditingNavBlock({ ...editingNavBlock, content: e.target.value })}
+                                  placeholder={'第一段文字。\n\n空一行就會分成下一段，連結寫法：[登山入門教學](/intro)'}
+                                  className="w-full px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100 leading-relaxed"
+                                />
+                                <p className="text-[11px] text-neutral-500 mt-1">
+                                  已輸入 {(editingNavBlock.content || '').length} 字（上限 10000）
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-6">
+                                <div>
+                                  <label className="block text-neutral-300 font-medium mb-1">排序序號</label>
+                                  <input
+                                    type="number"
+                                    value={editingNavBlock.sortOrder ?? 0}
+                                    onChange={(e) =>
+                                      setEditingNavBlock({ ...editingNavBlock, sortOrder: parseInt(e.target.value) || 0 })
+                                    }
+                                    className="w-24 px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
+                                  />
+                                </div>
+                                <div className="flex items-center gap-2 mt-5">
+                                  <input
+                                    type="checkbox"
+                                    id={`navblock-enabled-${item.id}`}
+                                    checked={editingNavBlock.enabled ?? true}
+                                    onChange={(e) => setEditingNavBlock({ ...editingNavBlock, enabled: e.target.checked })}
+                                    className="rounded border-neutral-700 text-emerald-600 focus:ring-0"
+                                  />
+                                  <label htmlFor={`navblock-enabled-${item.id}`} className="text-neutral-300 font-medium">
+                                    啟用顯示
+                                  </label>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 pt-2">
+                                <button
+                                  type="submit"
+                                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-semibold transition-colors"
+                                >
+                                  <Save size={14} />
+                                  <span>儲存至永久資料庫</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingNavBlock(null)}
+                                  className="px-3 py-2 rounded bg-neutral-800 text-neutral-300 hover:text-white transition-colors"
+                                >
+                                  取消
+                                </button>
+                              </div>
+                            </form>
+                          </div>
+                        )}
+
+                        {buttonBlocks.length > 0 ? (
+                          <div className="border border-neutral-800 rounded divide-y divide-neutral-800 bg-neutral-900/40">
+                            {buttonBlocks.map((blk) => (
+                              <div key={blk.id} className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <div className="space-y-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-xs px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 font-mono">
+                                      #{blk.sortOrder}
+                                    </span>
+                                    <span className="font-bold text-neutral-100 text-xs">{blk.title}</span>
+                                    {!blk.enabled && (
+                                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-rose-950 text-rose-300 border border-rose-800">
+                                        已停用
+                                      </span>
+                                    )}
+                                    {blk.updatedAt && (
+                                      <span className="text-[10px] text-neutral-500">更新於 {blk.updatedAt}</span>
+                                    )}
+                                  </div>
+                                  <p className="text-xs text-neutral-400 line-clamp-2">{blk.content}</p>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingNavBlock(blk)}
+                                    className="p-1.5 rounded text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors"
+                                    title="編輯"
+                                  >
+                                    <Edit2 size={15} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteItem('navButtonBlock', blk.id, blk.title)}
+                                    className="p-1.5 rounded text-rose-400 hover:text-rose-300 hover:bg-neutral-800 transition-colors"
+                                    title="刪除"
+                                  >
+                                    <Trash2 size={15} />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="p-3 rounded border border-dashed border-neutral-800 text-xs text-neutral-500 text-center">
+                            此按鈕尚無區塊，可點擊上方「新增區塊」建立。
                           </div>
                         )}
                       </div>

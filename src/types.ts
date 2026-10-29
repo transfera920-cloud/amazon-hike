@@ -60,6 +60,20 @@ export interface HomeBlockItem {
   updatedAt?: string; // YYYY-MM-DD
 }
 
+/**
+ * 前台導覽按鈕專屬的「內容區塊」：顯示在該按鈕頁面的下方說明之後，
+ * 標題為 H2，內文以空白行分段，支援 [文字](網址) 連結。（首頁按鈕請用 homeBlocks）
+ */
+export interface NavButtonBlock {
+  id: string;
+  navButtonId: string; // 所屬按鈕 id
+  title: string;
+  content: string;
+  enabled: boolean;
+  sortOrder: number;
+  updatedAt?: string; // YYYY-MM-DD
+}
+
 export interface SurveyItem {
   id: string;
   title: string;
@@ -190,6 +204,7 @@ export interface AssociationDatabase {
   policies: PolicyItem[];
   calendarActivities?: CalendarActivity[];
   homeBlocks?: HomeBlockItem[];
+  navButtonBlocks?: NavButtonBlock[];
 }
 
 export interface CalendarActivity {
@@ -217,4 +232,5 @@ export interface PublicDataResponse {
   policies: PolicyItem[];
   calendarActivities?: CalendarActivity[];
   homeBlocks?: HomeBlockItem[];
+  navButtonBlocks?: NavButtonBlock[];
 }

@@ -142,6 +142,24 @@ function findNavButtonByNavId<T extends { id: string; url?: string }>(
   });
 }
 
+/**
+ * 各按鈕專屬的「內容區塊」（後台「前台導覽按鈕」→「區塊管理」）→ 初始 HTML。
+ * 每個區塊一個 <section><h2>…</h2><p>…</p></section>，順序與前台相同（sortOrder），
+ * 只輸出啟用且標題、內容都有填的區塊。
+ */
+function buildNavButtonBlocksHtml(
+  db: { navButtonBlocks?: { navButtonId: string; title: string; content: string; enabled: boolean; sortOrder: number }[] },
+  navButtonId: string | undefined
+): string {
+  if (!navButtonId) return '';
+  return (db.navButtonBlocks || [])
+    .filter((b) => b.navButtonId === navButtonId && b.enabled && (b.title || '').trim() && (b.content || '').trim())
+    .slice()
+    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+    .map((b) => `<section><h2>${escapeHtml(b.title.trim())}</h2>${formatLinkedMultilineHtml(b.content.trim())}</section>`)
+    .join('');
+}
+
 const PAGE_TEXT_BUTTON_IDS: Record<string, string> = {
   '/': 'btn_calendar',
   '/intro': 'btn_intro',
@@ -156,9 +174,11 @@ async function loadPageTextHtml(env: WorkerEnv, path: string): Promise<{ top: st
     const btn = (db.navButtons || []).find(
       (b) => ((b.url || '').replace(/\/+$/, '') || '/') === path || b.id === PAGE_TEXT_BUTTON_IDS[path]
     );
+    // 首頁（/）的區塊由「首頁區塊管理」另外注入，這裡不重複輸出
+    const blocksHtml = path === '/' ? '' : buildNavButtonBlocksHtml(db, btn?.id);
     return {
       top: formatLinkedMultilineHtml((btn?.introContent || '').trim()),
-      bottom: formatLinkedMultilineHtml((btn?.footerContent || '').trim()),
+      bottom: formatLinkedMultilineHtml((btn?.footerContent || '').trim()) + blocksHtml,
     };
   } catch (err) {
     console.error('Error loading page text:', err);
@@ -509,6 +529,7 @@ async function buildHighlightsShell(
     if (footer) {
       footerHtml = formatLinkedMultilineHtml(footer);
     }
+    footerHtml += buildNavButtonBlocksHtml(db, hlBtn?.id);
     const enabled = (db.highlights || [])
       .filter((h) => h.enabled && ((h.title || '').trim() || (h.description || '').trim()))
       .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
@@ -1642,7 +1663,9 @@ ${activityUrls}
                   .map((p) => `<p>${escapeHtml(p)}</p>`)
                   .join('')
               : '';
-            rootHtml = `<main><h1>${escapeHtml(btn ? btn.title : '活動列表')}</h1>${introHtml}<ul>${listHtml}</ul>${footerHtml}${buildSiteNavHtml()}</main>`;
+            // 該按鈕的「區塊管理」內容區塊（H2＋內文）
+            const blocksHtml = buildNavButtonBlocksHtml(db, btn?.id);
+            rootHtml = `<main><h1>${escapeHtml(btn ? btn.title : '活動列表')}</h1>${introHtml}<ul>${listHtml}</ul>${footerHtml}${blocksHtml}${buildSiteNavHtml()}</main>`;
             if (btn) {
               chapterJsonLd = buildNavListJsonLd(btn, acts, catSlug, isPeak, canonicalUrl);
             }

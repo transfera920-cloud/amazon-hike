@@ -61,6 +61,7 @@ function getInitialSeedData(): AssociationDatabase {
     navButtonActivities: [],
     calendarActivities: [],
     homeBlocks: [],
+    navButtonBlocks: [],
     chapters: [],
     intros: [
       {
@@ -223,6 +224,11 @@ export function loadDatabase(): AssociationDatabase {
         needsSave = true;
       }
 
+      if (!Array.isArray(parsed.navButtonBlocks)) {
+        parsed.navButtonBlocks = [];
+        needsSave = true;
+      }
+
       if (!Array.isArray(parsed.navButtons)) {
         parsed.navButtons = getDefaultNavButtons();
         needsSave = true;
@@ -312,6 +318,9 @@ export function getPublicData(): PublicDataResponse {
       .filter((p) => p.enabled)
       .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
     homeBlocks: (db.homeBlocks || [])
+      .filter((b) => b.enabled)
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
+    navButtonBlocks: (db.navButtonBlocks || [])
       .filter((b) => b.enabled)
       .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
     calendarActivities: (db.calendarActivities || [])

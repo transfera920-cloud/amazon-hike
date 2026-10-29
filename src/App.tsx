@@ -3,6 +3,7 @@ import { Header } from './components/Header.js';
 import { Footer } from './components/Footer.js';
 import { CalendarSection } from './components/CalendarSection.js';
 import { HomeBlocksSection } from './components/HomeBlocksSection.js';
+import { NavButtonBlocksSection } from './components/NavButtonBlocksSection.js';
 import { findPageNavButton } from './utils/activitySeo.js';
 import { IntroView } from './components/IntroView.js';
 import { ChapterView } from './components/ChapterView.js';
@@ -48,6 +49,7 @@ export default function App() {
     highlights: [],
     policies: [],
     homeBlocks: [],
+    navButtonBlocks: [],
     surveys: [],
     navButtons: [],
     navButtonEntries: [],
@@ -193,6 +195,10 @@ export default function App() {
     const btn = findPageNavButton<NavButtonItem>(publicData.navButtons, path);
     return { intro: btn?.introContent || '', footer: btn?.footerContent || '' };
   };
+
+  // 固定頁面（/intro、/tools…）所屬的前台按鈕 id，用來顯示該按鈕的「區塊管理」內容
+  const pageButtonId = (path: string): string | null =>
+    findPageNavButton<NavButtonItem>(publicData.navButtons, path)?.id ?? null;
 
   // 單層網址 /:categorySlug/（按鈕列表頁的好看網址，例如 /traverse/）
   const currentCategoryListSlug = useMemo<string | null>(() => {
@@ -675,6 +681,9 @@ export default function App() {
             onSelectChapter={(slug) => navigate(`/intro/${slug}`)}
           />
         )}
+        {!isUnknownPath && currentPath === '/intro' && (
+          <NavButtonBlocksSection blocks={publicData.navButtonBlocks} navButtonId={pageButtonId('/intro')} />
+        )}
 
         {/* 登山入門 單篇章節頁面 /intro/:slug */}
         {!isUnknownPath && currentChapterSlug && currentChapter && (
@@ -714,6 +723,9 @@ export default function App() {
             onSelectActivity={(slug) => navigate(`/${getCategorySlug(currentNavButton)}/${slug}/`)}
             onNavigateEntry={(url) => navigate(url)}
           />
+        )}
+        {!isUnknownPath && currentNavButtonId && currentNavButton && (
+          <NavButtonBlocksSection blocks={publicData.navButtonBlocks} navButtonId={currentNavButton.id} />
         )}
 
         {/* 兩層式行程活動內部頁面 /:categorySlug/:activitySlug/ */}
@@ -771,6 +783,9 @@ export default function App() {
             onBack={() => navigate('/')}
           />
         )}
+        {!isUnknownPath && currentPath === '/tools' && (
+          <NavButtonBlocksSection blocks={publicData.navButtonBlocks} navButtonId={pageButtonId('/tools')} />
+        )}
 
         {/* 活動花絮 YouTube 影音專區 */}
         {!isUnknownPath && currentPath === '/highlights' && (
@@ -793,6 +808,9 @@ export default function App() {
             onBack={() => navigate('/')}
           />
         )}
+        {!isUnknownPath && currentPath === '/highlights' && (
+          <NavButtonBlocksSection blocks={publicData.navButtonBlocks} navButtonId={pageButtonId('/highlights')} />
+        )}
 
         {/* 政策與條款 獨立專區 */}
         {!isUnknownPath && currentPath === '/policies' && (
@@ -803,6 +821,9 @@ export default function App() {
             onBack={() => navigate('/')}
           />
         )}
+        {!isUnknownPath && currentPath === '/policies' && (
+          <NavButtonBlocksSection blocks={publicData.navButtonBlocks} navButtonId={pageButtonId('/policies')} />
+        )}
 
         {/* 問卷調查 獨立選單專區 */}
         {!isUnknownPath && currentPath === '/surveys' && (
@@ -812,6 +833,9 @@ export default function App() {
             bottomContent={pageText('/surveys').footer}
             onBack={() => navigate('/')}
           />
+        )}
+        {!isUnknownPath && currentPath === '/surveys' && (
+          <NavButtonBlocksSection blocks={publicData.navButtonBlocks} navButtonId={pageButtonId('/surveys')} />
         )}
 
         {/* 後台管理 /admin */}

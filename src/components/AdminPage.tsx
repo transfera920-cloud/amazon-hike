@@ -3364,7 +3364,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                 const isExpanded = Boolean(expandedButtonIds[item.id]);
                 const isActivityExpanded = expandedActivityButtonId === item.id;
                 const isBlockExpanded = expandedBlockButtonId === item.id;
-                const isHomeButton = ((item.url || '').replace(/\/+$/, '') || '/') === '/' && !item.isExternal;
+                // 只有網址明確填「/」的按鈕才是首頁（區塊在「首頁區塊管理」）。
+                // 網址留空的是分類頁按鈕（新手百岳、入門百岳…，實際網址由代稱或按鈕 id 決定），
+                // 它們各自有自己的「區塊管理」，不能被當成首頁。
+                const rawButtonUrl = (item.url || '').trim();
+                const isHomeButton = !item.isExternal && rawButtonUrl !== '' && (rawButtonUrl.replace(/\/+$/, '') || '/') === '/';
                 const buttonBlocks = (adminData.navButtonBlocks || [])
                   .filter((b) => b.navButtonId === item.id)
                   .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));

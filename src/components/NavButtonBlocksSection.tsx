@@ -1,6 +1,6 @@
 import React from 'react';
 import type { NavButtonBlock } from '../types.js';
-import { renderLinkedText } from './PageTextBlock.js';
+import { renderLinkedText, renderParagraph } from './PageTextBlock.js';
 
 interface NavButtonBlocksSectionProps {
   /** 全部按鈕的區塊（元件會自己挑出屬於 navButtonId 的那些） */
@@ -37,9 +37,7 @@ export const NavButtonBlocksSection: React.FC<NavButtonBlocksSectionProps> = ({ 
             <h2 className="text-lg sm:text-xl font-bold text-neutral-100 mb-4">{block.title}</h2>
             <div className="space-y-3 text-sm sm:text-base leading-relaxed text-neutral-300">
               {paragraphs.map((p, i) => (
-                <p key={i} className="whitespace-pre-line">
-                  {renderLinkedText(p)}
-                </p>
+                renderParagraph(p, i, { className: "whitespace-pre-line", levelOffset: 1 })
               ))}
             </div>
           </section>

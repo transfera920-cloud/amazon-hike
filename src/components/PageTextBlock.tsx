@@ -31,10 +31,14 @@ export function renderLinkedText(text: string): React.ReactNode[] {
     if (isImage) {
       if (isSafeImageSrc(m[3])) {
         const caption = (m[4] || '').trim();
+        // 網址結尾的 #寬x高（例如 #1600x1200）只用來預留版面空間，避免載入時畫面跳動
+        const dims = m[3].match(/#(\d{1,5})x(\d{1,5})$/);
         nodes.push(
           <span key={`i-${i++}`} className="block my-4 max-w-2xl">
             <img
-              src={m[3]}
+              src={m[3].replace(/#\d{1,5}x\d{1,5}$/, '')}
+              width={dims ? Number(dims[1]) : undefined}
+              height={dims ? Number(dims[2]) : undefined}
               alt={m[2]}
               loading="lazy"
               decoding="async"
@@ -63,6 +67,43 @@ export function renderLinkedText(text: string): React.ReactNode[] {
   return nodes;
 }
 
+/**
+ * 內文標題語法：獨立一行寫「## 大標題」或「### 小標題」→ H2 / H3。
+ * levelOffset：外層已有 H2 的區塊（首頁區塊、按鈕區塊）用 1，內文的 ## 會變 H3、### 變 H4，避免標題層級重複。
+ * 標題後面若緊接內文（沒空行），會自動拆成標題 + 段落。
+ */
+export function renderParagraph(
+  p: string,
+  key: React.Key,
+  opts: { className?: string; levelOffset?: number } = {}
+): React.ReactNode {
+  const className = opts.className ?? 'whitespace-pre-line';
+  const lines = p.split('\n');
+  const hm = lines[0].match(/^(#{2,3})[ \t]+(.+?)\s*$/);
+  if (!hm) {
+    return (
+      <p key={key} className={className}>
+        {renderLinkedText(p)}
+      </p>
+    );
+  }
+  const level = Math.min(6, hm[1].length + (opts.levelOffset ?? 0));
+  const headingClass =
+    level <= 2
+      ? 'text-lg sm:text-xl font-bold text-neutral-100 mt-8 first:mt-0'
+      : level === 3
+      ? 'text-base sm:text-lg font-semibold text-neutral-100 mt-6 first:mt-0'
+      : 'text-sm sm:text-base font-semibold text-neutral-200 mt-5 first:mt-0';
+  const Tag = `h${level}` as 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
+  const rest = lines.slice(1).join('\n').trim();
+  return (
+    <React.Fragment key={key}>
+      <Tag className={headingClass}>{renderLinkedText(hm[2])}</Tag>
+      {rest && <p className={className}>{renderLinkedText(rest)}</p>}
+    </React.Fragment>
+  );
+}
+
 interface PageTextBlockProps {
   /** 後台輸入的文字（空白行分段）；空白時不顯示任何東西 */
   text?: string;
@@ -86,9 +127,7 @@ export const PageTextBlock: React.FC<PageTextBlockProps> = ({ text, position }) 
   const body = (
     <div className="space-y-3 text-sm sm:text-base leading-relaxed text-neutral-300">
       {paragraphs.map((p, i) => (
-        <p key={i} className="whitespace-pre-line">
-          {renderLinkedText(p)}
-        </p>
+        renderParagraph(p, i, { className: "whitespace-pre-line" })
       ))}
     </div>
   );

@@ -126,7 +126,7 @@ function formatMultilineHtml(text: string): string {
  * 讓搜尋引擎不必執行 JavaScript 就能讀到。找不到或沒填就回傳空字串。
  */
 /** 與前台相同規則：[文字](網址) 轉成 <a>，允許站內路徑與 http/https 網址 */
-function formatLinkedMultilineHtml(text: string): string {
+function formatLinkedMultilineHtml(text: string, levelOffset = 0): string {
   const isSafe = (h: string) =>
     /^\/(?!\/)/.test(h) ||
     /^https?:\/\/[^\s]+$/i.test(h) ||
@@ -144,7 +144,9 @@ function formatLinkedMultilineHtml(text: string): string {
         // 圖片：![說明](網址) → <img>，只允許站內路徑與 http/https
         if (/^\/(?!\/)/.test(m[3]) || /^https?:\/\/[^\s]+$/i.test(m[3])) {
           const cap = (m[4] || '').trim();
-          const imgTag = `<img src="${escapeHtml(m[3])}" alt="${escapeHtml(m[2])}" loading="lazy">`;
+          const dm = m[3].match(/#(\d{1,5})x(\d{1,5})$/);
+          const dimAttr = dm ? ` width="${dm[1]}" height="${dm[2]}"` : '';
+          const imgTag = `<img src="${escapeHtml(m[3].replace(/#\d{1,5}x\d{1,5}$/, ''))}" alt="${escapeHtml(m[2])}"${dimAttr} loading="lazy">`;
           out += cap ? `<figure>${imgTag}<figcaption>${escapeHtml(cap)}</figcaption></figure>` : `<figure>${imgTag}</figure>`;
         }
       } else if (m[2]) {
@@ -160,9 +162,20 @@ function formatLinkedMultilineHtml(text: string): string {
     .map((p) => p.trim())
     .filter(Boolean)
     .map((p) => {
-      const html = p.split('\n').map(renderLine).join('<br>');
+      // 標題語法：## → H2、### → H3（外層已有 H2 的區塊用 levelOffset = 1）
+      const lines = p.split('\n');
+      const hm = lines[0].match(/^(#{2,3})[ \t]+(.+?)\s*$/);
+      let head = '';
+      let rest = p;
+      if (hm) {
+        const lv = Math.min(6, hm[1].length + levelOffset);
+        head = `<h${lv}>${renderLine(hm[2])}</h${lv}>`;
+        rest = lines.slice(1).join('\n').trim();
+        if (!rest) return head;
+      }
+      const html = rest.split('\n').map(renderLine).join('<br>');
       // 只含圖片的段落不包 <p>（<figure> 不能放在 <p> 裡）
-      return /^(<figure>.*?<\/figure>)+$/s.test(html) ? html : `<p>${html}</p>`;
+      return head + (/^(<figure>.*?<\/figure>)+$/s.test(html) ? html : `<p>${html}</p>`);
     })
     .join('');
 }
@@ -196,7 +209,7 @@ function buildNavButtonBlocksHtml(
     .filter((b) => b.navButtonId === navButtonId && b.enabled && (b.title || '').trim() && (b.content || '').trim())
     .slice()
     .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
-    .map((b) => `<section><h2>${escapeHtml(b.title.trim())}</h2>${formatLinkedMultilineHtml(b.content.trim())}</section>`)
+    .map((b) => `<section><h2>${escapeHtml(b.title.trim())}</h2>${formatLinkedMultilineHtml(b.content.trim(), 1)}</section>`)
     .join('');
 }
 
@@ -792,7 +805,7 @@ async function buildHomeBlocksHtml(env: WorkerEnv): Promise<string> {
       .filter((b) => b.enabled && (b.title || '').trim() && (b.content || '').trim())
       .slice()
       .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
-      .map((b) => `<section><h2>${escapeHtml(b.title.trim())}</h2>${formatLinkedMultilineHtml(b.content.trim())}</section>`)
+      .map((b) => `<section><h2>${escapeHtml(b.title.trim())}</h2>${formatLinkedMultilineHtml(b.content.trim(), 1)}</section>`)
       .join('');
   } catch (err) {
     console.error('Error building home blocks:', err);

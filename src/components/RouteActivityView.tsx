@@ -13,7 +13,7 @@ import type { NavButtonItem, NavButtonActivity } from '../types.js';
 import { getYouTubeVideoId, normalizeUrl } from '../utils/url.js';
 import { findTransferLink } from '../utils/transferLinks.js';
 import { getNavButtonPath } from '../utils/activitySeo.js';
-import { renderLinkedText } from './PageTextBlock.js';
+import { renderLinkedText, renderParagraph } from './PageTextBlock.js';
 
 interface RouteActivityViewProps {
   activity: NavButtonActivity;
@@ -212,9 +212,7 @@ export const RouteActivityView: React.FC<RouteActivityViewProps> = ({
         {contentParagraphs.length > 0 && (
           <section className="space-y-4 text-neutral-200 text-sm sm:text-base leading-relaxed mb-6 pt-6 border-t border-neutral-800/60">
             {contentParagraphs.map((p, idx) => (
-              <p key={idx} className="whitespace-pre-line text-neutral-200">
-                {renderLinkedText(p)}
-              </p>
+              renderParagraph(p, idx, { className: "whitespace-pre-line text-neutral-200" })
             ))}
           </section>
         )}

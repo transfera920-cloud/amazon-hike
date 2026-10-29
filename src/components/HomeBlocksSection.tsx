@@ -1,6 +1,6 @@
 import React from 'react';
 import type { HomeBlockItem } from '../types.js';
-import { renderLinkedText } from './PageTextBlock.js';
+import { renderLinkedText, renderParagraph } from './PageTextBlock.js';
 
 interface HomeBlocksSectionProps {
   blocks?: HomeBlockItem[];
@@ -32,9 +32,7 @@ export const HomeBlocksSection: React.FC<HomeBlocksSectionProps> = ({ blocks }) 
             <h2 className="text-lg sm:text-xl font-bold text-neutral-100 mb-4">{block.title}</h2>
             <div className="space-y-3 text-sm sm:text-base leading-relaxed text-neutral-300">
               {paragraphs.map((p, i) => (
-                <p key={i} className="whitespace-pre-line">
-                  {renderLinkedText(p)}
-                </p>
+                renderParagraph(p, i, { className: "whitespace-pre-line", levelOffset: 1 })
               ))}
             </div>
           </section>

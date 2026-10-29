@@ -12,6 +12,25 @@ export interface InsertImageButtonProps {
   onChange: (next: string) => void;
 }
 
+/** 估算上傳後圖片的寬高（與 imageUpload 的縮放規則一致：最長邊最多 1600px），用來在網址後加 #寬x高 預留版面 */
+async function getUploadedSize(file: File): Promise<string> {
+  try {
+    const objectUrl = URL.createObjectURL(file);
+    const size = await new Promise<{ w: number; h: number }>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+      img.onerror = () => reject(new Error('read failed'));
+      img.src = objectUrl;
+    });
+    URL.revokeObjectURL(objectUrl);
+    if (!size.w || !size.h) return '';
+    const scale = Math.min(1, 1600 / Math.max(size.w, size.h));
+    return `#${Math.round(size.w * scale)}x${Math.round(size.h * scale)}`;
+  } catch {
+    return '';
+  }
+}
+
 /**
  * 內文欄位旁的「插入圖片」：選照片 → 自動壓縮上傳 → 在游標位置插入 ![說明](網址)。
  * 圖片會獨立成一段；圖說填了就顯示在照片正下方，不填則不顯示（前後各空一行），前台與 Worker 注入的 HTML 都會顯示。
@@ -30,7 +49,8 @@ export const InsertImageButton: React.FC<InsertImageButtonProps> = ({ token, tar
     setUploading(true);
     setError(null);
     try {
-      const url = await uploadCoverImage(file, token);
+      const uploaded = await uploadCoverImage(file, token);
+      const url = uploaded + (await getUploadedSize(file));
       const cleanAlt = alt.replace(/[\[\]\r\n]/g, ' ').trim() || '請填寫圖片說明';
       const cleanCaption = caption.replace(/["\r\n]/g, ' ').trim();
       const md = cleanCaption ? `![${cleanAlt}](${url} "${cleanCaption}")` : `![${cleanAlt}](${url})`;

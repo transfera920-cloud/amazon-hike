@@ -2856,15 +2856,19 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                       </label>
                       <input
                         type="number"
+                        step="any"
                         value={editingHomeBlock.sortOrder ?? 0}
                         onChange={(e) =>
                           setEditingHomeBlock({
                             ...editingHomeBlock,
-                            sortOrder: parseInt(e.target.value) || 0,
+                            sortOrder: parseFloat(e.target.value) || 0,
                           })
                         }
                         className="w-24 px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
                       />
+                      <p className="text-[10px] text-neutral-500 mt-1">
+                        可輸入小數，例如插在 2 與 3 之間填 2.5
+                      </p>
                     </div>
 
                     <div className="flex items-center gap-2 mt-5">
@@ -4743,12 +4747,16 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                                   <label className="block text-neutral-300 font-medium mb-1">排序序號</label>
                                   <input
                                     type="number"
+                                    step="any"
                                     value={editingNavBlock.sortOrder ?? 0}
                                     onChange={(e) =>
-                                      setEditingNavBlock({ ...editingNavBlock, sortOrder: parseInt(e.target.value) || 0 })
+                                      setEditingNavBlock({ ...editingNavBlock, sortOrder: parseFloat(e.target.value) || 0 })
                                     }
                                     className="w-24 px-3 py-1.5 rounded bg-neutral-950 border border-neutral-700 text-neutral-100"
                                   />
+                                  <p className="text-[10px] text-neutral-500 mt-1">
+                                    可輸入小數，例如插在 2 與 3 之間填 2.5
+                                  </p>
                                 </div>
                                 <div className="flex items-center gap-2 mt-5">
                                   <input

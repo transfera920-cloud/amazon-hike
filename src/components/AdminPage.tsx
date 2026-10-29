@@ -3332,8 +3332,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack, onDataUpdated }) =
                   />
                   <p className="text-[11px] text-neutral-400">
                     內文（上文、下文、內容區塊）也能插入圖片：獨立一段寫
-                    <code className="mx-1 text-emerald-300">![圖片說明](圖片網址)</code>
-                    ，圖片就會出現在那一段的位置。方括號裡的說明會成為 alt 文字。
+                    <code className="mx-1 text-emerald-300">![ALT說明](圖片網址 "圖說")</code>
+                    ，圖片就會出現在那一段的位置。方括號裡是 alt 文字，引號裡是顯示在照片下方的圖說（可省略）。
                   </p>
                 </div>
 

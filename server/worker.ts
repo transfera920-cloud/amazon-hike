@@ -132,7 +132,7 @@ function formatLinkedMultilineHtml(text: string): string {
     /^https?:\/\/[^\s]+$/i.test(h) ||
     /^tel:\+?[0-9]{6,15}$/.test(h) ||
     /^mailto:[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']+$/i.test(h);
-  const linkRe = /(!?)\[([^\]]*)\]\(([^)\s]+)\)/g;
+  const linkRe = /(!?)\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g;
   const renderLine = (line: string): string => {
     let out = '';
     let last = 0;
@@ -143,7 +143,9 @@ function formatLinkedMultilineHtml(text: string): string {
       if (m[1] === '!') {
         // 圖片：![說明](網址) → <img>，只允許站內路徑與 http/https
         if (/^\/(?!\/)/.test(m[3]) || /^https?:\/\/[^\s]+$/i.test(m[3])) {
-          out += `<img src="${escapeHtml(m[3])}" alt="${escapeHtml(m[2])}" loading="lazy">`;
+          const cap = (m[4] || '').trim();
+          const imgTag = `<img src="${escapeHtml(m[3])}" alt="${escapeHtml(m[2])}" loading="lazy">`;
+          out += cap ? `<figure>${imgTag}<figcaption>${escapeHtml(cap)}</figcaption></figure>` : `<figure>${imgTag}</figure>`;
         }
       } else if (m[2]) {
         out += isSafe(m[3]) ? `<a href="${escapeHtml(m[3])}">${escapeHtml(m[2])}</a>` : escapeHtml(m[2]);
@@ -157,7 +159,11 @@ function formatLinkedMultilineHtml(text: string): string {
     .split(/\n\s*\n/)
     .map((p) => p.trim())
     .filter(Boolean)
-    .map((p) => `<p>${p.split('\n').map(renderLine).join('<br>')}</p>`)
+    .map((p) => {
+      const html = p.split('\n').map(renderLine).join('<br>');
+      // 只含圖片的段落不包 <p>（<figure> 不能放在 <p> 裡）
+      return /^(<figure>.*?<\/figure>)+$/s.test(html) ? html : `<p>${html}</p>`;
+    })
     .join('');
 }
 

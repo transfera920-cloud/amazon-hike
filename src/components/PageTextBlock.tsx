@@ -21,7 +21,7 @@ export function isSafeImageSrc(src: string): boolean {
  */
 export function renderLinkedText(text: string): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];
-  const re = /(!?)\[([^\]]*)\]\(([^)\s]+)\)/g;
+  const re = /(!?)\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g;
   let last = 0;
   let i = 0;
   let m: RegExpExecArray | null;
@@ -30,15 +30,18 @@ export function renderLinkedText(text: string): React.ReactNode[] {
     const isImage = m[1] === '!';
     if (isImage) {
       if (isSafeImageSrc(m[3])) {
+        const caption = (m[4] || '').trim();
         nodes.push(
-          <img
-            key={`i-${i++}`}
-            src={m[3]}
-            alt={m[2]}
-            loading="lazy"
-            decoding="async"
-            className="block w-full max-w-2xl h-auto rounded-lg border border-neutral-800 my-4"
-          />
+          <span key={`i-${i++}`} className="block my-4 max-w-2xl">
+            <img
+              src={m[3]}
+              alt={m[2]}
+              loading="lazy"
+              decoding="async"
+              className="block w-full h-auto rounded-lg border border-neutral-800"
+            />
+            {caption && <span className="block mt-1.5 text-xs sm:text-sm text-neutral-400">{caption}</span>}
+          </span>
         );
       }
     } else if (m[2] && isSafePageTextHref(m[3])) {

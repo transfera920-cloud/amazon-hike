@@ -9,6 +9,7 @@ import {
   resolveNavButtonSeo,
   resolveNavButtonIntroParagraphs,
   isPeakTableButton,
+  isPeakOverviewButton,
   formatPeakLinkText,
   CHAPTER_SLUG_RE,
   CHAPTER_SLUG_SOURCE,
@@ -18,7 +19,7 @@ import {
   extractPeakNoAndName,
 } from '../src/utils/activitySeo.js';
 import type { NavButtonActivity } from '../src/types.js';
-import { getYouTubeVideoId, normalizeToolUrl } from '../src/utils/url.js';
+import { getYouTubeVideoId, normalizeToolUrl, normalizeUrl, isInternalUrl } from '../src/utils/url.js';
 import { findTransferLink } from '../src/utils/transferLinks.js';
 
 declare const HTMLRewriter: any;
@@ -330,6 +331,70 @@ const ORG_ID = 'https://amazon-hike.com/#organization';
  * 按鈕列表頁（例如百岳列表）的結構化資料：BreadcrumbList + CollectionPage + ItemList。
  * 讓搜尋引擎與生成式 AI 能直接讀到「這一頁有哪些山／行程」。只有已有內文的項目才附網址。
  */
+/**
+ * 百岳列表的山名連結（與前台 NavActivitiesView 相同的優先順序）：
+ * 山名連結（detailUrl，站內）→ 外部網址欄填的是本站網址 → 有完整介紹內容的行程頁。
+ * 都沒有就回傳空字串。
+ */
+function peakNameHref(a: NavButtonActivity, catSlug: string): string {
+  if (a.detailUrl && isInternalUrl(a.detailUrl)) return normalizeUrl(a.detailUrl);
+  if (a.externalUrl && isInternalUrl(a.externalUrl)) return normalizeUrl(a.externalUrl);
+  if ((a.content || '').trim()) return `/${catSlug}/${a.slug}/`;
+  return '';
+}
+
+/**
+ * 百岳列表（新手／入門／進階／總表）的初始 HTML 表格：山名（含連結）、標高、所屬國家公園、群組、備註、查看行程，
+ * 欄位與前台表格一致，預設依標高由高到低排序（與前台畫面相同）。
+ */
+function buildPeakTableHtml(btn: { title: string }, acts: NavButtonActivity[], catSlug: string): string {
+  const rows = acts.map((a, i) => {
+    const raw = (a.title || '').trim();
+    const m = raw.match(/^(\d{1,3})\s*(.+?)\s*(\d{4})\s*(.*)$/);
+    return {
+      a,
+      i,
+      no: m ? Number(m[1]) : null,
+      name: m ? m[2].trim() : raw,
+      elevation: m ? Number(m[3]) : null,
+      group: m ? m[4].trim() : '',
+    };
+  });
+  rows.sort((x, y) => {
+    if (x.elevation == null && y.elevation == null) return x.i - y.i;
+    if (x.elevation == null) return 1;
+    if (y.elevation == null) return -1;
+    return x.elevation === y.elevation ? x.i - y.i : y.elevation - x.elevation;
+  });
+  const withNo = isPeakOverviewButton(btn);
+  const body = rows
+    .map(({ a, no, name, elevation, group }) => {
+      const href = peakNameHref(a, catSlug);
+      const nameCell = href ? `<a href="${escapeHtml(href)}">${escapeHtml(name)}</a>` : escapeHtml(name);
+      const ext = normalizeUrl(a.externalUrl);
+      const extCell = ext ? `<a href="${escapeHtml(ext)}">查看${escapeHtml(name)}行程</a>` : '';
+      return (
+        '<tr>' +
+        (withNo ? `<td>${no != null ? String(no).padStart(3, '0') : ''}</td>` : '') +
+        `<td>${nameCell}</td>` +
+        `<td>${elevation != null ? elevation : ''}</td>` +
+        `<td>${escapeHtml((a.nationalPark || '').trim())}</td>` +
+        `<td>${escapeHtml(group)}</td>` +
+        `<td>${escapeHtml((a.description || '').trim())}</td>` +
+        `<td>${extCell}</td>` +
+        '</tr>'
+      );
+    })
+    .join('');
+  return (
+    `<p>共 ${rows.length} 座</p><table><caption>${escapeHtml(btn.title)}</caption><thead><tr>` +
+    (withNo ? '<th scope="col">編號</th>' : '') +
+    '<th scope="col">山名</th><th scope="col">標高（公尺）</th><th scope="col">所屬國家公園</th>' +
+    '<th scope="col">群組</th><th scope="col">備註</th><th scope="col">行程連結</th>' +
+    `</tr></thead><tbody>${body}</tbody></table>`
+  );
+}
+
 function buildNavListJsonLd(
   btn: { title: string },
   acts: NavButtonActivity[],
@@ -340,12 +405,12 @@ function buildNavListJsonLd(
   const sorted = acts.slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
   const items = sorted.slice(0, 120).map((a, idx) => {
     const name = isPeak ? formatPeakLinkText(a.title) : a.title;
-    const hasPage = (a.content || '').trim().length > 0;
+    const href = isPeak ? peakNameHref(a, catSlug) : (a.content || '').trim() ? `/${catSlug}/${a.slug}/` : '';
     return {
       '@type': 'ListItem',
       position: idx + 1,
       name,
-      ...(hasPage ? { url: `${SITE_ORIGIN}/${catSlug}/${a.slug}/` } : {}),
+      ...(href ? { url: href.startsWith('/') ? `${SITE_ORIGIN}${href}` : href } : {}),
     };
   });
   const graph = {
@@ -1723,7 +1788,9 @@ ${activityUrls}
               : '';
             // 該按鈕的「區塊管理」內容區塊（H2＋內文）
             const blocksHtml = buildNavButtonBlocksHtml(db, btn?.id);
-            rootHtml = `<main><h1>${escapeHtml(btn ? btn.title : '活動列表')}</h1>${introHtml}<ul>${listHtml}</ul>${footerHtml}${blocksHtml}${buildSiteNavHtml()}</main>`;
+            const listOrTableHtml =
+              btn && isPeak && acts.length > 0 ? buildPeakTableHtml(btn, acts, catSlug) : `<ul>${listHtml}</ul>`;
+            rootHtml = `<main><h1>${escapeHtml(btn ? btn.title : '活動列表')}</h1>${introHtml}${listOrTableHtml}${footerHtml}${blocksHtml}${buildSiteNavHtml()}</main>`;
             if (btn) {
               chapterJsonLd = buildNavListJsonLd(btn, acts, catSlug, isPeak, canonicalUrl);
             }

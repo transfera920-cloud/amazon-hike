@@ -29,6 +29,18 @@ export interface RouteMetadata {
   image?: string;
 }
 
+/**
+ * 建立「內部抓取 index.html」用的請求。
+ * 移除 If-None-Match / If-Modified-Since：否則靜態資源會回 304，
+ * Worker 就沒有機會注入最新的後台內容，瀏覽器與爬蟲會一直拿到舊頁面。
+ */
+function buildIndexRequest(request: Request): Request {
+  const headers = new Headers(request.headers);
+  headers.delete('If-None-Match');
+  headers.delete('If-Modified-Since');
+  return new Request(new URL('/', request.url), { method: 'GET', headers });
+}
+
 const INTRO_REDIRECT_RE = new RegExp(`^/intro/(${CHAPTER_SLUG_SOURCE})$`);
 const CHAPTER_REDIRECT_RE = new RegExp(`^/(${CHAPTER_SLUG_SOURCE})$`);
 const escapeHtml = (s: string) =>
@@ -70,11 +82,24 @@ function buildSiteNavHtml(): string {
  * 規定：<h1> 必須只取 Title 用「 | 」切開後的第一段，不可放完整 Title。
  */
 function buildSectionShellHtml(title: string, description: string, topHtml = '', bottomHtml = ''): string {
-  // 同時支援半形「 | 」與全形「｜」分隔（首頁標題用的是全形「｜」）
-  const shortTitle = title.split(/\s*[|｜]\s*/)[0].trim();
+  const shortTitle = title.split(' | ')[0].trim();
   return `<main><h1>${escapeHtml(shortTitle)}</h1><p>${escapeHtml(
     description
   )}</p>${topHtml}${bottomHtml}${buildSiteNavHtml()}</main>`;
+}
+
+/**
+ * 產生首頁的靜態外殼 HTML。
+ * <h1> 固定為協會名稱（與前端 Header 一致），接著是協會簡介，再依序放入
+ * 導讀與近期活動（topHtml）、內容區塊與常見問題（bottomHtml）。
+ */
+function buildHomeShellHtml(topHtml = '', bottomHtml = ''): string {
+  return (
+    '<main><h1>亞馬遜國家山岳協會</h1>' +
+    '<p>Amazon Alpine Association，社團法人・立案編號 台內團自第1130008137號。' +
+    '協會宗旨：提倡全民運動、鍛鍊強健體魄、培養互助團隊精神，以及接觸大自然與山林相關知識及技能。</p>' +
+    `${topHtml}${bottomHtml}${buildSiteNavHtml()}</main>`
+  );
 }
 
 /**
@@ -1562,35 +1587,26 @@ ${activityUrls}
 
       // 3-1. 首頁 (/) 或 /index.html：套用首頁專屬 SEO Meta
       if (isRoot && routeMeta) {
-        const indexRequest = new Request(new URL('/', request.url), request);
+        const indexRequest = buildIndexRequest(request);
         const indexResponse = await env.ASSETS.fetch(indexRequest);
         if (indexResponse.ok) {
-          // 首頁也要把「導讀／行事曆活動／首頁區塊／下方說明」寫進初始 HTML，
-          // 否則搜尋引擎（與不執行 JavaScript 的工具）只會看到靜態的 index.html 外殼。
-          let homeRootHtml: string | undefined;
-          let homeJsonLd: string | undefined;
-          try {
-            const pageText = await loadPageTextHtml(env, '/');
-            const ev = await buildHomeEvents(env);
-            const homeBlocksHtml = await buildHomeBlocksHtml(env);
-            homeRootHtml = buildSectionShellHtml(
-              routeMeta.title,
-              routeMeta.description,
-              pageText.top + ev.html,
-              pageText.bottom + homeBlocksHtml
-            );
-            if (ev.jsonLd) homeJsonLd = ev.jsonLd;
-          } catch (err) {
-            console.error('Error building home page shell:', err);
-          }
+          // 首頁正文（導讀、近期活動、內容區塊、常見問題）直接寫進初始 HTML，
+          // 不執行 JavaScript 的爬蟲與 AI 助理也讀得到。
+          const pageText = await loadPageTextHtml(env, '/');
+          const ev = await buildHomeEvents(env);
+          const homeBlocksHtml = await buildHomeBlocksHtml(env);
+          const rootHtml = buildHomeShellHtml(
+            pageText.top + ev.html,
+            pageText.bottom + homeBlocksHtml
+          );
           return applyRouteMeta(
             indexResponse,
             routeMeta,
             'https://amazon-hike.com/',
             undefined,
-            homeRootHtml,
-            undefined,
-            homeJsonLd
+            rootHtml,
+            false,
+            ev.jsonLd || undefined
           );
         }
         return indexResponse;
@@ -1604,7 +1620,7 @@ ${activityUrls}
 
       // 3-3. /admin 路由維持原行為（不注入額外外殼，回傳原始 index.html）
       if (normalizedPath === '/admin') {
-        const spaRequest = new Request(new URL('/', request.url), request);
+        const spaRequest = buildIndexRequest(request);
         const adminRes = await env.ASSETS.fetch(spaRequest);
         const adminHeaders = new Headers(adminRes.headers);
         adminHeaders.set('X-Robots-Tag', 'noindex, nofollow');
@@ -1616,7 +1632,7 @@ ${activityUrls}
       }
 
       // 3-4. SPA Fallback 客戶端已知路由（/intro, /tools, /highlights, /policies, /surveys, /intro/:slug）
-      const spaRequest = new Request(new URL('/', request.url), request);
+      const spaRequest = buildIndexRequest(request);
       const indexResponse = await env.ASSETS.fetch(spaRequest);
 
       if (routeMeta && indexResponse.ok) {

@@ -70,7 +70,8 @@ function buildSiteNavHtml(): string {
  * 規定：<h1> 必須只取 Title 用「 | 」切開後的第一段，不可放完整 Title。
  */
 function buildSectionShellHtml(title: string, description: string, topHtml = '', bottomHtml = ''): string {
-  const shortTitle = title.split(' | ')[0].trim();
+  // 同時支援半形「 | 」與全形「｜」分隔（首頁標題用的是全形「｜」）
+  const shortTitle = title.split(/\s*[|｜]\s*/)[0].trim();
   return `<main><h1>${escapeHtml(shortTitle)}</h1><p>${escapeHtml(
     description
   )}</p>${topHtml}${bottomHtml}${buildSiteNavHtml()}</main>`;
@@ -1564,7 +1565,33 @@ ${activityUrls}
         const indexRequest = new Request(new URL('/', request.url), request);
         const indexResponse = await env.ASSETS.fetch(indexRequest);
         if (indexResponse.ok) {
-          return applyRouteMeta(indexResponse, routeMeta, 'https://amazon-hike.com/');
+          // 首頁也要把「導讀／行事曆活動／首頁區塊／下方說明」寫進初始 HTML，
+          // 否則搜尋引擎（與不執行 JavaScript 的工具）只會看到靜態的 index.html 外殼。
+          let homeRootHtml: string | undefined;
+          let homeJsonLd: string | undefined;
+          try {
+            const pageText = await loadPageTextHtml(env, '/');
+            const ev = await buildHomeEvents(env);
+            const homeBlocksHtml = await buildHomeBlocksHtml(env);
+            homeRootHtml = buildSectionShellHtml(
+              routeMeta.title,
+              routeMeta.description,
+              pageText.top + ev.html,
+              pageText.bottom + homeBlocksHtml
+            );
+            if (ev.jsonLd) homeJsonLd = ev.jsonLd;
+          } catch (err) {
+            console.error('Error building home page shell:', err);
+          }
+          return applyRouteMeta(
+            indexResponse,
+            routeMeta,
+            'https://amazon-hike.com/',
+            undefined,
+            homeRootHtml,
+            undefined,
+            homeJsonLd
+          );
         }
         return indexResponse;
       }

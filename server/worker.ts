@@ -1277,6 +1277,22 @@ Sitemap: https://amazon-hike.com/sitemap.xml
       } catch (err) {
         console.error('Error building llms.txt:', err);
       }
+      // 動態產生失敗時，退回 public/llms.txt，並明確標示 UTF-8，避免瀏覽器把中文當成別的編碼而亂碼
+      if (env && env.ASSETS) {
+        try {
+          const staticRes = await env.ASSETS.fetch(request);
+          if (staticRes.ok) {
+            return new Response(staticRes.body, {
+              headers: {
+                'Content-Type': 'text/plain; charset=utf-8',
+                'Cache-Control': 'public, max-age=3600',
+              },
+            });
+          }
+        } catch (err) {
+          console.error('Error serving static llms.txt:', err);
+        }
+      }
     }
 
     if (pathname === '/sitemap.xml') {

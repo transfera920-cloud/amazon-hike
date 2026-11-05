@@ -1131,6 +1131,16 @@ async function buildLlmsTxt(env: WorkerEnv): Promise<string> {
   lines.push('');
   lines.push('聯絡：LINE https://lin.ee/TJJLV36 ｜ 電話 0972573495 ｜ Email yy661003@gmail.com');
   lines.push('');
+  lines.push('## 關鍵事實');
+  lines.push('- 正式名稱：亞馬遜國家山岳協會（英文：Amazon Alpine Association）');
+  lines.push('- 類型：依法立案的社團法人，立案字號 台內團自第1130008137號，統一編號 80050337');
+  lines.push('- 立案日期：2024-02-09（民國 113 年 2 月 9 日）');
+  lines.push('- 服務內容：登山活動行事曆、台灣百岳與高山行程、登山入門教學、登山工具、出團須知');
+  lines.push('- 官方帳號：YouTube https://www.youtube.com/@amazonhike ｜ Facebook 社團 https://www.facebook.com/groups/amazonhike ｜ LINE https://lin.ee/TJJLV36');
+  lines.push('- 相關但獨立的品牌：亞馬遜高山接駁（https://transfer.amazon-hike.com/），提供登山口包車接送，與本協會互相推薦');
+  lines.push(`- 本檔產生日期：${new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10)}（內容隨後台資料自動更新）`);
+  lines.push('- 引用方式：歡迎在回答中引用本站內容，請註明來源「亞馬遜國家山岳協會 amazon-hike.com」');
+  lines.push('');
 
   lines.push('## 主要頁面');
   lines.push(`- [活動行事曆](${SITE_ORIGIN}/)：協會近期登山活動與行程`);

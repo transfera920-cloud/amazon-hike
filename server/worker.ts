@@ -306,9 +306,10 @@ function buildChapterJsonLd(
         mainEntityOfPage: canonicalUrl,
         url: canonicalUrl,
         ...(chapter.updatedAt ? { dateModified: chapter.updatedAt } : {}),
-        ...(chapter.coverImage && /^https?:\/\//i.test(chapter.coverImage)
-          ? { image: chapter.coverImage }
-          : {}),
+        image:
+          chapter.coverImage && /^https?:\/\//i.test(chapter.coverImage)
+            ? chapter.coverImage
+            : DEFAULT_OG_IMAGE,
         author: { '@id': 'https://amazon-hike.com/#organization' },
         publisher: { '@id': 'https://amazon-hike.com/#organization' },
       },
@@ -494,7 +495,7 @@ function buildActivityJsonLd(
         mainEntityOfPage: pageUrl,
         url: pageUrl,
         ...(act.updatedAt ? { dateModified: act.updatedAt } : {}),
-        ...(image ? { image } : {}),
+        image: image || DEFAULT_OG_IMAGE,
         author: { '@id': ORG_ID },
         publisher: { '@id': ORG_ID },
         isPartOf: { '@id': `${SITE_ORIGIN}/#website` },
@@ -782,6 +783,14 @@ async function buildHomeEvents(env: WorkerEnv): Promise<{ html: string; jsonLd: 
         eventStatus: 'https://schema.org/EventScheduled',
         eventAttendanceMode: 'https://schema.org/OfflineEventAttendanceMode',
         inLanguage: 'zh-TW',
+        description: `${c.title.trim()}：亞馬遜國家山岳協會規劃的登山行程，日期 ${range(c)}。`,
+        image: [DEFAULT_OG_IMAGE],
+        // 行事曆資料目前沒有「地點」欄位；Google 活動結構化資料要求 location，先以國家層級地點補上
+        location: {
+          '@type': 'Place',
+          name: '台灣山區',
+          address: { '@type': 'PostalAddress', addressCountry: 'TW' },
+        },
         organizer: { '@id': ORG_ID },
         ...(/^https?:\/\//i.test(abs) ? { url: abs } : {}),
       };
@@ -792,6 +801,36 @@ async function buildHomeEvents(env: WorkerEnv): Promise<{ html: string; jsonLd: 
     console.error('Error building home events:', err);
     return { html: '', jsonLd: '' };
   }
+}
+
+/** 首頁專屬的 WebPage 節點（原本寫在 index.html，導致所有頁面都宣稱自己是首頁） */
+const HOME_WEBPAGE_NODE = {
+  '@type': 'WebPage',
+  '@id': `${SITE_ORIGIN}/#webpage`,
+  url: `${SITE_ORIGIN}/`,
+  inLanguage: 'zh-TW',
+  isPartOf: { '@id': `${SITE_ORIGIN}/#website` },
+  about: { '@id': ORG_ID },
+  relatedLink: [
+    'https://transfer.amazon-hike.com/',
+    'https://price.amazon-hike.com/',
+    'https://road.amazon-hike.com/',
+    'https://forestroad.amazon-hike.com/',
+  ],
+};
+
+/** 把首頁 WebPage 節點合併進既有的 JSON-LD（例如 Event），輸出單一 @graph */
+function withHomeWebPage(existing?: string): string {
+  let nodes: unknown[] = [];
+  if (existing) {
+    try {
+      const parsed = JSON.parse(existing);
+      nodes = Array.isArray(parsed['@graph']) ? parsed['@graph'] : [parsed];
+    } catch {
+      nodes = [];
+    }
+  }
+  return JSON.stringify({ '@context': 'https://schema.org', '@graph': [HOME_WEBPAGE_NODE, ...nodes] }).replace(/</g, '\\u003c');
 }
 
 /**
@@ -939,6 +978,15 @@ async function applyRouteMeta(
         },
       });
 
+    // 章節、行程等文章頁（JSON-LD 含 Article）把 og:type 由 website 改成 article
+    if (jsonLd && jsonLd.includes('"@type":"Article"')) {
+      rewriter = rewriter.on('meta[property="og:type"]', {
+        element(e: any) {
+          e.setAttribute('content', 'article');
+        },
+      });
+    }
+
     if (noindex) {
       rewriter = rewriter.on('meta[name="robots"]', {
         element(e: any) {
@@ -1021,6 +1069,10 @@ async function applyRouteMeta(
     /(<link\s+rel=["']canonical["']\s+href=["']).*?(["']\s*\/?>)/i,
     `$1${canonicalUrl}$2`
   );
+
+  if (jsonLd && jsonLd.includes('"@type":"Article"')) {
+    html = html.replace(/(<meta\s+property=["']og:type["']\s+content=["']).*?(["']\s*\/?>)/i, `$1article$2`);
+  }
 
   if (noindex) {
     html = html.replace(
@@ -1328,16 +1380,43 @@ Sitemap: https://amazon-hike.com/sitemap.xml
         })
         .join('\n');
 
-      return new Response(
-        `<?xml version="1.0" encoding="UTF-8"?>
+      const maxDate = (list: (string | undefined)[]) =>
+        list.filter((d): d is string => /^\d{4}-\d{2}-\d{2}/.test(d || '')).map((d) => d.slice(0, 10)).sort().pop();
+      const lmTag = (d?: string) => (d ? `\n    <lastmod>${d}</lastmod>` : '');
+      // 首頁：以首頁內容區塊的最新更新日為準；/intro：以章節最新更新日為準；沒有真實日期的頁面不輸出 lastmod
+      const homeLastmodTag = lmTag(maxDate((db.homeBlocks || []).filter((b) => b.enabled).map((b) => b.updatedAt)));
+      const introLastmodTag = lmTag(maxDate(enabledChapters.map((c) => c.updatedAt)));
+      // /rules/* 為靜態頁，lastmod 直接讀各頁內的 <time datetime="…">，改文章日期時 sitemap 會自動跟著變
+      const rulesPaths = ['/rules/', '/rules/refund/', '/rules/buddy-team/', '/rules/discipline/', '/rules/rope/', '/rules/lost-contact/', '/rules/emergency-contact/', '/rules/food-weigh/'];
+      const rulesUrls = (
+        await Promise.all(
+          rulesPaths.map(async (rp) => {
+            let d: string | undefined;
+            try {
+              if (env && env.ASSETS) {
+                const res = await env.ASSETS.fetch(new Request(`${SITE_ORIGIN}${rp}`));
+                if (res.ok) {
+                  const html = await res.text();
+                  d = (html.match(/<time[^>]*datetime="(\d{4}-\d{2}-\d{2})"/i) || [])[1];
+                }
+              }
+            } catch (err) {
+              console.error('Error reading rules lastmod:', err);
+            }
+            return `  <url>\n    <loc>${SITE_ORIGIN}${rp}</loc>${lmTag(d)}\n  </url>`;
+          })
+        )
+      ).join('\n');
+
+      const sitemapXml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://amazon-hike.com/</loc>
+    <loc>https://amazon-hike.com/</loc>${homeLastmodTag}
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://amazon-hike.com/intro</loc>
+    <loc>https://amazon-hike.com/intro</loc>${introLastmodTag}
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -1356,54 +1435,7 @@ Sitemap: https://amazon-hike.com/sitemap.xml
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
-  <url>
-    <loc>https://amazon-hike.com/rules/</loc>
-    <lastmod>2026-10-28</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://amazon-hike.com/rules/refund/</loc>
-    <lastmod>2026-10-28</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://amazon-hike.com/rules/buddy-team/</loc>
-    <lastmod>2026-10-28</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://amazon-hike.com/rules/discipline/</loc>
-    <lastmod>2026-10-28</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://amazon-hike.com/rules/rope/</loc>
-    <lastmod>2026-10-28</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://amazon-hike.com/rules/lost-contact/</loc>
-    <lastmod>2026-10-28</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://amazon-hike.com/rules/emergency-contact/</loc>
-    <lastmod>2026-10-28</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://amazon-hike.com/rules/food-weigh/</loc>
-    <lastmod>2026-10-28</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
+${rulesUrls}
   <url>
     <loc>https://amazon-hike.com/surveys</loc>
     <changefreq>monthly</changefreq>
@@ -1414,14 +1446,15 @@ ${chapterUrls}
 ${introChapterUrls}
 ${navUrls}
 ${activityUrls}
-</urlset>`,
-        {
-          headers: {
-            'Content-Type': 'application/xml; charset=utf-8',
-            'Cache-Control': 'public, max-age=86400',
-          },
-        }
-      );
+</urlset>`;
+      // Google 已不採用 changefreq / priority，移除以免誤導；lastmod 只輸出有真實日期的頁面
+      const cleanedSitemap = sitemapXml.replace(/\n\s*<(changefreq|priority)>[^<]*<\/\1>/g, '');
+      return new Response(cleanedSitemap, {
+        headers: {
+          'Content-Type': 'application/xml; charset=utf-8',
+          'Cache-Control': 'public, max-age=86400',
+        },
+      });
     }
 
     // 2-1. 301 Redirects for Chapter URLs
@@ -1871,7 +1904,7 @@ ${activityUrls}
           if (normalizedPath === '/') {
             const ev = await buildHomeEvents(env);
             homeEventsHtml = ev.html;
-            if (ev.jsonLd) chapterJsonLd = ev.jsonLd;
+            chapterJsonLd = withHomeWebPage(ev.jsonLd);
             homeBlocksHtml = await buildHomeBlocksHtml(env);
           }
           rootHtml = buildSectionShellHtml(
